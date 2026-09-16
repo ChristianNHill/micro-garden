@@ -1,7 +1,8 @@
 """2D stub body: kinematic ducks on the garden plane behind the microduck contract (PLAN.md Gate 3).
 
 One Unix socket per duck (duck-a.sock ...), like duck-sim, plus control.sock with stub-only
-sim.step {n} and sim.state. Every body step sends each duck's sensory frame over UDP.
+sim.step {n} and sim.state. Every body step sends each duck's sensory frame over UDP to
+frame_port + duck. robot.do ground_pick on a dish eats it.
 
 Run free at real time with the debug window:  uv run python -m body.stub2d.stub --view --wander
 Without --wander the ducks stand still until a client sends robot.move.
@@ -27,10 +28,15 @@ CONTROL_PARAMS = {"sim.step": {"n": 1}, "sim.state": {}}
 
 
 class Stub:
-    def __init__(self, n: int, seed: int, sock_dir: str, food_xy=((3.0, 3.0), (1.0, 1.0))):
+    def __init__(self, n: int, seed: int, sock_dir: str, food_xy=((3.0, 3.0), (1.0, 1.0)),
+                 frame_port: int = frames.FRAME_PORT, pose=None):
         rng = np.random.default_rng(seed)
         self.world = World(food_xy)
         self.pose = np.column_stack([rng.uniform(0.5, SIZE_M - 0.5, (n, 2)), rng.uniform(-np.pi, np.pi, n)])
+        if pose is not None:
+            self.pose = np.array(pose, float).reshape(n, 3)
+        self.frame_port = frame_port
+        self.eaten = []  # (t, duck)
         self.cmd = np.zeros((n, 3))
         self.head = np.zeros((n, 4))
         self.relaxed = np.zeros(n, bool)
@@ -44,6 +50,7 @@ class Stub:
             for i, name in enumerate(self.names)
         ]
         self.servers.append(serve(os.path.join(sock_dir, "control.sock"), CONTROL_PARAMS, self._control_call, self.lock))
+        self.send_frames()
 
     def _robot_call(self, i: int):
         def call(method, p):
@@ -54,7 +61,11 @@ class Stub:
             elif method == "robot.head":
                 self.head[i] = [float(p[k]) for k in ROBOT_PARAMS["robot.head"]]
             elif method == "robot.do":
-                self.skill[i] = str(p["skill"])  # ponytail: 2D stub records the skill and does nothing
+                self.skill[i] = str(p["skill"])  # ponytail: 2D stub acts only on ground_pick
+                _, dish = contacts(self.pose[:, :2], self.world.food)
+                if p["skill"] == "ground_pick" and dish[i] >= 0:
+                    self.world.eat(dish[i])
+                    self.eaten.append((self.t, i))
             elif method == "robot.stop":
                 self.cmd[i] = 0
             elif method == "robot.relax":
@@ -68,7 +79,9 @@ class Stub:
         if method == "sim.step":
             for _ in range(int(p["n"])):
                 self.step()
-            return {"t": self.t}
+            if int(p["n"]) == 0:
+                self.send_frames()  # lets a lockstep client read the starting state
+            return {"t": self.t, "eaten": len(self.eaten)}
         return self.state()
 
     def step(self) -> None:
@@ -97,10 +110,10 @@ class Stub:
                 t=self.t, duck=i, x=xy[i, 0], y=xy[i, 1], heading=h[i],
                 odor_left=odor_l[i], odor_right=odor_r[i],
                 sugar=float(dish[i] >= 0), touch=touch[i], temperature=temp[i],
-            ), (frames.HOST, frames.FRAME_PORT + i))
+            ), (frames.HOST, self.frame_port + i))
 
     def state(self) -> dict:
-        return {"t": self.t, "pose": self.pose.tolist(), "food": self.world.food.tolist()}
+        return {"t": self.t, "pose": self.pose.tolist(), "food": self.world.food.tolist(), "eaten": self.eaten}
 
     def close(self) -> None:
         for s in self.servers:

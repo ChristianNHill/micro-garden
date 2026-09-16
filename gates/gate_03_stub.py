@@ -15,22 +15,19 @@ from body.stub2d.stub import DT, Stub
 from world.fields import CELL_M, SIZE_M, World
 
 N, SIM_S, HOLD_STEPS = 5, 60.0, 25
+PORT_BASE = 7650  # away from the live stub's 7601
 
 
 def drain(receivers, last):
     for i, r in enumerate(receivers):
-        while True:
-            try:
-                last[i] = frames.unpack(r.recv(1024))
-            except BlockingIOError:
-                break
+        last[i] = frames.latest(r, last[i])
 
 
 def walk(seed: int, receivers):
     rng = np.random.default_rng(seed)
     last = [None] * N
     with tempfile.TemporaryDirectory(prefix="mg") as d:
-        stub = Stub(N, seed, d)
+        stub = Stub(N, seed, d, frame_port=PORT_BASE)
         start = stub.pose.copy()
         drain(receivers, [None] * N)
         ducks = [Client(f"{d}/{name}.sock") for name in stub.names]
@@ -69,9 +66,7 @@ def odor_points_to_food(rng) -> tuple[int, int]:
 
 
 def main() -> int:
-    receivers = [frames.receiver(i) for i in range(N)]
-    for r in receivers:
-        r.setblocking(False)
+    receivers = [frames.receiver(PORT_BASE + i) for i in range(N)]
     start, pose_a, frames_a, t, errors = walk(3, receivers)
     _, pose_b, _, _, _ = walk(3, receivers)
     _, pose_c, _, _, _ = walk(4, receivers)

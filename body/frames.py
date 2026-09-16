@@ -27,7 +27,32 @@ def unpack(data: bytes) -> np.void:
     return np.frombuffer(data, FRAME)[0]
 
 
-def receiver(duck: int) -> socket.socket:
+def receiver(port: int) -> socket.socket:
+    """Non-blocking UDP socket bound to one duck's frame port."""
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    s.bind((HOST, FRAME_PORT + duck))
+    s.bind((HOST, port))
+    s.setblocking(False)
     return s
+
+
+def latest(sock: socket.socket, last=None):
+    """Drain the socket and return the newest frame, or last if nothing arrived."""
+    while True:
+        try:
+            last = unpack(sock.recv(1024))
+        except BlockingIOError:
+            return last
+
+
+def newer(sock: socket.socket, last=None, timeout: float = 2.0):
+    """Lockstep read: the newest frame later than last, waiting for it. Loopback UDP is not instant."""
+    f = latest(sock)
+    if f is None or (last is not None and f["t"] <= last["t"]):
+        sock.settimeout(timeout)
+        try:
+            f = unpack(sock.recv(1024))
+            while last is not None and f["t"] <= last["t"]:
+                f = unpack(sock.recv(1024))
+        finally:
+            sock.setblocking(False)
+    return latest(sock, f)

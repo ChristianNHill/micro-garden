@@ -34,6 +34,10 @@ class World:
     def step(self) -> None:
         self.diffuse(SUBSTEPS)
 
+    def eat(self, dish: int) -> None:
+        """The dish is gone; its odor fades with DECAY."""
+        self.food = np.delete(self.food, dish, axis=0)
+
     def odor_at(self, xy) -> np.ndarray:
         """Bilinear sample at (..., 2) positions."""
         u = np.clip(np.asarray(xy, float) / CELL_M - 0.5, 0, GRID - 1.001)

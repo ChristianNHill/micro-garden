@@ -63,6 +63,7 @@ Check: `gates/gate_03_stub.py` drives 5 stub ducks with a scripted random walker
 ### Gate 4: closed loop, one duck finds food by smell (M)
 Build: `brain/server.py` main loop: receive sensory frame → encode (olfaction from odor field, gustation on contact) → step 20 brain ticks → decode → send `robot.move`. Eating resets hunger and removes food.
 Known risk from Gate 2 (2026-09-16): at syn gain 0.005, full-strength food odor activates about 11k neurons and 545 DNs including MDN, the same DN set bristle input gives, so odor is not yet a specific signal. Expect to lower odor level or gain, or make glutamate inhibitory, before this gate passes. Forward drive to food comes from DNp09, whose top inputs are visual (LC9, LC31a).
+Outcome (2026-09-16): after model work (adaptation, ORN release asymmetry, odor contrast gain, odor-steering DNs) the real brain found food in 20/20 episodes, median 25.2 s; shuffled 0/20. Details in `gates/gate_04_seek.py`.
 Check: `gates/gate_04_seek.py` runs 20 seeded episodes each for real and shuffled brains in the 2D stub, headless, and prints median time-to-food for both. Passes if the real brain's median is below a fixed bound (tune the bound once, commit it). Prints the shuffled result beside it.
 **Decision**: the fly-brain claim. If real and shuffled are indistinguishable here, the label becomes "connectome-derived network" and the plan continues unchanged.
 
@@ -85,8 +86,23 @@ Check: `gates/gate_07_learn.py` pairs an odor with sugar for N trials then measu
 Build: other ducks emit odor into the field; contact and looming between ducks; petting verb (touch plus dopamine pulse); mood indicator derived from physiology plus recent descending activity; one-line event toasts in the debug view; selection readout.
 Check: `gates/gate_08_social.py` runs the acceptance scenarios from ARCHITECTURE.md §2.8 headless: a Bully and a Scaredy at one dish (asserts displacement); two ducks startled together repeatedly (asserts increased mean separation afterward); a hand that feeds one duck (asserts that duck follows the hand). Prints per-scenario metrics.
 
+### Gate 8b: toys, music, shiny rocks, hats (L) — added 2026-09-16 at Chris's request
+Whether a duck likes any of these depends on its bodily needs (Gate 5), its personality (Gate 5) and what it has learned (Gate 7). Nothing is scripted as "likes X".
+Build:
+- **Ball**: a pushable object in the world. Seen through the retina and felt as touch. Play is gated by energy and boredom and by a playfulness knob; it maps to microduck's kick skills and `BallPlay`.
+- **Music**: a sound source in the world, heard through the Johnston's organ neurons, level falling off with distance. Dancing maps to microduck's `Dance`. The music-affinity knob and dopamine pairing decide whether a duck approaches or leaves.
+- **Shiny rocks**: bright objects in the retina. A duck picks one up with `ground_pick` and drops it at its nest; hoarding and curiosity knobs.
+- **Hats**: a player verb. Head touch goes into the bristle neurons, and the grooming DNs decide whether the duck keeps the hat or preens it off. Comfort, mood and a vanity knob.
+Check: `gates/gate_08b_toys.py`, headless:
+- a rested, bored, playful duck interacts with the ball more than a hungry or tired one
+- after music is paired with food, a duck approaches it, and an unpaired duck does not
+- a hoarder's nest ends with more rocks than a non-hoarder's
+- a hat stays on a duck with a high vanity knob longer than on one with a low knob
+- the shuffled brain is printed beside each
+Earlier sensory hookups (music as Johnston's organ input, danger odor, bitter taste, touch) can land before Gate 5 as small steps if Chris asks.
+
 ### Gate 9: persistence (S)
-Build: `brain/save.py` serializes physiology, plasticity weights, personality, world objects, seed; on load, simulates elapsed wall-clock forward in coarse steps, capped at three simulated days.
+Build: `brain/save.py` serializes physiology, plasticity weights, personality, world objects (including hats worn, rocks at nests), seed; on load, simulates elapsed wall-clock forward in coarse steps, capped at three simulated days.
 Check: `gates/gate_09_persist.py` saves, advances 10 simulated minutes, loads from the save with a faked 10-minute gap, and asserts drive values match within tolerance; asserts a three-day gap loads in under 10 seconds.
 
 **Phase B exit review with Chris**: the system is proven in 2D or it is not. Nothing in Phase C starts until this review.
@@ -148,6 +164,7 @@ Re-run Gate 8 scenarios on the floor. Record the blind personality test with a v
 | 2, 4 | Fly-brain label: keep or downgrade |
 | 5 | Knob set and label list |
 | 6 | Direct lamina injection or flyvis front end |
+| 8b | Which toys stay, and their knobs |
 | 9 | Phase B exit: system proven |
 | 12 | Godot go/no-go; robots purchase |
 

@@ -13,6 +13,11 @@ from scipy import sparse
 
 DATA = Path(__file__).resolve().parent.parent / "data"
 MIN_SYN = 5  # FlyWire convention; gives the ~2.7M connected pairs ARCHITECTURE.md assumes
+# ORNs release more onto their own side than the other (Gaudry et al. 2013, about 0.7); synapse counts
+# can't show that, so contralateral ORN synapses are scaled here. 0.3 exaggerates it: at 0.7 the
+# left/right odor difference did not reach descending neurons (Gate 4 model work, 2026-09-16).
+ORN_CONTRA = 0.3
+INHIBITORY = ["gaba", "glutamate"]  # as Shiu et al. 2024; GABA alone ran away on any sustained odor (Gate 4, 2026-09-16)
 
 # ARCHITECTURE.md §3.6. Each set is (annotation column, regex matched against the whole value).
 NAMED_SETS = {
@@ -28,6 +33,8 @@ NAMED_SETS = {
     "DNp09": ("cell_type", r"DNp09"),
     "giant_fiber": ("cell_type", r"DNp01"),
     "moonwalker": ("cell_type", r"MDN"),
+    # ipsilateral to one-sided odor in a held-out seed screen (Gate 4, 2026-09-16); not from literature
+    "odor_steer": ("cell_type", r"DNb05|DNp05"),
     "proboscis_mn": ("sub_class", r"proboscis_motor_neuron"),  # feeding readout; MN9 is unnamed in this release
     "kenyon_cells": ("class", r"Kenyon_Cell"),
     "MBON": ("class", r"MBON"),
@@ -66,9 +73,10 @@ def load_connections() -> pd.DataFrame:
 
 
 def load_connectome(ann: pd.DataFrame | None = None):
-    """Return (W, ann). W[post, pre] = ±synapse count as float32 CSR, sign -1 when pre is GABAergic.
+    """Return (W, ann). W[post, pre] = ±synapse count as float32 CSR, sign -1 when pre is INHIBITORY.
 
-    Pairs with fewer than MIN_SYN synapses (summed over neuropils) are dropped.
+    Pairs with fewer than MIN_SYN synapses (summed over neuropils) are dropped, and ORN synapses onto
+    the opposite side are scaled by ORN_CONTRA.
 
     Row/column i is ann.index[i]. Edges touching neurons missing from ann are dropped.
     """
@@ -77,12 +85,16 @@ def load_connectome(ann: pd.DataFrame | None = None):
     idx = pd.Index(ann.index)
     pre, post = idx.get_indexer(conn["pre"]), idx.get_indexer(conn["post"])
     keep = (pre >= 0) & (post >= 0)
-    sign = np.where(ann["nt"].to_numpy() == "gaba", -1.0, 1.0).astype(np.float32)
+    sign = np.where(np.isin(ann["nt"].to_numpy(), INHIBITORY), -1.0, 1.0).astype(np.float32)
     n = len(idx)
     w = conn["syn_count"].to_numpy(np.float32)[keep] * sign[pre[keep]]
     W = sparse.csr_matrix((w, (post[keep], pre[keep])), shape=(n, n))  # duplicates summed
     W.data[abs(W.data) < MIN_SYN] = 0
     W.eliminate_zeros()
+    side = ann["side"].to_numpy()
+    orn = (ann["class"] == "olfactory").to_numpy()
+    rows = np.repeat(np.arange(n), np.diff(W.indptr))
+    W.data[orn[W.indices] & (side[rows] != side[W.indices])] *= ORN_CONTRA
     return W, ann
 
 

@@ -3,7 +3,8 @@
 Run: uv run python -m gates.gate_01_tick
 Drive: 20 Hz Poisson kicks into the sensory named sets (sugar, ORNs, bristle, JO, L1, L2).
 
-Decision 2026-09-16 (Chris): torch-mps, dt 10 ms, SYN_GAIN 0.005, glutamate excitatory.
+Decision 2026-09-16 (Chris): torch-mps, dt 10 ms, SYN_GAIN 0.005, glutamate excitatory. Gate 4 model work
+changed this to SYN_GAIN 0.01, glutamate inhibitory, and spike-frequency adaptation (5 brains: 2.6x).
 Benchmark that informed it (5 brains, 10 simulated s): torch-mps 5.4x at 10 ms, 0.54x at 1 ms;
 numpy event-driven 2.5x and 0.33x. numpy backend deleted.
 """
