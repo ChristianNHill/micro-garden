@@ -28,7 +28,7 @@ What matters for us, verbatim from their design docs:
 - **Motion is a velocity intent.** `robot.move {vx, vy, vyaw}` in the trunk frame, radians, sent as a stream of notifications at up to 50 Hz. `robot.head {neck_pitch, head_pitch, head_yaw, head_roll}` for gaze. `robot.stop`, `robot.enable`, `robot.init` (stand up), `robot.relax` (drop torque) as answered requests.
 - **The policy takes a 61-float observation**: gyro, projected gravity, joint positions, joint velocities, last action, and a 13-float command block (velocity, head, body pose). It outputs 14 joint actions. The mouth servo is a separate slot.
 - **Skills are one call.** `robot.do <skill>` runs a named ONNX policy for a duration: `roulade`, `polite-bow`, `sit_toggle`, `ground_pick`, plus anything fetched from the Hugging Face hub and given a name.
-- **Simulation is the same contract.** "One MuJoCo process, one window, N duck bodies in one scene, so ducks share physics and can bump into each other." `duck-sim up 4` gives four ducks. Runs natively on Apple Silicon. "The same binaries, the same units."
+- **Simulation is the same contract.** "One MuJoCo process, one window, N duck bodies in one scene, so ducks share physics and can bump into each other." `scripts/duck-sim boot N` runs one container per duck with per-duck `robotd` sockets; ducks do not hot-join, and cameras are opt-in (`--cameras`). The docs say Apple Silicon gets a native arm64 container; the exact Mac path is confirmed at Gate 10. "The same binaries, the same units."
 - **Sensors we can read**: camera (WebRTC), ToF hand distance, IMU, servo state, and BLE presence of nearby ducks with RSSI for coarse distance. Their own roadmap proposes a YOLOv8n detector on the RK3566's NPU for bearing to objects.
 - **They already have a behavior machine** with sixteen states (Chill, LookAround, Wander, TurnInPlace, Zoomies, Startle, Stretch, Ruffle, Preen, Sneeze, Dance, GroundPick, Nap, BallPlay, Petted, Held) driven by an energy/mood model. Their stated philosophy: "Presence, mood, and the shared beat are inputs to one brain, not modes beside it."
 - **Teleop is refused over Bluetooth by design.** `robot.move` and `robot.head` only travel over the LAN/WebRTC path or on the robot itself. A laptop brain drives a physical duck over Wi-Fi, exactly like the r/robots MaleCNS demo in `RESEARCH.md` §4.
@@ -159,7 +159,7 @@ Three bodies implement it:
 | Body | Physics | Sensors | Purpose |
 |---|---|---|---|
 | **2D stub** (Python, pygame) | none; kinematic circles on a plane | 1D raycast retina, synthetic odor field, contact by radius | Gates 1 to 4. Fast, headless-capable, deterministic |
-| **MuJoCo microduck sim** (`duck-sim up 5`) | real, shared, ducks collide | rendered camera per duck, synthetic odor from known positions, contact from physics | Gates 5 to 7. Same commands as the robots |
+| **MuJoCo microduck sim** (`scripts/duck-sim boot 5`) | real, shared, ducks collide | rendered camera per duck, synthetic odor from known positions, contact from physics | Gates 5 to 7. Same commands as the robots |
 | **Physical microducks** | reality | camera, ToF, IMU, BLE RSSI; odor synthesized by the room tracker (§3.5) | The room |
 
 ### 3.3 Brain server
@@ -178,14 +178,14 @@ Flies have about 750 ommatidia per eye; `flyvis` models the visual system on a h
 
 1. **Acquire** a per-duck view: 1D raycast fan in the 2D stub; a low-res rendered camera in MuJoCo; the WebRTC camera stream on a real duck, decoded on the laptop.
 2. **Resample** to the hex lattice (721 luminance samples, frontal field only, since one camera covers roughly the frontal 90° of a fly's 270°). Compute ON and OFF contrast per column with a short temporal filter, which is what the lamina does.
-3. **Inject** per column into the lamina input neurons (L1 ON pathway, L2 OFF pathway) of the matching optic-lobe column. This needs the column-to-neuron assignment from the FlyWire optic lobe annotations (Nern et al. 2025 cell typing; Codex exports). **Risk**: if per-column assignment is not clean in the export, fall back to driving `flyvis` as a front end and feeding its output neurons into the central brain. Gate 3 decides.
+3. **Inject** per column into the lamina input neurons (L1 ON pathway, L2 OFF pathway) of the matching optic-lobe column. This needs the column-to-neuron assignment, which is **not** in the standard FlyWire export. Sources: the Codex "Visual Columns Mapping Challenge" download (sign-in) or Matsliah et al. 2024 Supplementary Data 2. `flyvis` is confirmed at 721 columns, MIT licence. **Risk**: if per-column assignment is not clean in the export, fall back to driving `flyvis` as a front end and feeding its output neurons into the central brain. Gate 3 decides.
 4. **Payoff**: looming detection (LPLC2), motion, and object approach come out of real wiring instead of a scalar hack, and the possession overlay can show the actual hex retina.
 
 Transport size: 5 ducks × 721 columns × 2 channels × 60 Hz ≈ 430k floats/s, about 1.7 MB/s raw. Not a bottleneck on any option in §6.3, but wasteful as JSON.
 
 ### 3.5 The room (physical body specifics)
 
-Reality gives vision, touch, ToF, IMU, and BLE presence for free. It does not give an odor field or ground-truth positions. Lazy answer: **one overhead webcam and ArUco tags** on duck heads and food dishes. The tracker publishes positions at 30 Hz; the body adapter synthesizes odor from them and gives the viewer a god-view to draw the garden overlay on. Teleop over the LAN path only (BLE refuses it by design); the exact scripted route (`mediad` WebRTC data channel vs SSH tunnel to `/run/robotd.sock`) is an open item to verify in `docs/design/remote-webrtc.md`.
+Reality gives vision, touch, ToF, IMU, and BLE presence for free. It does not give an odor field or ground-truth positions. Lazy answer: **one overhead webcam and ArUco tags** on duck heads and food dishes. The tracker publishes positions at 30 Hz; the body adapter synthesizes odor from them and gives the viewer a god-view to draw the garden overlay on. Teleop over the LAN path only (BLE refuses it by design). Verified 2026-09-16: the only scripted route today is an SSH tunnel or `socat` to `/run/robotd.sock`; the WebRTC teleop data channel and the WebSocket surface are designed but deferred upstream. No non-browser camera read exists yet, so a real duck needs a small on-robot frame grabber. Most ducks ship without the ToF sensor.
 
 ### 3.6 Named neuron sets needed from FlyWire
 
@@ -265,9 +265,10 @@ Recommendation: A. Speak the robot's protocol for commands because you have to a
 
 ## 7. Items to verify before the relevant gate
 
-- FlyWire optic-lobe column-to-neuron assignment in the Codex export (Gate 3).
-- Scripted LAN teleop route to a real microduck: WebRTC data channel vs tunnel to `/run/robotd.sock` (room gate).
-- Camera field of view and resolution on the microduck; ToF range.
+- Verified: column-to-neuron assignment is not in the standard export (see §3.4).
+- Codex sign-in and terms acceptance are a Chris action.
+- Verified: scripted LAN teleop is SSH tunnel to `/run/robotd.sock` only (§3.5).
+- Verified: Pi Camera v2 (IMX219, about 62° horizontal, 720p30 tested); ToF VL53L5CX/8CX 8×8 zones, 45° field, 4 m range.
 - FlyWire data license terms for a shipped app (believed CC BY 4.0; confirm).
 - chao-island.com SA2 personality label list (blocked today).
-- `flyvis` licence and whether its lamina input convention matches the Codex column ids.
+- Verified: `flyvis` is MIT, 721 columns. Open: whether its lamina input convention matches the Codex column ids.
