@@ -28,6 +28,7 @@ NAMED_SETS = {
     "DNp09": ("cell_type", r"DNp09"),
     "giant_fiber": ("cell_type", r"DNp01"),
     "moonwalker": ("cell_type", r"MDN"),
+    "proboscis_mn": ("sub_class", r"proboscis_motor_neuron"),  # feeding readout; MN9 is unnamed in this release
     "kenyon_cells": ("class", r"Kenyon_Cell"),
     "MBON": ("class", r"MBON"),
     "PAM": ("cell_type", r"PAM\d+"),
@@ -37,16 +38,16 @@ NAMED_SETS = {
 
 
 def load_annotations() -> pd.DataFrame:
-    """One row per neuron, indexed by root_id, columns: class, sub_class, cell_type, nt (lowercase)."""
+    """One row per neuron, indexed by root_id, columns: class, sub_class, cell_type, side, nt (lowercase)."""
     cls, neu = DATA / "classification.csv.gz", DATA / "neurons.csv.gz"
     if cls.exists() and neu.exists():
-        ann = pd.read_csv(cls, usecols=["root_id", "class", "sub_class", "cell_type"])
+        ann = pd.read_csv(cls, usecols=["root_id", "class", "sub_class", "cell_type", "side"])
         nt = pd.read_csv(neu, usecols=["root_id", "nt_type"]).rename(columns={"nt_type": "nt"})
         ann = ann.merge(nt, on="root_id", how="left")
     else:
         ann = pd.read_csv(
             DATA / "Supplemental_file1_neuron_annotations.tsv", sep="\t",
-            usecols=["root_id", "cell_class", "cell_sub_class", "cell_type", "top_nt"],
+            usecols=["root_id", "cell_class", "cell_sub_class", "cell_type", "side", "top_nt"],
         ).rename(columns={"cell_class": "class", "cell_sub_class": "sub_class", "top_nt": "nt"})
     ann["nt"] = ann["nt"].fillna("").str.lower()
     return ann.drop_duplicates("root_id").set_index("root_id")
@@ -83,6 +84,16 @@ def load_connectome(ann: pd.DataFrame | None = None):
     W.data[abs(W.data) < MIN_SYN] = 0
     W.eliminate_zeros()
     return W, ann
+
+
+def shuffled(W: sparse.csr_matrix, seed: int) -> sparse.csr_matrix:
+    """Control brain: presynaptic partners permuted across all edges, each weight travelling with its source.
+
+    Every neuron keeps its in-degree and out-degree; who talks to whom is destroyed.
+    """
+    coo = W.tocoo()
+    perm = np.random.default_rng(seed).permutation(coo.nnz)
+    return sparse.csr_matrix((coo.data[perm], (coo.row, coo.col[perm])), shape=W.shape)
 
 
 def named_sets(ann: pd.DataFrame) -> dict[str, np.ndarray]:

@@ -13,20 +13,21 @@ import time
 import numpy as np
 
 from brain.data import load_connectome, named_sets
-from brain.lif import DT_MS, LIF, poisson_kicks
+from brain.encoder import MAX_HZ, encode
+from brain.lif import DT_MS, LIF
 
 INPUTS = ["sugar_grn", "orn_food", "orn_danger", "bristle", "johnstons_organ", "lamina_L1", "lamina_L2"]
 DRIVE_HZ = 20.0
 MIN_SPEED = 2.0  # x real time for 5 brains; margin for encoder, decoder and world
 
 
-def run(W, targets, batch, ticks, seed):
+def run(W, sets, batch, ticks, seed):
     rng = np.random.default_rng(seed)
     brain = LIF(W, batch)
-    p = DRIVE_HZ * DT_MS / 1000
+    levels = {k: DRIVE_HZ / MAX_HZ for k in INPUTS}
     t0 = time.perf_counter()
     for _ in range(ticks):
-        brain.step(*poisson_kicks(rng, batch, targets, p))
+        brain.step(*encode(rng, sets, levels, batch))
     counts = brain.counts()  # syncs the device
     return counts, time.perf_counter() - t0
 
@@ -38,13 +39,13 @@ def main() -> int:
     driven = np.zeros(W.shape[0], bool)
     driven[targets] = True
 
-    c1, _ = run(W, targets, 1, 100, seed=7)
-    c2, _ = run(W, targets, 1, 100, seed=7)
+    c1, _ = run(W, sets, 1, 100, seed=7)
+    c2, _ = run(W, sets, 1, 100, seed=7)
     same = np.array_equal(c1, c2)
     print(f"determinism: repeat identical {same}  spikes {c1.sum():,}")
 
     sim_s = 10.0
-    c, wall = run(W, targets, 5, int(sim_s * 1000 / DT_MS), seed=1)
+    c, wall = run(W, sets, 5, int(sim_s * 1000 / DT_MS), seed=1)
     speed = sim_s / wall
     rate = c.sum() / c.size / sim_s
     und = c[:, ~driven].sum() / c[:, ~driven].size / sim_s

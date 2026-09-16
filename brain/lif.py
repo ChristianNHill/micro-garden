@@ -48,9 +48,3 @@ class LIF:
     def counts(self) -> np.ndarray:
         return self.n_spikes.cpu().numpy()
 
-
-def poisson_kicks(rng: np.random.Generator, batch: int, targets: np.ndarray, p: float):
-    """Kick indices for one tick: each (instance, target) fires with probability p."""
-    k = rng.binomial(batch * len(targets), p)
-    flat = rng.integers(0, batch * len(targets), k)
-    return flat // len(targets), targets[flat % len(targets)]

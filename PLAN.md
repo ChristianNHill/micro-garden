@@ -47,9 +47,9 @@ Build: `brain/lif.py` with two backends behind one function signature: `torch` s
 Check: `gates/gate_01_tick.py` (a) same seed gives identical spike trains across two runs and across both backends within tolerance; (b) benchmarks 1 and 5 instances at dt = 1 ms and dt = 10 ms for 10 simulated seconds on each backend and prints wall-clock ratio and mean firing rate (sanity: not silent, not saturated).
 **Decision**: compute backend and dt. Pick the backend and step that hold 5× real time with margin and a plausible firing regime; delete the other backend.
 
-### Gate 2: sugar in, walking out (M)
+### Gate 2: sugar in, feeding out (M)
 Build: `brain/encoder.py` injects current into named input sets from a dict of scalars; `brain/decoder.py` reads DNa02, DNp09, giant fiber, moonwalker rates with a short window and smoothing, and emits an intent `{vx, vy, vyaw, escape}`. Shuffled-weights control: same in-degree, permuted targets, behind a flag.
-Check: `gates/gate_02_sugar.py` steps one brain with sugar GRN input on and off and asserts DNp09 rate rises with sugar; steps looming into LPLC2 (scalar for now) and asserts a giant fiber spike within 50 ms; runs the same on the shuffled brain and prints both. Does not assert the shuffled brain fails.
+Check: `gates/gate_02_sugar.py` steps one brain with sugar GRN input on and off and asserts the proboscis motor neuron rate rises with sugar (changed 2026-09-16: DNp09 is visually driven and sugar never reaches it); steps looming into LPLC2 (scalar for now) and asserts a giant fiber spike within 50 ms; runs the same on the shuffled brain and prints both. Does not assert the shuffled brain fails.
 **Decision**: is the real-versus-shuffled difference visible in the numbers? Record the answer; it decides the label later, not the build.
 
 ---
@@ -62,6 +62,7 @@ Check: `gates/gate_03_stub.py` drives 5 stub ducks with a scripted random walker
 
 ### Gate 4: closed loop, one duck finds food by smell (M)
 Build: `brain/server.py` main loop: receive sensory frame → encode (olfaction from odor field, gustation on contact) → step 20 brain ticks → decode → send `robot.move`. Eating resets hunger and removes food.
+Known risk from Gate 2 (2026-09-16): at syn gain 0.005, full-strength food odor activates about 11k neurons and 545 DNs including MDN, the same DN set bristle input gives, so odor is not yet a specific signal. Expect to lower odor level or gain, or make glutamate inhibitory, before this gate passes. Forward drive to food comes from DNp09, whose top inputs are visual (LC9, LC31a).
 Check: `gates/gate_04_seek.py` runs 20 seeded episodes each for real and shuffled brains in the 2D stub, headless, and prints median time-to-food for both. Passes if the real brain's median is below a fixed bound (tune the bound once, commit it). Prints the shuffled result beside it.
 **Decision**: the fly-brain claim. If real and shuffled are indistinguishable here, the label becomes "connectome-derived network" and the plan continues unchanged.
 
