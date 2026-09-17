@@ -1,4 +1,5 @@
-"""pygame debug window for the 2D stub: odor heatmap, shade, food, ducks with heading lines.
+"""pygame debug window for the 2D stub: food-odor heatmap, shade, pond (blue), stink patches (brown),
+food (white), ducks with heading lines.
 
 Debug only, never a gate check. Drive bars arrive with physiology in Gate 5.
 """
@@ -30,6 +31,11 @@ class Viewer:
         surf = pygame.transform.smoothscale(pygame.surfarray.make_surface(rgb), self.screen.get_size())
         self.screen.blit(surf, (0, 0))
         pygame.draw.circle(self.screen, (20, 40, 30), self._px(TREE[:2]), int(TREE[2] * PX), 2)
+        if stub.world.pond is not None:
+            x, y, r = stub.world.pond
+            pygame.draw.circle(self.screen, (60, 120, 200), self._px((x, y)), int(r * PX))
+        for d in stub.world.danger:
+            pygame.draw.circle(self.screen, (120, 80, 40), self._px(d), int(DISH_R * PX))
         for f in stub.world.food:
             pygame.draw.circle(self.screen, (250, 250, 250), self._px(f), int(DISH_R * PX))
         for i, (x, y, h) in enumerate(stub.pose):

@@ -26,19 +26,20 @@ def sugar_rates(W, ann, sets, level):
     """Mean smoothed decoder group rates (fwd, back, left, right, gf, feed) over the run."""
     rng = np.random.default_rng(0)
     brain, dec = LIF(W, 1), Decoder(ann, sets, 1)
-    acc = np.zeros(6)
+    acc = np.zeros(dec.rates.shape[1])
     for _ in range(SUGAR_TICKS):
         dec.update(brain.step(*encode(rng, sets, {"sugar_grn": level}, 1)))
         acc += dec.rates[0]
     return acc / SUGAR_TICKS, int((brain.counts() > 0).sum())
 
 
-def gf_latency_ms(W, ann, sets):
+def gf_latency_ms(W, sets):
+    """Time from looming onset to the first giant fiber spike (the decoder's escape rule is stricter)."""
     rng = np.random.default_rng(0)
-    brain, dec = LIF(W, 1), Decoder(ann, sets, 1)
+    brain = LIF(W, 1)
     for t in range(LOOM_ONSET + 20):
-        intent = dec.update(brain.step(*encode(rng, sets, {"LPLC2": float(t >= LOOM_ONSET)}, 1)))[0]
-        if intent["escape"]:
+        spk = brain.step(*encode(rng, sets, {"LPLC2": float(t >= LOOM_ONSET)}, 1))
+        if t >= LOOM_ONSET and spk[0, sets["giant_fiber"]].any():
             return (t - LOOM_ONSET) * DT_MS
     return None
 
@@ -50,7 +51,7 @@ def main() -> int:
     for label, M in (("real", W), ("shuffled", shuffled(W, seed=0))):
         off, n_off = sugar_rates(M, ann, sets, 0.0)
         on, n_on = sugar_rates(M, ann, sets, 1.0)
-        lat = gf_latency_ms(M, ann, sets)
+        lat = gf_latency_ms(M, sets)
         results[label] = (off, on, lat)
         print(f"{label}:")
         for name, r, n in (("off", off, n_off), ("on ", on, n_on)):

@@ -67,9 +67,39 @@ Outcome (2026-09-16): after model work (adaptation, ORN release asymmetry, odor 
 Check: `gates/gate_04_seek.py` runs 20 seeded episodes each for real and shuffled brains in the 2D stub, headless, and prints median time-to-food for both. Passes if the real brain's median is below a fixed bound (tune the bound once, commit it). Prints the shuffled result beside it.
 **Decision**: the fly-brain claim. If real and shuffled are indistinguishable here, the label becomes "connectome-derived network" and the plan continues unchanged.
 
+### Gate 4b: more senses (M) — added 2026-09-16 at Chris's request
+Build: the world gains stink patches (a second diffusing smell), a pond (humid air around it, water on contact) and left/right touch; the sensory frame carries each directional sense per antenna. The encoder feeds each side's neurons: danger smell into geosmin/CO₂ ORNs, humidity into moist/dry-air neurons, temperature into heat/cold neurons, touch into bristles, and pond water into the sugar/water taste neurons, which FlyWire does not split. The decoder flips steering to "away" while DNp32 is active; a held-out screen found DNp32 fires for danger smell and nothing else.
+Check: `gates/gate_04b_senses.py`, real beside shuffled:
+- ducks spend less time near a stink patch
+- ducks find the pond
+- touching ducks move apart
+- shade time is printed only; no descending neuron is heat-specific, so heat comfort waits for Gate 5
+Open: aggression. aIPg and pC1d/e stayed silent for every input tried; attacking needs its own investigation, planned before Gate 8.
+
+### Gate 4c: temperament (M) — added 2026-09-16 at Chris's request
+Build: aggression as a mood. A per-duck aggressiveness knob scales a tonic input into pC1d/e, which drives aIPg. The trigger is hunger near food (food defense) or having just been headbutted (provoked, fading over about 10 s). While aIPg is active, the touch turn flips toward the other duck, and a touching aggressive duck lunges and headbutts; in the stub a headbutt pushes the victim back. Dishes hold several bites and a bite takes 0.5 s, so hunger falls gradually. A per-duck stink-affinity knob decides whether a duck bolts from stink or lingers in it.
+Check: `gates/gate_04c_temperament.py`:
+- a hungry aggressive duck attacks a meek one and holds the dish longer
+- fed, it attacks far less
+- a provoked duck attacks; an aggressive target retaliates and a meek one does not
+- stink lovers stay near stink
+- in-between knob values give in-between behavior (knobs are scales, not switches)
+- the shuffled brain is printed beside the first scenario
+
 ### Gate 5: physiology and personality presets (M)
-Build: `brain/physiology.py` hunger, fatigue, sleep pressure, temperature comfort; fast reactions Joy, Fear, Urge to Cry with decay rates; gain scaling and neuromodulator tone into the encoder. `brain/personality.py` the eight knobs and the ten label presets from ARCHITECTURE.md §2.4 with jitter. Sleep sends `robot.relax`.
-Check: `gates/gate_05_personality.py` runs five ducks with five distinct labels for 10 simulated minutes, headless, twice with different jitter seeds; computes per-duck behavioral signature (fraction of time moving, near food, near others, asleep; mean speed; startle count) and asserts pairwise distance between labels exceeds a threshold and same-label distance across seeds is below it. Prints the signature table.
+Build: `brain/physiology.py` hunger, thirst, fatigue, sleep pressure, temperature comfort; fast reactions Joy, Fear, Urge to Cry with decay rates; gain scaling and neuromodulator tone into the encoder. `brain/personality.py` the knobs and the label presets from ARCHITECTURE.md §2.4 with jitter. Sleep sends `robot.relax`.
+Personality rules (Chris, 2026-09-16):
+- Every knob is a continuous 0–1 scale, never a switch.
+- Following the Chao games (RESEARCH.md §9), knobs mostly set how fast moods and drives rise and fade, and how strongly they feed the brain, rather than scripting behavior.
+- Knobs so far: aggressiveness (Gate 4c; also how fast Anger and Fear fade), stink affinity (Gate 4c), water love (below), plus playfulness, music affinity, hoarding and vanity for Gate 8b.
+- Chris reviews the full knob list and the presets before this gate's check is written; the Chao Doctor list in RESEARCH.md §9 is the starting vocabulary.
+
+Water, drinking and swimming (Chris, 2026-09-16):
+- **Drinking** happens in a thin shore band at the pond edge. Water taste there feeds the sugar/water taste neurons, and when the feeding neurons fire the body sends a `drink` action (stub skill, like `ground_pick`). Each sip lowers thirst; a thirsty duck already follows humid air (Gate 4b).
+- **Swimming** is a body mode inside the pond: slower, floaty, no eating, drinking or headbutting, and the water cools the duck. The body reports being wet, fed to the brain as saturated humidity plus touch on every bristle. Flies do not swim, so this encoding is a design choice.
+- **Why a duck swims:** temperature comfort (a hot duck cools off) and a per-duck water-love knob. Some ducks paddle, others only drink at the shore.
+- **Physical robots cannot enter water:** in the room (Phase E) the pond is virtual, and swimming exists only in the sim and the Godot garden.
+Check: `gates/gate_05_personality.py` asserts drinking lowers thirst at the shore; a hot duck, or a duck with high water love, swims more than a cool or water-shy one; and it runs five ducks with five distinct labels for 10 simulated minutes, headless, twice with different jitter seeds; computes per-duck behavioral signature (fraction of time moving, near food, near others, asleep; mean speed; startle count) and asserts pairwise distance between labels exceeds a threshold and same-label distance across seeds is below it. Prints the signature table.
 Blind test (manual, recorded in the gate's docstring): Chris watches the 2D view for 5 minutes with labels hidden and guesses. Score noted.
 **Decision**: the knob set and label list. Add or cut knobs based on which ones separated the ducks.
 
@@ -162,7 +192,7 @@ Re-run Gate 8 scenarios on the floor. Record the blind personality test with a v
 | 0 | Named sets and license acceptable; column assignment present or Gate 6 fallback pre-decided |
 | 1 | Compute backend |
 | 2, 4 | Fly-brain label: keep or downgrade |
-| 5 | Knob set and label list |
+| 5 | Knob set and label list (Chris reviews before the check is written) |
 | 6 | Direct lamina injection or flyvis front end |
 | 8b | Which toys stay, and their knobs |
 | 9 | Phase B exit: system proven |

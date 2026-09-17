@@ -415,3 +415,59 @@ The 139k model is a caricature: uniform leaky integrate-and-fire neurons, synaps
 Sources consulted: Bailey & Katchabaw, *FuturePlay 2008* (csd.uwo.ca); Park et al., *arXiv 2304.03442*; Google Research blog on the MaleCNS connectome; `snedea/flybrain` (GitHub); `cobanov/awesome-fly` curated list (GitHub); r/robots post on running MaleCNS live to drive a quadruped robot (quoted directly, §4); RoboHorizon magazine writeup of the EON FlyWire→NeuroMechFly→MuJoCo pipeline; Roman Liutikov, "PS1 style graphics in Three.js"; David Colson, "Building a PS1 style retro 3D renderer"; Codrops PS1 jitter shader tutorial; three.js forum thread on affine texture mapping.
 
 Added in review (from memory, not re-fetched; verify before citing): Seelig & Jayaraman, "Neural dynamics for landmark orientation and angular path integration," *Nature* 2015 (ring attractor); Steve Grand, *Creation: Life and How to Make It* (2000) and the Creatures Wiki; Dave Mark, *Behavioral Mathematics for Game AI* (2009); Craig Reynolds, "Steering Behaviors for Autonomous Characters," GDC 1999; Sonic Adventure / SA2 platform history (Dreamcast 1998/2001, GameCube ports 2001/2003); three.js r160 release notes (UMD build removal).
+
+## 9. Chao personality reference (from Chris, 2026-09-16)
+
+Personalities the Chao Doctor reports (all modern Sonic Adventure games): Gentle, Naughty, Energetic, Quiet, Big eater, Chatty, Easily bored, Curious, Carefree, Careless, Smart, Cry baby, Lonely, Naive, No personality.
+
+Hidden stats and what they do in the garden:
+- **Kindness**: no in-garden effect; in Chao Races it changes how the Chao pushes the ball.
+- **Aggressiveness**: sets how fast Anger and Fear fade. Low aggressiveness drops Anger faster; high aggressiveness drops Fear faster.
+- **Curiosity**: sets how fast Sorrow fades; high curiosity drops Sorrow faster.
+
+Mapping notes for Gate 5: in the Chao games, stats shape how quickly emotions decay rather than triggering behaviors directly. That fits the physiology design here: personality knobs scale drive and mood time constants and gains, and the brain turns the resulting state into behavior. Aggressiveness already feeds the pC1d/e mood (Gate 4c); stink affinity is a readout knob.
+
+## 10. Related work: FlyWire MicroDuck (AlexWortega, Hugging Face Space, 2026-09-14)
+
+https://huggingface.co/spaces/AlexWortega/flywire-microduck (shared by Chris, 2026-09-16)
+
+- **What:** the full FAFB v783 connectome as a fixed LIF network (139,255 neurons, 15,091,983 connections, no synapse threshold, unknown transmitters excitatory) steering MicroDuck in Pollen's MuJoCo simulator through the pretrained ONNX walking policy.
+- **Input:** goal-relative state encoded as six abstract stimulation signals.
+- **Output:** a trained 83,974-parameter readout maps all 1,305 descending-neuron rates to forward, turn and stop.
+- **Result:** 95/100 held-out goals, zero falls. Zero stimulation, zero readout features and shuffled feature identities each reach 0/100.
+- **Their own caveat:** the controls show dependence on neural signals "not an advantage over random wiring".
+- **Differences from Micro Garden:**
+  - Our control shuffles the wiring itself (Gate 4: 20/20 vs 0/20).
+  - Our inputs are senses sampled from a world, not goal coordinates.
+  - Our readout uses a few descending neurons picked by held-out screens, not a trained map.
+- **Useful for us:**
+  - It shows the MuJoCo MicroDuck can be driven by a connectome through its walking policy (Gate 10).
+  - It points to `pollen-robotics/microduck-simulator`.
+  - Its brain view (all neurons as a 3D point cloud from Codex `coordinates.csv.gz`, plus the TuragaLab flybody mesh, Apache-2.0) is a model for the possession overlay.
+  - A trained readout is an option, but only alongside a shuffled-wiring control.
+
+## 11. Microduck animation and motion assets (survey, 2026-09-16)
+
+No ready-to-play animation clips exist (no glTF animations, FBX, BVH or Blender). Usable material:
+
+1. **`huggingface.co/datasets/pollen-robotics/microduck-emotions`** (Apache-2.0)
+   - 14 keyframed emotions: angry, curious, defiant, devastated, excited, impatient, laugh, mmh, mock, no, play_dead, sad, yes, yes_fast.
+   - Per clip: `emotions/<name>.json` (30 fps; neck, head pitch/yaw/roll, body pitch and z, twist, skill, soften, relax, mouth), plus a wav and a reference mp4. `METHOD.md` explains authoring.
+   - The keyframes are offsets layered on the running balance policy, not full joint trajectories. The playback helper `duckfilm.py` is unpublished.
+2. **`huggingface.co/pollen-robotics/microduck-policies`** (Apache-2.0)
+   - ONNX skills: alpha_walking, velstand, alpha_stand, alpha_sitstand, alpha_ground_pick, ball_kick_left/right, roulade, roller, roller_crouch.
+   - `manifest.json` gives observation 61, action 14, 50 Hz, and the command encoding and duration per skill (ground_pick is a 2.8 s phase command).
+3. **`huggingface.co/spaces/pollen-robotics/microduck-simulator`** (no license tag; credits Apache-2.0 repos)
+   - `app/public/robot/mjlab/microduck.glb`: 38 static meshes, no skeleton.
+   - `kinematics.json`: the body tree, enough to assemble a Godot rig.
+   - `app/src/game/duck.js`: MuJoCo WASM plus onnxruntime-web, showing how each skill is driven.
+4. **`github.com/pollen-robotics/microduck`**: `scripts/duck-sim monitor` streams joints, so skills can be recorded through `robot.do`. `docs/ideas/autonomous_behavior.md` describes the behavior states.
+5. **Open Duck Mini** (apirrone): placo gait generators and walk reference motions, but for a different robot, so only a pattern to follow.
+
+Plan for Gate 12 and Phase D:
+- Record one joint-trajectory clip per skill and per emotion in MuJoCo (microduck_rl MJCF plus the policies; emotions as offsets over the standing policy), logging qpos at 30–50 Hz.
+- Bake the clips into a Godot AnimationPlayer on a rig built from `microduck.glb` plus `kinematics.json`.
+- Hand-keyframe behavior states nobody has made (Chill, Preen, Sneeze, ...).
+- The emotion clips map naturally onto Chao-style moods.
+
+Unverified: `duck-body` may live on a non-default microduck_rl branch; the simulator Space and prop GLB licenses are unknown.

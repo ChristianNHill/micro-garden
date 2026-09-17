@@ -1,6 +1,7 @@
 """Sensory frame: one fixed-layout little-endian record per duck per body step, sent over UDP (PLAN.md Gate 3).
 
-t is the body's monotonic clock in seconds (simulated time on the stub). Retina samples join in Gate 6.
+t is the body's monotonic clock in seconds (simulated time on the stub). Directional senses come as a
+_left/_right pair sampled at each antenna (touch: which side the other duck is on). Retina joins in Gate 6.
 """
 import socket
 
@@ -10,7 +11,13 @@ FRAME = np.dtype([
     ("t", "<f8"), ("duck", "<i4"),
     ("x", "<f4"), ("y", "<f4"), ("heading", "<f4"),
     ("odor_left", "<f4"), ("odor_right", "<f4"),
-    ("sugar", "<f4"), ("touch", "<f4"), ("temperature", "<f4"),
+    ("danger_left", "<f4"), ("danger_right", "<f4"),
+    ("humidity_left", "<f4"), ("humidity_right", "<f4"),
+    ("temp_left", "<f4"), ("temp_right", "<f4"),
+    ("touch_left", "<f4"), ("touch_right", "<f4"),
+    ("sugar", "<f4"), ("water", "<f4"),
+    ("bumped", "<f4"),  # 1 on the step another duck headbutted this one
+    ("ate", "<f4"),  # 1 on the step this duck took a bite
 ])
 FRAME_PORT = 7601  # duck n sends to FRAME_PORT + n, like duck-sim's 7801 + n
 HOST = "127.0.0.1"

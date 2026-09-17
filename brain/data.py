@@ -24,7 +24,12 @@ NAMED_SETS = {
     "sugar_grn": ("sub_class", r"sugar/water"),  # FlyWire lumps Gr5a/Gr64f sugar GRNs with water GRNs
     "orn_food": ("cell_type", r"ORN_(DM1|DM2|DM4|DM5|VA2)"),  # vinegar-attractive glomeruli
     "orn_danger": ("cell_type", r"ORN_(DA2|V)"),  # geosmin, CO2
+    "orn_pheromone": ("sub_class", r"pheromone"),  # other ducks' smell (Gate 8)
     "bristle": ("sub_class", r"(eye|head) bristle"),
+    "heat": ("cell_type", r"TRN_VP2"),
+    "cold": ("cell_type", r"TRN_VP3[ab]"),
+    "moist_air": ("cell_type", r"HRN_VP5"),
+    "dry_air": ("cell_type", r"HRN_VP4"),
     "johnstons_organ": ("cell_type", r"JO-.*"),
     "lamina_L1": ("cell_type", r"L1"),
     "lamina_L2": ("cell_type", r"L2"),
@@ -35,26 +40,36 @@ NAMED_SETS = {
     "moonwalker": ("cell_type", r"MDN"),
     # ipsilateral to one-sided odor in a held-out seed screen (Gate 4, 2026-09-16); not from literature
     "odor_steer": ("cell_type", r"DNb05|DNp05"),
+    # fires for danger smell (0.6-0.8 Hz) and not for food, heat, cold, humidity, touch, sugar or
+    # looming, more on the danger's side, on two held-out seed sets (Gate 4b, 2026-09-16); not from literature
+    "danger_valence": ("cell_type", r"DNp32"),
+    # ipsilateral to one-sided humidity on two held-out seed sets (Gate 4b); not from literature
+    "moist_steer": ("cell_type", r"DNp12|DNp44"),
+    # fires for touch only, on the side opposite the touch, both sides, two held-out seed sets (Gate 4b)
+    "touch_steer": ("cell_type", r"DNg48"),
     "proboscis_mn": ("sub_class", r"proboscis_motor_neuron"),  # feeding readout; MN9 is unnamed in this release
     "kenyon_cells": ("class", r"Kenyon_Cell"),
     "MBON": ("class", r"MBON"),
     "PAM": ("cell_type", r"PAM\d+"),
     "PPL1": ("cell_type", r"PPL1\d+"),
+    "aIPg": ("hemibrain_type", r"aIPg\d"),  # female aggression (Schretter et al. 2020)
+    "pC1_aggr": ("cell_type", r"pC1[de]"),  # persistent social arousal / aggression (Deutsch et al. 2020)
     "grooming_dn": ("cell_type", r"DNg12_[a-z]"),  # antennal grooming DNs; confirm the type choice at Gate 0 review
 }
 
 
 def load_annotations() -> pd.DataFrame:
-    """One row per neuron, indexed by root_id, columns: class, sub_class, cell_type, side, nt (lowercase)."""
+    """One row per neuron, indexed by root_id: class, sub_class, cell_type, hemibrain_type, side, nt (lowercase)."""
     cls, neu = DATA / "classification.csv.gz", DATA / "neurons.csv.gz"
     if cls.exists() and neu.exists():
-        ann = pd.read_csv(cls, usecols=["root_id", "class", "sub_class", "cell_type", "side"])
+        ann = pd.read_csv(cls, usecols=["root_id", "class", "sub_class", "cell_type", "hemibrain_type", "side"])
         nt = pd.read_csv(neu, usecols=["root_id", "nt_type"]).rename(columns={"nt_type": "nt"})
         ann = ann.merge(nt, on="root_id", how="left")
     else:
         ann = pd.read_csv(
             DATA / "Supplemental_file1_neuron_annotations.tsv", sep="\t",
-            usecols=["root_id", "cell_class", "cell_sub_class", "cell_type", "side", "top_nt"],
+            usecols=["root_id", "cell_class", "cell_sub_class", "cell_type", "hemibrain_type", "side", "top_nt"],
+            dtype={"hemibrain_type": str},
         ).rename(columns={"cell_class": "class", "cell_sub_class": "sub_class", "top_nt": "nt"})
     ann["nt"] = ann["nt"].fillna("").str.lower()
     return ann.drop_duplicates("root_id").set_index("root_id")

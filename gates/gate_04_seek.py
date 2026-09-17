@@ -19,50 +19,30 @@ Decision (Chris, 2026-09-16): keep the "fly brain" label for smell, with the ass
 """
 import argparse
 import sys
-import tempfile
 import time
 
 import numpy as np
 
-from body.contract import Client
-from body.stub2d.stub import DT, Stub
 from brain.data import load_connectome, named_sets, shuffled
-from brain.server import BrainServer
+from gates.episodes import ring_poses, run
 
 DISH = (2.0, 2.0)
 START_M, MAX_S = 1.5, 120.0
-PORT_BASE = 7700
 BOUND_S = 40.0  # set once from the first passing full run (real median 25.2 s), 2026-09-16
 
 
 def episodes(W, ann, sets, n: int, seed: int) -> np.ndarray:
     """Time to eat per episode, inf if never."""
-    rng = np.random.default_rng(seed)
-    angle = rng.uniform(-np.pi, np.pi, n)
-    poses = np.column_stack([DISH[0] + START_M * np.cos(angle), DISH[1] + START_M * np.sin(angle),
-                             rng.uniform(-np.pi, np.pi, n)])
-    dirs = [tempfile.TemporaryDirectory(prefix="mg") for _ in range(n)]
-    stubs = [Stub(1, seed + e, d.name, food_xy=[DISH], frame_port=PORT_BASE + e, pose=poses[e])
-             for e, d in enumerate(dirs)]
-    ctls = [Client(f"{d.name}/control.sock") for d in dirs]
-    server = BrainServer(W, ann, sets, [(f"{d.name}/duck-a.sock", PORT_BASE + e) for e, d in enumerate(dirs)], seed)
-    for c in ctls:
-        c.call("sim.step", n=0)
+    poses = ring_poses(np.random.default_rng(seed), n, DISH, START_M)
     ate = np.full(n, np.inf)
-    for step in range(int(MAX_S / DT)):
-        server.step(lockstep=True)
-        for e, c in enumerate(ctls):
-            if c.call("sim.step", n=1)["eaten"] and ate[e] == np.inf:
-                ate[e] = (step + 1) * DT
-        if np.isfinite(ate).all():
-            break
-    server.close()
-    for c in ctls:
-        c.close()
-    for s in stubs:
-        s.close()
-    for d in dirs:
-        d.cleanup()
+
+    def until(stubs):
+        for e, s in enumerate(stubs):
+            if s.eaten and ate[e] == np.inf:
+                ate[e] = s.eaten[0][0]
+        return np.isfinite(ate).all()
+
+    run(W, ann, sets, [dict(food_xy=[DISH], pose=p) for p in poses], MAX_S, seed, until=until)
     return ate
 
 

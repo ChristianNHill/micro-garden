@@ -2,7 +2,8 @@
 
 One Unix socket per duck (duck-a.sock ...), like duck-sim, plus control.sock with stub-only
 sim.step {n} and sim.state. Every body step sends each duck's sensory frame over UDP to
-frame_port + duck. robot.do ground_pick on a dish eats it.
+frame_port + duck. robot.do ground_pick on a dish eats it; robot.do headbutt pushes a touching duck
+in front of the attacker back by PUSH_M.
 
 Run free at real time with the debug window:  uv run python -m body.stub2d.stub --view --wander
 Without --wander the ducks stand still until a client sends robot.move.
@@ -20,23 +21,32 @@ from body import frames
 from body.contract import ROBOT_PARAMS, serve
 from world.fields import SIZE_M, DUCK_R, World, contacts, temperature_at
 
+DEMO_GARDEN = dict(food_xy=((3.0, 3.0), (1.0, 1.0)), danger_xy=((2.3, 1.7),), pond=(3.1, 0.9, 0.35))
+
 DT = 0.02
 # ponytail: guessed limits standing in for robotd's clamps; replace with the sim's real ones at Gate 10
 MAX_V, MAX_VY, MAX_VYAW = 0.3, 0.15, 2.0
 ANTENNA = np.array([0.06, 0.05])  # forward, lateral offset of each odor sample, metres
 CONTROL_PARAMS = {"sim.step": {"n": 1}, "sim.state": {}}
+PUSH_M = 0.15
+BITE_S = 0.5  # ground_pick takes this long, so at most one bite per BITE_S
+# ponytail: "headbutt" is a stub-only skill name; map it to microduck's real kick skill at Gate 12
 
 
 class Stub:
-    def __init__(self, n: int, seed: int, sock_dir: str, food_xy=((3.0, 3.0), (1.0, 1.0)),
-                 frame_port: int = frames.FRAME_PORT, pose=None):
+    def __init__(self, n: int, seed: int, sock_dir: str, food_xy=((3.0, 3.0), (1.0, 1.0)), danger_xy=(),
+                 pond=None, bites=1, frame_port: int = frames.FRAME_PORT, pose=None):
         rng = np.random.default_rng(seed)
-        self.world = World(food_xy)
+        self.world = World(food_xy, danger_xy, pond, bites)
         self.pose = np.column_stack([rng.uniform(0.5, SIZE_M - 0.5, (n, 2)), rng.uniform(-np.pi, np.pi, n)])
         if pose is not None:
             self.pose = np.array(pose, float).reshape(n, 3)
         self.frame_port = frame_port
         self.eaten = []  # (t, duck)
+        self.headbutts = []  # (t, attacker, victim)
+        self.bumped = np.zeros(n, bool)
+        self.ate = np.zeros(n, bool)
+        self.last_bite = np.full(n, -np.inf)
         self.cmd = np.zeros((n, 3))
         self.head = np.zeros((n, 4))
         self.relaxed = np.zeros(n, bool)
@@ -62,10 +72,13 @@ class Stub:
                 self.head[i] = [float(p[k]) for k in ROBOT_PARAMS["robot.head"]]
             elif method == "robot.do":
                 self.skill[i] = str(p["skill"])  # ponytail: 2D stub acts only on ground_pick
-                _, dish = contacts(self.pose[:, :2], self.world.food)
-                if p["skill"] == "ground_pick" and dish[i] >= 0:
+                *_, dish = contacts(self.pose[:, :2], self.pose[:, 2], self.world.food)
+                if p["skill"] == "ground_pick" and dish[i] >= 0 and self.t - self.last_bite[i] >= BITE_S:
                     self.world.eat(dish[i])
                     self.eaten.append((self.t, i))
+                    self.last_bite[i], self.ate[i] = self.t, True
+                if p["skill"] == "headbutt":
+                    self._headbutt(i)
             elif method == "robot.stop":
                 self.cmd[i] = 0
             elif method == "robot.relax":
@@ -74,6 +87,16 @@ class Stub:
                 self.relaxed[i] = False
             return {}
         return call
+
+    def _headbutt(self, i: int) -> None:
+        fwd = np.array([np.cos(self.pose[i, 2]), np.sin(self.pose[i, 2])])
+        rel = self.pose[:, :2] - self.pose[i, :2]
+        hit = (np.linalg.norm(rel, axis=1) < 2 * DUCK_R) & (rel @ fwd > 0)
+        hit[i] = False
+        for j in np.flatnonzero(hit):
+            self.pose[j, :2] = np.clip(self.pose[j, :2] + PUSH_M * fwd, DUCK_R, SIZE_M - DUCK_R)
+            self.bumped[j] = True
+            self.headbutts.append((self.t, i, j))
 
     def _control_call(self, method, p):
         if method == "sim.step":
@@ -101,15 +124,21 @@ class Stub:
         fwd = np.column_stack([np.cos(h), np.sin(h)])
         left = np.column_stack([-np.sin(h), np.cos(h)])
         base = xy + ANTENNA[0] * fwd
-        odor_l = self.world.odor_at(base + ANTENNA[1] * left)
-        odor_r = self.world.odor_at(base - ANTENNA[1] * left)
-        touch, dish = contacts(xy, self.world.food)
-        temp = temperature_at(xy)
+        w = self.world
+        sense = {}
+        for side, p in (("left", base + ANTENNA[1] * left), ("right", base - ANTENNA[1] * left)):
+            sense[f"odor_{side}"] = w.odor_at(p)
+            sense[f"danger_{side}"] = w.odor_at(p, w.danger_odor)
+            sense[f"humidity_{side}"] = w.humidity_at(p)
+            sense[f"temp_{side}"] = temperature_at(p)
+        sense["touch_left"], sense["touch_right"], dish = contacts(xy, h, w.food)
+        sense["sugar"] = (dish >= 0).astype(float)
+        sense["water"] = (w.pond_distance(xy) < 0).astype(float)
+        sense["bumped"], sense["ate"] = self.bumped.astype(float), self.ate.astype(float)
+        self.bumped[:] = self.ate[:] = False
         for i in range(len(xy)):
             self.udp.sendto(frames.pack(
-                t=self.t, duck=i, x=xy[i, 0], y=xy[i, 1], heading=h[i],
-                odor_left=odor_l[i], odor_right=odor_r[i],
-                sugar=float(dish[i] >= 0), touch=touch[i], temperature=temp[i],
+                t=self.t, duck=i, x=xy[i, 0], y=xy[i, 1], heading=h[i], **{k: v[i] for k, v in sense.items()},
             ), (frames.HOST, self.frame_port + i))
 
     def state(self) -> dict:
@@ -131,7 +160,7 @@ def main() -> None:
     ap.add_argument("--wander", action="store_true", help="random walk every 0.5 s, for watching the stub alone")
     args = ap.parse_args()
     os.makedirs(args.sock_dir, exist_ok=True)
-    stub = Stub(args.ducks, args.seed, args.sock_dir)
+    stub = Stub(args.ducks, args.seed, args.sock_dir, **DEMO_GARDEN)
     print(f"sockets in {args.sock_dir}: {', '.join(stub.names)}, control")
     view = None
     if args.view:
