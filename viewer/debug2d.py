@@ -18,8 +18,18 @@ class Viewer:
         self.screen = pygame.display.set_mode((int(SIZE_M * PX),) * 2)
         pygame.display.set_caption("micro garden: 2D stub")
 
-    def alive(self) -> bool:
-        return not any(e.type == pygame.QUIT for e in pygame.event.get())
+    def alive(self, on_click=None) -> bool:
+        """Handle window events; on_click gets each left click in garden metres."""
+        for e in pygame.event.get():
+            if e.type == pygame.QUIT:
+                return False
+            if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1 and on_click:
+                on_click((e.pos[0] / PX, SIZE_M - e.pos[1] / PX))
+        return True
+
+    @staticmethod
+    def on_tree(xy) -> bool:
+        return np.hypot(xy[0] - TREE[0], xy[1] - TREE[1]) < TREE[2]
 
     def _px(self, xy):
         return int(xy[0] * PX), int((SIZE_M - xy[1]) * PX)

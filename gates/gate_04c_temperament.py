@@ -1,6 +1,8 @@
 """Gate 4c: temperament. Food defense, retaliation and stink lovers come from personality knobs.
 
 Run: uv run python -m gates.gate_04c_temperament [--episodes 20]
+Knobs are scales, not switches (Chris, 2026-09-16): the dial sweeps check in-between settings give
+in-between behavior.
 Two ducks start nose to nose on a full dish, or facing each other with no food. The aggressive duck
 alternates sides across episodes. Aggressiveness feeds the pC1d/e mood (brain/physiology.py) and the
 brain's aIPg turns it into attacks (brain/decoder.py). The shuffled brain is printed beside the first
@@ -19,6 +21,15 @@ DISH = (2.0, 2.0)
 PAIR_S = 20.0
 STINK_S = 60.0
 STINK_NEAR_M = 0.5
+DIAL = (0.0, 0.25, 0.5, 0.75, 1.0)
+
+
+def graded(values, slack) -> bool:
+    """A scale, not a switch: climbs from the first to the last setting, never drops by more than slack,
+    and the middle setting lands between 20% and 80% of the way up."""
+    v = np.asarray(values, float)
+    mid = (v[len(v) // 2] - v[0]) / max(v[-1] - v[0], 1e-9)
+    return v[-1] > v[0] and bool((np.diff(v) >= -slack).all()) and 0.2 <= mid <= 0.8
 
 
 def pair(W, ann, sets, n, roles, hunger, provoked=0.0, food=True):
@@ -65,6 +76,12 @@ def main() -> int:
     print(f"provoked attacker, no food:   vs aggressive {fight_hits.astype(int).tolist()}  vs meek {meek_hits.astype(int).tolist()}")
     averse, lover = stink(W, ann, sets, n, 0.0), stink(W, ann, sets, n, 1.0)
     print(f"time near stink:              averse {averse:.2f}  lover {lover:.2f}")
+    dial_hits, dial_on = zip(*[pair(W, ann, sets, n, (a, 0.0), hunger=1.0) for a in DIAL])
+    dial_hits = [h[0] / n for h in dial_hits]
+    dial_on = [o[0] for o in dial_on]
+    dial_stink = [stink(W, ann, sets, n, a) for a in DIAL]
+    print(f"aggressiveness {DIAL}: headbutts per episode {np.round(dial_hits, 2).tolist()}  dish time {np.round(dial_on, 2).tolist()}")
+    print(f"stink affinity {DIAL}: time near stink {np.round(dial_stink, 2).tolist()}")
     print(f"({time.perf_counter() - t0:.0f} s wall)")
 
     checks = {
@@ -74,6 +91,8 @@ def main() -> int:
         "provoked duck attacks": fight_hits[0] > 0 and meek_hits[0] > 0,
         "aggressive target hits back, meek target does not": fight_hits[1] > 0 and meek_hits[1] == 0,
         "stink lovers spend at least twice as long near stink": lover > 2 * averse,
+        "attacks grade with the aggressiveness dial": graded(dial_hits, slack=0.3),
+        "time near stink grades with the stink-affinity dial": graded(dial_stink, slack=0.1),
     }
     for k, v in checks.items():
         print(f"  {'ok  ' if v else 'FAIL'} {k}")

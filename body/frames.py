@@ -15,9 +15,11 @@ FRAME = np.dtype([
     ("humidity_left", "<f4"), ("humidity_right", "<f4"),
     ("temp_left", "<f4"), ("temp_right", "<f4"),
     ("touch_left", "<f4"), ("touch_right", "<f4"),
-    ("sugar", "<f4"), ("water", "<f4"),
+    ("sugar", "<f4"), ("water", "<f4"),  # water: beak can reach the pond (shore band)
     ("bumped", "<f4"),  # 1 on the step another duck headbutted this one
     ("ate", "<f4"),  # 1 on the step this duck took a bite
+    ("drank", "<f4"),  # 1 on the step this duck took a sip
+    ("swimming", "<f4"),  # 1 while the duck is in the pond past the shore band
 ])
 FRAME_PORT = 7601  # duck n sends to FRAME_PORT + n, like duck-sim's 7801 + n
 HOST = "127.0.0.1"

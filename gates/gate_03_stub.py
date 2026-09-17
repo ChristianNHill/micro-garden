@@ -12,7 +12,7 @@ import numpy as np
 from body import frames
 from body.contract import Client
 from body.stub2d.stub import DT, Stub
-from world.fields import CELL_M, SIZE_M, World
+from world.fields import CELL_M, MAX_FOOD, SIZE_M, TREE, World
 
 N, SIM_S, HOLD_STEPS = 5, 60.0, 25
 PORT_BASE = 7650  # away from the live stub's 7601
@@ -65,6 +65,21 @@ def odor_points_to_food(rng) -> tuple[int, int]:
     return int(good.sum()), int(use.sum())
 
 
+def fruit() -> tuple[int, int, bool]:
+    """Food on the ground after 60 s of a 20 s fruit period, after a shake, and whether all fruit is under the tree."""
+    with tempfile.TemporaryDirectory(prefix="mg") as d:
+        stub = Stub(1, 0, d, food_xy=[], fruit_every_s=20.0, frame_port=PORT_BASE + 10)
+        ctl = Client(f"{d}/control.sock")
+        ctl.call("sim.step", n=int(60 / DT))
+        dropped = len(stub.world.food)
+        ctl.call("garden.shake_tree")
+        shaken = len(stub.world.food)
+        under = bool((np.linalg.norm(stub.world.food - TREE[:2], axis=1) < TREE[2] + 0.25).all())
+        ctl.close()
+        stub.close()
+    return dropped, shaken, under
+
+
 def main() -> int:
     receivers = [frames.receiver(PORT_BASE + i) for i in range(N)]
     start, pose_a, frames_a, t, errors = walk(3, receivers)
@@ -76,6 +91,8 @@ def main() -> int:
     frame_ok = all(f is not None and abs(f["x"] - p[0]) < 1e-4 and abs(f["y"] - p[1]) < 1e-4
                    for f, p in zip(frames_a, pose_a))
     print(f"errors for bad calls: {errors}")
+    dropped, shaken, under = fruit()
+    print(f"fruit: {dropped} after 60 s, {shaken} after a shake, all under the tree: {under}")
 
     checks = {
         "same seed, identical final poses": np.array_equal(pose_a, pose_b),
@@ -85,6 +102,8 @@ def main() -> int:
         "unknown method and unknown param refused": len(errors) == 2
         and "-32601" in errors[0] and "-32602" in errors[1],
         "odor gradient points to nearest food everywhere sampled": good == total and total > 500,
+        "tree drops fruit on its period and when shaken, under its canopy":
+            dropped == 3 and shaken == min(dropped + 2, MAX_FOOD) and under,
     }
     for k, v in checks.items():
         print(f"  {'ok  ' if v else 'FAIL'} {k}")

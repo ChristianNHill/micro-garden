@@ -92,14 +92,15 @@ Personality rules (Chris, 2026-09-16):
 - Every knob is a continuous 0–1 scale, never a switch.
 - Following the Chao games (RESEARCH.md §9), knobs mostly set how fast moods and drives rise and fade, and how strongly they feed the brain, rather than scripting behavior.
 - Knobs so far: aggressiveness (Gate 4c; also how fast Anger and Fear fade), stink affinity (Gate 4c), water love (below), plus playfulness, music affinity, hoarding and vanity for Gate 8b.
-- Chris reviews the full knob list and the presets before this gate's check is written; the Chao Doctor list in RESEARCH.md §9 is the starting vocabulary.
+- Reviewed with Chris 2026-09-16: build all Gate 5 knobs (timidity through carelessness) now; the label set is the Chao Doctor list plus Bully, Zoomer, Napper, Show-off, Scaredy and Loner (21 labels). Knob values are in ARCHITECTURE.md §2.4.
 
 Water, drinking and swimming (Chris, 2026-09-16):
 - **Drinking** happens in a thin shore band at the pond edge. Water taste there feeds the sugar/water taste neurons, and when the feeding neurons fire the body sends a `drink` action (stub skill, like `ground_pick`). Each sip lowers thirst; a thirsty duck already follows humid air (Gate 4b).
 - **Swimming** is a body mode inside the pond: slower, floaty, no eating, drinking or headbutting, and the water cools the duck. The body reports being wet, fed to the brain as saturated humidity plus touch on every bristle. Flies do not swim, so this encoding is a design choice.
 - **Why a duck swims:** temperature comfort (a hot duck cools off) and a per-duck water-love knob. Some ducks paddle, others only drink at the shore.
 - **Physical robots cannot enter water:** in the room (Phase E) the pond is virtual, and swimming exists only in the sim and the Godot garden.
-Check: `gates/gate_05_personality.py` asserts drinking lowers thirst at the shore; a hot duck, or a duck with high water love, swims more than a cool or water-shy one; and it runs five ducks with five distinct labels for 10 simulated minutes, headless, twice with different jitter seeds; computes per-duck behavioral signature (fraction of time moving, near food, near others, asleep; mean speed; startle count) and asserts pairwise distance between labels exceeds a threshold and same-label distance across seeds is below it. Prints the signature table.
+Outcome (2026-09-17): passes; numbers and the changes that got there are in the gate file. Two runs of the full gate were stopped by the harness for "low memory" with about 48% of memory free; long runs now go one garden at a time and run detached.
+Check: `gates/gate_05_personality.py` asserts drinking lowers thirst at the shore; a duck with high water love swims more than a water-shy one in the shade, and a heat-intolerant duck swims more than a heat-tolerant one in the sun; and it runs five ducks with five distinct labels for 10 simulated minutes, headless, twice with different jitter seeds; computes per-duck behavioral signature (fraction of time moving, near food, near others, asleep; mean speed; startle count) and asserts pairwise distance between labels exceeds a threshold and same-label distance across seeds is below it. Prints the signature table.
 Blind test (manual, recorded in the gate's docstring): Chris watches the 2D view for 5 minutes with labels hidden and guesses. Score noted.
 **Decision**: the knob set and label list. Add or cut knobs based on which ones separated the ducks.
 
@@ -164,7 +165,14 @@ Build: Godot 4 project under `viewer/godot/` that subscribes to the world snapsh
 Check: `gates/gate_13_godot.py` runs the brain and MuJoCo body headless, launches Godot, and asserts via its log that it received snapshots at ≥ 30 Hz for 60 s and that a scripted click produced a food object in the world. Manual: silhouettes match labels (ARCHITECTURE.md §2.4).
 
 ### Gate 14: the look (M)
-Build: Dreamcast pass: small bilinear textures, flat Lambert, vertex colors, linear fog to sky color, moving sun, under 300 KB assets; possession view full-frame with fisheye and overlays; reduced-motion switch; ambient pond loop and event quacks.
+Direction (Chris, 2026-09-16): a blend of Dreamcast low-poly forms with a halftone print-diorama finish (ARCHITECTURE.md §4, RESEARCH.md §12).
+Spike first, before any other Godot work: one duck on a patch of garden through the print shader, judged by Chris for shimmer, silhouette readability and palette.
+Build:
+- Dreamcast pass: small textures, flat Lambert, vertex colors, fog to the paper color, moving sun, under 300 KB assets.
+- Print pass: limited ink palette, halftone/dither locked so it does not crawl, outline pass, cream paper surround, isometric-ish drifting camera.
+- Possession view: full-frame with fisheye and overlays.
+- Reduced-motion switch.
+- Ambient pond loop and event quacks.
 Check: manual review against the visual brief (ARCHITECTURE.md §4) plus an asset-size assertion in `gates/gate_14_look.py`.
 
 ---

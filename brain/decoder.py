@@ -7,11 +7,18 @@
 - Proboscis motor neurons mean feeding.
 - DNp32 fires for stink, more on the stink's side. A stink-averse duck bolts: it runs, other turning is
   suppressed, and it turns gently away from the busier DNp32 (strong turning made ducks circle in the
-  stink, Gate 4b). A stink-loving duck (stink_affinity 1) slows down and turns gently toward it instead;
-  that is a per-duck readout choice (Chris, 2026-09-16), not the brain changing.
+  stink, Gate 4b). A stink-loving duck slows down and turns gently toward it instead. Each time a duck
+  meets stink it picks one of the two, lingering with probability stink_affinity, and keeps that choice
+  until the stink is gone: that makes the knob a scale (a fixed blend flipped like a switch). This is a
+  per-duck readout choice (Chris, 2026-09-16), not the brain changing.
+- The body (brain/physiology.py `motor`, set by the server each body step in `self.body`) scales speed
+  and spontaneous wandering, triggers zoomies, stops an asleep duck, and makes sociable ducks turn
+  toward touch. At the pond's shore a duck either drinks or wades in to swim, chosen on arrival and
+  every WADE_REROLL_TICKS after with a chance that rises with its swim urge and falls with thirst; a duck that chose to swim paddles nearly in
+  place, the more so the stronger its urge, and one that did not walks back out.
 - aIPg is aggression (its mood input is set in physiology). While it is active the touch turn flips
-  toward the other duck, and an aggressive duck that is touching another attacks: runs at it and
-  headbutts.
+  toward the other duck, and a touching duck attacks (runs at it and headbutts) with a chance per tick
+  that scales with aggression.
 
 Gate 4 (Chris, 2026-09-16): ducks walk at BASE_VX by default and the brain can push them up to
 RUN_VX, because nothing reaches DNp09 before the duck has eyes. Spontaneous turning (WANDER_*) is
@@ -37,8 +44,9 @@ FEED_HZ = 1.0  # proboscis MN rate that means "eat"
 STINK_FLOOR_HZ, STINK_FULL_HZ, STINK_TAU_MS = 0.3, 0.8, 2000.0
 STINK_VYAW_PER_HZ = 0.5  # rad/s per Hz of left minus right DNp32
 STINK_LINGER = 0.5  # a stink lover slows to this fraction of its speed in the stink
-AGGR_FLOOR_HZ, AGGR_FULL_HZ, AGGR_TAU_MS = 0.3, 0.8, 1000.0  # aIPg mean rate
-ATTACK_AGGRESSION = 0.5
+AGGR_FLOOR_HZ, AGGR_FULL_HZ, AGGR_TAU_MS = 0.05, 1.0, 1000.0  # aIPg mean rate; silent without the mood input
+WADE_REROLL_TICKS = 500  # a duck at the shore reconsiders wading in every 5 s
+ATTACK_P = 0.1  # chance per tick of a headbutt while touching, at full aggression (graded, not a threshold)
 TOUCH_HZ = 1.0  # DNg48 left plus right rate that means another duck is touching
 
 FWD, BACK, STEER_L, STEER_R, GF, FEED, STINK_L, STINK_R, TOUCH_L, TOUCH_R, AIPG = range(11)
@@ -68,6 +76,11 @@ class Decoder:
         self.rng = np.random.default_rng(seed)
         self.wander = np.zeros(batch)
         self.escape_left = np.zeros(batch, int)
+        self.in_stink = np.zeros(batch, bool)
+        self.at_water = np.zeros(batch, bool)
+        self.wades = np.zeros(batch, bool)
+        self.body = {}  # set by the server each body step; see Physiology.motor
+        self.lingers = np.zeros(batch, bool)
         self.gf_recent = np.zeros((ESCAPE_WINDOW, batch))
         self.ticks = 0
 
@@ -88,23 +101,45 @@ class Decoder:
         onset = (self.gf_recent.sum(axis=0) >= ESCAPE_SPIKES) & (self.escape_left == 0)
         self.escape_left = np.where(onset, ESCAPE_TICKS, np.maximum(self.escape_left - 1, 0))
 
-        stink = np.clip((np.maximum(r[STINK_L], r[STINK_R]) - STINK_FLOOR_HZ) / (STINK_FULL_HZ - STINK_FLOOR_HZ), 0, 1)
-        avoid, like = stink * (1 - self.stink_affinity), stink * self.stink_affinity
-        aggression = np.clip((r[AIPG] - AGGR_FLOOR_HZ) / (AGGR_FULL_HZ - AGGR_FLOOR_HZ), 0, 1)
-        feeding = r[FEED] > FEED_HZ
-        attack = (r[TOUCH_L] + r[TOUCH_R] > TOUCH_HZ) & (aggression > ATTACK_AGGRESSION)
+        n = len(self.rates)
+        b = lambda key, default: np.broadcast_to(np.asarray(self.body.get(key, default)), n)
+        asleep, swimming, shore = b("asleep", False), b("swimming", False), b("at_shore", False)
+        water = shore | swimming
+        visit = water & (~self.at_water | (self.ticks % WADE_REROLL_TICKS == 0))
+        urge = b("swim_urge", 0.5) * (1 - b("thirst", 0.5) * b("swim_thirst_weight", 1.0))
+        self.wades = np.where(visit, self.rng.random(n) < urge, self.wades & water)
+        self.at_water = water
 
-        vx = np.clip(BASE_VX + VX_PER_HZ * (r[FWD] - r[BACK]), -RUN_VX, RUN_VX)
+        stink = np.clip((np.maximum(r[STINK_L], r[STINK_R]) - STINK_FLOOR_HZ) / (STINK_FULL_HZ - STINK_FLOOR_HZ), 0, 1)
+        meeting = (stink > 0) & ~self.in_stink
+        self.lingers = np.where(meeting, self.rng.random(len(stink)) < self.stink_affinity, self.lingers)
+        self.in_stink = stink > 0
+        avoid, like = stink * ~self.lingers, stink * self.lingers
+        aggression = np.clip((r[AIPG] - AGGR_FLOOR_HZ) / (AGGR_FULL_HZ - AGGR_FLOOR_HZ), 0, 1)
+        feeding = (r[FEED] > FEED_HZ) & ~self.wades & ~swimming & ~asleep
+        attack = ((r[TOUCH_L] + r[TOUCH_R] > TOUCH_HZ) & (self.rng.random(n) < ATTACK_P * aggression)
+                  & ~swimming & ~asleep)
+        zoomies = b("zoomies", False)
+
+        vx = np.clip(BASE_VX + VX_PER_HZ * (r[FWD] - r[BACK]), -RUN_VX, RUN_VX) * b("speed", 1.0)
+        vx = np.where(zoomies, RUN_VX, vx)
+        # a duck that chose to swim paddles nearly in place, the more so the stronger its urge; one that
+        # did not walks back out at its normal pace
+        vx = np.where(swimming & self.wades, vx * (1 - 0.9 * b("swim_urge", 0.5)), vx)
         vx = np.where(self.escape_left > 0, -RUN_VX, vx)
         vx = vx + (RUN_VX - vx) * avoid
         vx = vx * (1 - (1 - STINK_LINGER) * like)
         vx = np.where(feeding, 0.0, vx)  # stop to eat
         vx = np.where(attack, RUN_VX, vx)
+        vx = np.where(asleep, 0.0, vx)
 
         share = self.touch_share
-        steer = (1 - share) * (r[STEER_L] - r[STEER_R]) + share * (r[TOUCH_L] - r[TOUCH_R]) * (1 - 2 * aggression)
-        vyaw = ((self.wander + VYAW_PER_HZ * steer) * (1 - avoid)
+        toward_touch = np.maximum(aggression, b("social", 0.0))
+        steer = (1 - share) * (r[STEER_L] - r[STEER_R]) + share * (r[TOUCH_L] - r[TOUCH_R]) * (1 - 2 * toward_touch)
+        wander = self.wander * b("wander", 1.0) * np.where(zoomies, 2.0, 1.0)
+        vyaw = ((wander + VYAW_PER_HZ * steer) * (1 - avoid)
                 + STINK_VYAW_PER_HZ * (r[STINK_L] - r[STINK_R]) * (like - avoid))
+        vyaw = np.where(asleep, 0.0, vyaw)
         return [
             {"vx": float(vx[b]), "vy": 0.0, "vyaw": float(vyaw[b]), "escape": bool(onset[b]),
              "feed": bool(feeding[b]), "attack": bool(attack[b])}

@@ -471,3 +471,17 @@ Plan for Gate 12 and Phase D:
 - The emotion clips map naturally onto Chao-style moods.
 
 Unverified: `duck-body` may live on a non-default microduck_rl branch; the simulator Space and prop GLB licenses are unknown.
+
+## 12. Inspiration: Kevin Ngo's 25 mini rooms (X post, 2026-09-16)
+
+https://x.com/kevin_t_ngo/status/2100238648218427563 (shared by Chris as "kinda what we want to do")
+
+Post text: "I made a website with 25 mini rooms, each with Claude keeping people company. Created with Claude Opus 5." It carries a video, which I could not view: X blocks unauthenticated fetches, and the public embed data gives only the text and the media type.
+
+The site is https://a-small-light-three.vercel.app/ ("a small light, room by room"), viewed in Chrome on 2026-09-16 (it sits behind a Vercel bot check, so plain fetches fail):
+- A warm cream paper page with registration marks at the edges, like a print proof.
+- An isometric grid of 25 dashed diamond plots. Rooms appear one at a time, and the camera drifts and zooms on its own; scrolling moves it too.
+- Each room is a detailed isometric diorama in a halftone/dithered print style with a limited palette (navy, cream, coral, teal, mustard). Examples seen: a library with tall bookshelves, a rolling ladder, a desk, a globe and a small character; and a night-time museum or observatory with arched windows, a roped-off exhibit, a reel-to-reel machine, and a figure standing and another lying on a bench.
+- No text on the page (canvas only). A small sun icon at bottom left and a palette strip at bottom right.
+
+Why it is relevant: the feel of small, self-contained cozy spaces with a companion living in each. For Micro Garden that points at the garden (and later the room) as a place you visit and keep company with, which matches the stickiness goal in the RESEARCH.md goal block. Chris (2026-09-16): the site itself is static, but he really likes the vibe; take the look and mood, not the tech. Style notes for Micro Garden's look (ARCHITECTURE.md §4 is Dreamcast-like, so this is a contrast to weigh at Gate 14): a limited print palette, halftone texture, isometric dioramas, one room revealed at a time, and a slow self-moving camera that suits an ambient "visit and keep company" mood.

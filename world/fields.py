@@ -17,6 +17,9 @@ DUCK_R = 0.07
 SUN_C, SHADE_C = 30.0, 20.0
 TREE = (1.0, 3.0, 0.7)  # shade centre x, y and radius
 HUMID_FALLOFF_M = 0.4  # humidity halves about every 0.3 m away from the pond edge
+SHORE_M = 0.1  # a duck whose centre is within this of the pond edge can drink
+FRUIT_BITES = 3
+MAX_FOOD = 4  # the tree stops dropping while this much food is on the ground
 
 
 class World:
@@ -49,6 +52,17 @@ class World:
         if self.bites[dish] <= 0:
             self.food = np.delete(self.food, dish, axis=0)
             self.bites = np.delete(self.bites, dish)
+
+    def drop_fruit(self, rng: np.random.Generator, n: int = 1) -> int:
+        """Fruit falls somewhere under the shade tree's canopy. Returns how many fell."""
+        fell = 0
+        while fell < n and len(self.food) < MAX_FOOD:
+            a, r = rng.uniform(-np.pi, np.pi), rng.uniform(0.2, TREE[2] + 0.2)
+            xy = np.clip(np.array(TREE[:2]) + r * np.array([np.cos(a), np.sin(a)]), DISH_R, SIZE_M - DISH_R)
+            self.food = np.vstack([self.food, xy])
+            self.bites = np.append(self.bites, FRUIT_BITES)
+            fell += 1
+        return fell
 
     def odor_at(self, xy, grid=None) -> np.ndarray:
         """Bilinear sample of a smell grid (food by default) at (..., 2) positions."""

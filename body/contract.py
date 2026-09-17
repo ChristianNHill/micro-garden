@@ -2,7 +2,7 @@
 
 Method and parameter names and units match robotd (duck-ipc-proto): robot.move {vx, vy m/s; vyaw
 rad/s, positive left}, robot.head {neck_pitch, head_pitch, head_yaw, head_roll rad}, robot.do {skill},
-robot.stop, robot.init, robot.relax. Unknown members are refused, like robotd's deny_unknown_fields.
+robot.sound {tag, hold}, robot.stop, robot.init, robot.relax. Unknown members are refused, like robotd's deny_unknown_fields.
 Continuous intents go as notifications; any message with an id is answered, which is how a lockstep
 client knows its intent landed before it steps the stub.
 """
@@ -18,6 +18,7 @@ ROBOT_PARAMS = {
     "robot.move": {"vx": 0.0, "vy": 0.0, "vyaw": 0.0},
     "robot.head": {"neck_pitch": 0.0, "head_pitch": 0.0, "head_yaw": 0.0, "head_roll": 0.0},
     "robot.do": {"skill": ""},
+    "robot.sound": {"tag": "", "hold": None},
     "robot.stop": {},
     "robot.init": {},
     "robot.relax": {},

@@ -11,11 +11,12 @@ Status: draft for Chris to drive. Written 2026-09-16. Companion to `RESEARCH.md`
 | 1 | Where the world simulation lives | **Open, tradeoffs in §6.1** | |
 | 2 | Renderer and final "room" (virtual garden, physical room, or both) | **Open, tradeoffs in §6.2** | |
 | 3 | Brain compute path | **Measure first** in Gate 1: PyTorch on Metal vs event-driven CPU | §3.7 |
-| 4 | Personalities | **Settled: sillier, Chao-style labels over parameter presets** | §2.4 |
+| 4 | Personalities | **Settled: Chao-style labels over continuous knob presets; Chao Doctor list plus six of ours (2026-09-16)** | §2.4 |
 | 5 | Vision | **Settled: yes.** Ducks see. Player can possess a duck and see its POV | §2.6, §3.4 |
 | 6 | Transport between brain and body | **Open, tradeoffs in §6.3** | |
 | 7 | Persistence | **Settled: catch-up on launch first, always-on brain later** | §3.8 |
 | 8 | Body contract | **Proposed: adopt microduck's own JSON-RPC** so sim, virtual, and physical bodies are interchangeable | §1, §3.2 |
+| 9 | Look | **Settled 2026-09-16: a blend of retro looks.** A Dreamcast low-poly garden rendered as a halftone print diorama (Chris knows it is hard to pull off) | §4 |
 
 ---
 
@@ -63,37 +64,61 @@ Food sources, water, shade, sun, day and night, placed objects, and other ducks.
 
 Verified in `RESEARCH.md` §1a: the original Chao model has three continuous traits, **Kindness, Aggressiveness, Curiosity**, fixed at birth, where Aggressiveness sets how fast Anger and Fear decay and Curiosity sets how fast Sorrow decays; slow drives (Hunger, Sleepiness, Tiredness, Boredom, Energy) sit under fast visible reactions (Joy, Urge to Cry, Fear, Dizziness). Later games surface discrete labels over that (Big Eater, Crybaby, Energetic, Carefree, Careful, Naive, Gentle, and others; the full list on chao-island.com could not be fetched today and should be verified).
 
-Our version: **a label is a preset of brain and body knobs plus one signature skill plus one silhouette tweak.** Five ducks draw five distinct labels at hatch; knobs are jittered so two of the same label still differ.
+Our version: **a label is a preset of knob values plus one signature skill plus one silhouette tweak.** Five ducks draw five distinct labels at hatch. Knobs are jittered (about ±0.1), so two ducks with the same label still differ.
 
-Knobs (brain side unless noted):
+Settled with Chris, 2026-09-16:
+- Every knob is a continuous 0–1 scale, never a switch; Gate 4c checks that in-between settings give in-between behavior.
+- Following the Chao games (`RESEARCH.md` §9), knobs mostly set how fast moods and drives rise and fade, and how strongly senses and moods reach the brain. The brain decides what to do.
+- The label set mixes the Chao Doctor list with six of our own.
 
-| Knob | What it maps to | Reads as |
-|---|---|---|
-| Gustatory and olfactory gain | input current scale on Gr5a/Gr64f and ORNs | greedy vs indifferent |
-| Looming gain | LPLC2 input scale, giant fiber threshold | skittish vs bold |
-| Dopamine baseline | PAM/PPL1 tone, mushroom-body learning rate | reward seeking, learns fast |
-| Octopamine tone | arousal, aggression, walking speed bias | pushy vs mellow |
-| Fear decay (Aggressiveness in SA1) | body: fast-reaction decay rate | shaken for a minute vs a second |
-| Sorrow decay (Curiosity in SA1) | body: cry decay rate, novelty drive | mopes vs bounces back |
-| Fatigue and sleep-pressure rate | body | restless vs napper |
-| Social odor valence | sign of ORN input from other ducks' odor | clingy vs loner |
+**Knobs**
 
-Starter labels (ours, not Sega's):
-
-| Label | Preset | Signature skill | Silhouette |
+| Knob | What it changes | Low ↔ high | Built in |
 |---|---|---|---|
-| Big Eater | gustatory and olfactory gain high, hunger rises fast | `ground_pick` often | rounder body |
-| Crybaby | fear and sorrow decay slow, looming gain high | sits and quacks after a startle | droopy tuft |
-| Zoomer | octopamine high, fatigue slow | `Zoomies` when bored | lean, long legs |
-| Napper | sleep pressure fast, fatigue fast | `Nap` in shade | half-lidded eyes |
-| Scaredy | looming gain very high, giant fiber threshold low | `Startle`, backs up (moonwalker DNs) | tuft stands up |
-| Nosy | dopamine baseline high, sorrow decay fast | `LookAround`, approaches new objects | long neck |
-| Bully | octopamine high, social odor valence negative | head-butt, displaces others at food | bigger |
-| Show-off | dopamine high, social valence positive | `roulade`, `polite-bow` when watched | bright colors |
-| Gentle | octopamine low, social valence positive | `Preen` near others | small, soft palette |
-| Loner | social odor valence negative, looming gain low | wanders far, `Stretch` | muted colors |
+| Aggressiveness | pC1d/e mood from hunger at food or being provoked; Anger fades slower, Fear faster | meek ↔ defends and retaliates | Gate 4c |
+| Stink affinity | bolts from stink ↔ lingers in it | squeamish ↔ loves stink | Gate 4c |
+| Timidity | looming and escape sensitivity; Fear fades slower | bold ↔ skittish | Gate 5 |
+| Curiosity | approaches new things, wanders wider; Sorrow fades faster | incurious ↔ nosy | Gate 5 (full at 6, 8b) |
+| Sociability | other ducks' smell and touch attract or repel | loner ↔ clingy | Gate 5 |
+| Kindness | tolerates others at food, preens near them, pushes the ball gently | pushy ↔ gentle | Gate 5, 8b |
+| Appetite | hunger rise rate, food-sense gain | picky ↔ big eater | Gate 5 |
+| Energy | fatigue rate, walking speed, zoomies | quiet ↔ energetic | Gate 5 |
+| Sleepiness | sleep-pressure rate | night owl ↔ napper | Gate 5 |
+| Heat tolerance | comfort band | shade seeker ↔ sunbather | Gate 5 |
+| Water love | swims vs only drinks at the shore | water-shy ↔ paddler | Gate 5 |
+| Boredom rate | how fast boredom builds without novelty | patient ↔ easily bored | Gate 5 |
+| Chattiness | quack rate | silent ↔ chatty | Gate 5 |
+| Carelessness | reacts less to danger and looming | careful ↔ careless | Gate 5 |
+| Smarts | mushroom-body learning rate | slow ↔ quick learner | Gate 7 |
+| Playfulness, music affinity, hoarding, vanity | ball, music, shiny rocks, hats | | Gate 8b |
 
-Goal #1 (`RESEARCH.md`) depends on these presets producing visibly different ducks. That is Gate 2.
+**Labels** (unlisted knobs sit at 0.5; signature skills and silhouettes to be set in Gate 5)
+
+| Label | Source | Distinctive knobs |
+|---|---|---|
+| Gentle | Chao | aggressiveness 0.05, kindness 0.9, sociability 0.7 |
+| Naughty | Chao | aggressiveness 0.6, kindness 0.2, curiosity 0.7, playfulness 0.8 |
+| Energetic | Chao | energy 0.9, sleepiness 0.2, playfulness 0.7 |
+| Quiet | Chao | energy 0.3, chattiness 0.1, sociability 0.3 |
+| Big eater | Chao | appetite 0.95, aggressiveness 0.5 |
+| Chatty | Chao | chattiness 0.95, sociability 0.8 |
+| Easily bored | Chao | boredom rate 0.9, curiosity 0.6 |
+| Curious | Chao (was our Nosy) | curiosity 0.95, timidity 0.2 |
+| Carefree | Chao | timidity 0.1, water love 0.8, stink affinity 0.5 |
+| Careless | Chao | carelessness 0.9, timidity 0.1 |
+| Smart | Chao | smarts 0.95 |
+| Cry baby | Chao | timidity 0.9, aggressiveness 0.05, curiosity 0.2 (so Sorrow fades slowly) |
+| Lonely | Chao | sociability 0.95; Sorrow builds when alone |
+| Naive | Chao | smarts 0.2, timidity 0.1, curiosity 0.7 |
+| No personality | Chao | everything 0.5 |
+| Bully | ours | aggressiveness 0.95, kindness 0.1, appetite 0.9, sociability 0.8 (seeks company, so food fights come up) |
+| Zoomer | ours | energy 0.95, boredom rate 0.8, playfulness 0.8 |
+| Napper | ours | sleepiness 0.95, energy 0.3, heat tolerance 0.3 |
+| Show-off | ours | vanity 0.9, playfulness 0.8, sociability 0.8 |
+| Scaredy | ours | timidity 0.95, sociability 0.4, stink affinity 0.0 |
+| Loner | ours | sociability 0.05, curiosity 0.6, timidity 0.3 |
+
+Goal #1 (`RESEARCH.md`) depends on these presets producing visibly different ducks. Gate 5's check and Chris's blind test decide which knobs and labels survive.
 
 ### 2.5 Social
 
@@ -205,7 +230,16 @@ One seeded RNG. Fixed timestep. Brain state checkpointable. Save is physiology, 
 
 Built last. The 2D stub ignores all of it. Two possible final rooms (decision 2); the brief covers both.
 
-**Virtual garden.** A Dreamcast-era diorama the size of a coffee table: low poly, small bilinear textures, flat Lambert, vertex colors, fog to sky color, no PS1 jitter unless chosen. One pond with reeds, grass, a rock, a shade tree, a moving sun. Under 300 KB of assets. Orbit camera with limited pitch and idle drift. Ducks are microduck-proportioned (they are the real thing now): round body, big head, bill, two legs, stub wings, a tuft. Personality shows in silhouette (§2.4). Procedural animation only. Mood indicator as a separate floating mesh whose shape carries state so it reads without color.
+**Direction (Chris, 2026-09-16): a blend of two retro looks.**
+- Chao-garden Dreamcast 3D for the forms.
+- The halftone print diorama of "a small light, room by room" (RESEARCH.md §12) for the finish: a limited ink palette (navy, cream, coral, teal, mustard), a halftone/dither screen, cream paper around the scene, and a fixed isometric-ish camera that drifts slowly.
+- Chris knows it is hard to pull off, so it gets its own spike before Gate 14.
+- The risks:
+  - the dither shimmering as the camera moves (fix: screen-space dither locked to world or object space, or render at low resolution and upscale)
+  - small ducks losing their silhouettes in the halftone (fix: flat shading plus an outline pass, and ducks screened more coarsely than the ground)
+  - mood colors fighting the limited palette (fix: mood reads by shape, as already planned)
+
+**Virtual garden.** A Dreamcast-era diorama the size of a coffee table, finished through the print pass above: low poly, small textures, flat Lambert, vertex colors, fog to the paper color, no PS1 jitter unless chosen. One pond with reeds, grass, a rock, a shade tree, a moving sun. Under 300 KB of assets. Isometric-ish camera with limited orbit and slow idle drift. Ducks are microduck-proportioned (they are the real thing now): round body, big head, bill, two legs, stub wings, a tuft. Personality shows in silhouette (§2.4). Procedural animation only. Mood indicator as a separate floating mesh whose shape carries state so it reads without color.
 
 **Physical room.** The ducks are the visuals. The app is a companion view: the overhead tracker's god-view drawn as the garden (food dishes as ponds, tags as ducks) with mood indicators and toasts overlaid, plus the possession view from any duck's camera with the hex-retina and DN-activity overlays. Quacks come from the ducks' own speakers; the synth voice pitch carries mood.
 

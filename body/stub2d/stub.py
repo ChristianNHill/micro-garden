@@ -3,7 +3,10 @@
 One Unix socket per duck (duck-a.sock ...), like duck-sim, plus control.sock with stub-only
 sim.step {n} and sim.state. Every body step sends each duck's sensory frame over UDP to
 frame_port + duck. robot.do ground_pick on a dish eats it; robot.do headbutt pushes a touching duck
-in front of the attacker back by PUSH_M.
+in front of the attacker back by PUSH_M. robot.do drink at the pond's shore band takes a sip; past the
+shore a duck swims at SWIM_SPEED. robot.sound is logged. With fruit_every_s set, the shade tree drops fruit on that
+period; garden.shake_tree on control.sock (a player action) drops SHAKE_FRUIT at once. In the viewer,
+click the tree.
 
 Run free at real time with the debug window:  uv run python -m body.stub2d.stub --view --wander
 Without --wander the ducks stand still until a client sends robot.move.
@@ -19,24 +22,29 @@ import numpy as np
 
 from body import frames
 from body.contract import ROBOT_PARAMS, serve
-from world.fields import SIZE_M, DUCK_R, World, contacts, temperature_at
+from world.fields import SHORE_M, SIZE_M, DUCK_R, World, contacts, temperature_at
 
-DEMO_GARDEN = dict(food_xy=((3.0, 3.0), (1.0, 1.0)), danger_xy=((2.3, 1.7),), pond=(3.1, 0.9, 0.35))
+DEMO_GARDEN = dict(food_xy=((3.0, 3.0),), bites=5, danger_xy=((2.3, 1.7),), pond=(3.1, 0.9, 0.35), fruit_every_s=20.0)
 
 DT = 0.02
 # ponytail: guessed limits standing in for robotd's clamps; replace with the sim's real ones at Gate 10
 MAX_V, MAX_VY, MAX_VYAW = 0.3, 0.15, 2.0
 ANTENNA = np.array([0.06, 0.05])  # forward, lateral offset of each odor sample, metres
-CONTROL_PARAMS = {"sim.step": {"n": 1}, "sim.state": {}}
+CONTROL_PARAMS = {"sim.step": {"n": 1}, "sim.state": {}, "garden.shake_tree": {}}
+SHAKE_FRUIT = 2
 PUSH_M = 0.15
+SWIM_SPEED = 0.5  # fraction of commanded speed while swimming
+SOUND_TAGS = {"alarm", "greet", "inquire", "peck", "chirp", "coo", "wheee"}  # microduck's voice bank
 BITE_S = 0.5  # ground_pick takes this long, so at most one bite per BITE_S
 # ponytail: "headbutt" is a stub-only skill name; map it to microduck's real kick skill at Gate 12
 
 
 class Stub:
     def __init__(self, n: int, seed: int, sock_dir: str, food_xy=((3.0, 3.0), (1.0, 1.0)), danger_xy=(),
-                 pond=None, bites=1, frame_port: int = frames.FRAME_PORT, pose=None):
+                 pond=None, bites=1, fruit_every_s=None, frame_port: int = frames.FRAME_PORT, pose=None):
         rng = np.random.default_rng(seed)
+        self.fruit_rng = np.random.default_rng(seed + 1)
+        self.fruit_every_s = fruit_every_s
         self.world = World(food_xy, danger_xy, pond, bites)
         self.pose = np.column_stack([rng.uniform(0.5, SIZE_M - 0.5, (n, 2)), rng.uniform(-np.pi, np.pi, n)])
         if pose is not None:
@@ -46,6 +54,8 @@ class Stub:
         self.headbutts = []  # (t, attacker, victim)
         self.bumped = np.zeros(n, bool)
         self.ate = np.zeros(n, bool)
+        self.drank = np.zeros(n, bool)
+        self.sounds = []  # (t, duck, tag)
         self.last_bite = np.full(n, -np.inf)
         self.cmd = np.zeros((n, 3))
         self.head = np.zeros((n, 4))
@@ -79,6 +89,13 @@ class Stub:
                     self.last_bite[i], self.ate[i] = self.t, True
                 if p["skill"] == "headbutt":
                     self._headbutt(i)
+                shore = abs(self.world.pond_distance(self.pose[i, :2])) <= SHORE_M
+                if p["skill"] == "drink" and shore and self.t - self.last_bite[i] >= BITE_S:
+                    self.last_bite[i], self.drank[i] = self.t, True
+            elif method == "robot.sound":
+                if p["tag"] not in SOUND_TAGS:
+                    raise ValueError(f"unknown sound tag {p['tag']!r}; known: {sorted(SOUND_TAGS)}")
+                self.sounds.append((self.t, i, p["tag"]))
             elif method == "robot.stop":
                 self.cmd[i] = 0
             elif method == "robot.relax":
@@ -87,6 +104,9 @@ class Stub:
                 self.relaxed[i] = False
             return {}
         return call
+
+    def _swimming(self) -> np.ndarray:
+        return self.world.pond_distance(self.pose[:, :2]) < -SHORE_M
 
     def _headbutt(self, i: int) -> None:
         fwd = np.array([np.cos(self.pose[i, 2]), np.sin(self.pose[i, 2])])
@@ -98,7 +118,13 @@ class Stub:
             self.bumped[j] = True
             self.headbutts.append((self.t, i, j))
 
+    def shake_tree(self) -> int:
+        """Callers hold self.lock (control calls do; the viewer takes it)."""
+        return self.world.drop_fruit(self.fruit_rng, SHAKE_FRUIT)
+
     def _control_call(self, method, p):
+        if method == "garden.shake_tree":
+            return {"fell": self.shake_tree()}
         if method == "sim.step":
             for _ in range(int(p["n"])):
                 self.step()
@@ -109,7 +135,7 @@ class Stub:
 
     def step(self) -> None:
         x, y, h = self.pose.T
-        vx, vy, vyaw = self.cmd.T
+        vx, vy, vyaw = (self.cmd * np.where(self._swimming(), SWIM_SPEED, 1.0)[:, None]).T
         h += vyaw * DT
         x += (vx * np.cos(h) - vy * np.sin(h)) * DT
         y += (vx * np.sin(h) + vy * np.cos(h)) * DT
@@ -117,6 +143,8 @@ class Stub:
         self.pose[:, 2] = (h + np.pi) % (2 * np.pi) - np.pi
         self.world.step()
         self.t += DT
+        if self.fruit_every_s and int(self.t / self.fruit_every_s) > int((self.t - DT) / self.fruit_every_s):
+            self.world.drop_fruit(self.fruit_rng)
         self.send_frames()
 
     def send_frames(self) -> None:
@@ -133,9 +161,11 @@ class Stub:
             sense[f"temp_{side}"] = temperature_at(p)
         sense["touch_left"], sense["touch_right"], dish = contacts(xy, h, w.food)
         sense["sugar"] = (dish >= 0).astype(float)
-        sense["water"] = (w.pond_distance(xy) < 0).astype(float)
-        sense["bumped"], sense["ate"] = self.bumped.astype(float), self.ate.astype(float)
-        self.bumped[:] = self.ate[:] = False
+        edge = w.pond_distance(xy)
+        sense["water"] = (np.abs(edge) <= SHORE_M).astype(float)
+        sense["swimming"] = (edge < -SHORE_M).astype(float)
+        sense["bumped"], sense["ate"], sense["drank"] = (x.astype(float) for x in (self.bumped, self.ate, self.drank))
+        self.bumped[:] = self.ate[:] = self.drank[:] = False
         for i in range(len(xy)):
             self.udp.sendto(frames.pack(
                 t=self.t, duck=i, x=xy[i, 0], y=xy[i, 1], heading=h[i], **{k: v[i] for k, v in sense.items()},
@@ -168,7 +198,12 @@ def main() -> None:
         view = Viewer()
     rng = np.random.default_rng(args.seed)
     next_t, ticks = time.monotonic(), 0
-    while view is None or view.alive():
+    def click(xy):
+        if view.on_tree(xy):
+            with stub.lock:
+                stub.shake_tree()
+
+    while view is None or view.alive(on_click=click):
         with stub.lock:
             if args.wander and ticks % 25 == 0:
                 stub.cmd = np.column_stack([rng.uniform(-0.1, 0.3, args.ducks), np.zeros(args.ducks),
