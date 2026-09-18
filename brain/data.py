@@ -2,7 +2,8 @@
 
 Reads whichever files are in data/:
   annotations  Codex classification.csv.gz + neurons.csv.gz, else the public
-               flywire_annotations Supplemental_file1_neuron_annotations.tsv
+               flywire_annotations Supplemental_file1_neuron_annotations.tsv. Only the public file
+               carries pos_x/pos_y/pos_z, which brain/vision.py needs.
   connections  Codex connections.csv.gz, else Zenodo proofread_connections_783.feather
 """
 from pathlib import Path
@@ -54,12 +55,18 @@ NAMED_SETS = {
     "PPL1": ("cell_type", r"PPL1\d+"),
     "aIPg": ("hemibrain_type", r"aIPg\d"),  # female aggression (Schretter et al. 2020)
     "pC1_aggr": ("cell_type", r"pC1[de]"),  # persistent social arousal / aggression (Deutsch et al. 2020)
-    "grooming_dn": ("cell_type", r"DNg12_[a-z]"),  # antennal grooming DNs; confirm the type choice at Gate 0 review
+    # DN types ranked highest for input from the grooming JO-F neurons and from head and eye bristles
+    # (direct plus one relay; Gate 0 review 2026-09-17). Data-derived, not literature names: FlyWire has no
+    # aBN/aDN labels, and the first guess, DNg12, ranked 38th-349th of 473 DN types.
+    "grooming_dn": ("cell_type", r"DNg20|DNg84|DNg15|DNge133"),
 }
 
 
 def load_annotations() -> pd.DataFrame:
-    """One row per neuron, indexed by root_id: class, sub_class, cell_type, hemibrain_type, side, nt (lowercase)."""
+    """One row per neuron, indexed by root_id: class, sub_class, cell_type, hemibrain_type, side, nt (lowercase).
+
+    The public TSV also carries pos_x/pos_y/pos_z, the neuron's representative point in FlyWire space.
+    """
     cls, neu = DATA / "classification.csv.gz", DATA / "neurons.csv.gz"
     if cls.exists() and neu.exists():
         ann = pd.read_csv(cls, usecols=["root_id", "class", "sub_class", "cell_type", "hemibrain_type", "side"])
@@ -68,7 +75,8 @@ def load_annotations() -> pd.DataFrame:
     else:
         ann = pd.read_csv(
             DATA / "Supplemental_file1_neuron_annotations.tsv", sep="\t",
-            usecols=["root_id", "cell_class", "cell_sub_class", "cell_type", "hemibrain_type", "side", "top_nt"],
+            usecols=["root_id", "cell_class", "cell_sub_class", "cell_type", "hemibrain_type", "side", "top_nt",
+                     "pos_x", "pos_y", "pos_z"],  # Gate 6 places the optic-lobe cells by these
             dtype={"hemibrain_type": str},
         ).rename(columns={"cell_class": "class", "cell_sub_class": "sub_class", "top_nt": "nt"})
     ann["nt"] = ann["nt"].fillna("").str.lower()
@@ -87,7 +95,7 @@ def load_connections() -> pd.DataFrame:
     return df
 
 
-def load_connectome(ann: pd.DataFrame | None = None):
+def load_connectome():
     """Return (W, ann). W[post, pre] = ±synapse count as float32 CSR, sign -1 when pre is INHIBITORY.
 
     Pairs with fewer than MIN_SYN synapses (summed over neuropils) are dropped, and ORN synapses onto
@@ -95,7 +103,7 @@ def load_connectome(ann: pd.DataFrame | None = None):
 
     Row/column i is ann.index[i]. Edges touching neurons missing from ann are dropped.
     """
-    ann = load_annotations() if ann is None else ann
+    ann = load_annotations()
     conn = load_connections()
     idx = pd.Index(ann.index)
     pre, post = idx.get_indexer(conn["pre"]), idx.get_indexer(conn["post"])

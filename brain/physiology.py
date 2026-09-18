@@ -11,6 +11,8 @@ being headbutted (Chris, 2026-09-16).
 """
 import numpy as np
 
+from brain.personality import KNOB_DEFAULT, KNOBS
+
 HUNGER_RISE_S = 300.0  # from just fed to fully hungry, at appetite 0.5
 BITE_FULLNESS = 0.1
 THIRST_RISE_S = 400.0
@@ -26,8 +28,6 @@ LONELY_S = 60.0  # time without touching another duck before a sociable duck sta
 AGGR_TONE_MAX = 0.8  # pC1d/e input at full aggressiveness and full trigger; aIPg about 1.2 Hz at a dish
 FOOD_NEAR_HALF = 0.5  # food odor at which "near food" is 0.5
 
-KNOB_DEFAULT = 0.5
-
 
 def _knob(personality, name, n):
     return np.broadcast_to(np.asarray(personality.get(name, KNOB_DEFAULT), float), n)
@@ -36,10 +36,7 @@ def _knob(personality, name, n):
 class Physiology:
     def __init__(self, n: int, personality: dict | None = None, hunger=0.5, thirst=0.5, provoked=0.0,
                  body_temp=COMFORT_C):
-        self.n = n
-        self.k = {name: _knob(personality or {}, name, n) for name in (
-            "aggressiveness", "timidity", "curiosity", "sociability", "kindness", "appetite", "energy",
-            "sleepiness", "heat_tolerance", "water_love", "boredom_rate", "carelessness")}
+        self.k = {name: _knob(personality or {}, name, n) for name in KNOBS}
         full = lambda v: np.broadcast_to(np.asarray(v, float), n).copy()
         self.hunger, self.thirst = full(hunger), full(thirst)
         self.fatigue, self.sleep_pressure, self.boredom = full(0.0), full(0.0), full(0.0)
@@ -47,25 +44,16 @@ class Physiology:
         self.asleep = np.zeros(n, bool)
         self.alone_s = np.zeros(n)
         self.joy, self.fear, self.sorrow = full(0.0), full(0.0), full(0.0)
-        self.anger = full(provoked)  # "provoked" before Gate 5
+        self.anger = full(provoked)
 
-    @property
-    def provoked(self):
-        return self.anger
-
-    def step(self, dt: float, f=None, ate=None, bumped=None, escaped=None, speed=None):
-        """f: frame records (structured array). The keyword arrays let callers without frames step too."""
-        k, n = self.k, self.n
-        zeros = np.zeros(n)
-        get = lambda name, alt: (f[name] if f is not None else alt)
-        ate = get("ate", zeros if ate is None else ate) > 0
-        drank = get("drank", zeros) > 0
-        bumped = get("bumped", zeros if bumped is None else bumped) > 0
-        touching = (get("touch_left", zeros) + get("touch_right", zeros)) > 0
-        swimming = get("swimming", zeros) > 0
-        ambient = (get("temp_left", self.body_temp) + get("temp_right", self.body_temp)) / 2
-        escaped = zeros > 0 if escaped is None else np.asarray(escaped, bool)
-        speed = zeros if speed is None else np.abs(np.asarray(speed, float))
+    def step(self, dt: float, f, escaped, speed):
+        """f: frame records (structured array); escaped and speed: per duck, from the last step."""
+        k = self.k
+        ate, drank, bumped, swimming = (f[name] > 0 for name in ("ate", "drank", "bumped", "swimming"))
+        touching = (f["touch_left"] + f["touch_right"]) > 0
+        ambient = (f["temp_left"] + f["temp_right"]) / 2
+        escaped = np.asarray(escaped, bool)
+        speed = np.abs(np.asarray(speed, float))
 
         self.hunger = np.clip(self.hunger + dt / HUNGER_RISE_S * (0.5 + k["appetite"]) - BITE_FULLNESS * ate, 0, 1)
         self.thirst = np.clip(self.thirst + dt / THIRST_RISE_S - SIP_QUENCH * drank, 0, 1)
@@ -109,7 +97,7 @@ class Physiology:
         hot, cold = self.discomfort()
         food = (0.5 + self.hunger) * (0.75 + 0.5 * k["appetite"])
         # 1.0 for a comfortable thirst-0.5, love-0.5 duck; heat pulls toward water whatever the love
-        water = 0.5 + self.thirst + k["water_love"] * 0.5 - 0.25 + hot
+        water = 0.25 + self.thirst + 0.5 * k["water_love"] + hot
         care = 1 - 0.6 * k["carelessness"]
         # cold sensors steer toward cold (Gate 4b probe), so a hot duck turns up its cold sense to find
         # shade, and a cold duck its heat sense
@@ -119,7 +107,7 @@ class Physiology:
             "moist_air": water,
             "cold": 1 + 2 * hot, "heat": 1 + 2 * cold,
             "orn_danger": care,
-            "LPLC2": (0.5 + k["timidity"]) * care * (1 + self.fear),
+            "vision": (0.5 + k["timidity"]) * care * (1 + self.fear),  # brain/vision.py, not a set
         }
 
     def motor(self) -> dict[str, np.ndarray]:
@@ -139,5 +127,5 @@ class Physiology:
 def aggression_tone(aggressiveness, hunger, food_odor, provoked, kindness=KNOB_DEFAULT):
     """pC1d/e input level per duck."""
     near_food = food_odor / (food_odor + FOOD_NEAR_HALF)
-    calm = 1 - 0.5 * (np.asarray(kindness) - KNOB_DEFAULT) * 2 * (np.asarray(kindness) > KNOB_DEFAULT)
+    calm = 1 - np.maximum(np.asarray(kindness) - KNOB_DEFAULT, 0)
     return AGGR_TONE_MAX * aggressiveness * calm * np.clip(hunger * near_food + provoked, 0, 1)

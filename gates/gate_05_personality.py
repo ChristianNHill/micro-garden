@@ -20,6 +20,30 @@ Blind test (manual, Chris): watch the 2D view for 5 minutes with labels hidden a
   (Gate 8) and novel objects (Gate 8b); re-judge Scaredy, Loner and Curious then.
 Decision (Chris, 2026-09-17): keep all 21 labels and the Bully change; re-judge the quiet labels after
 Gates 6 and 8.
+
+2026-09-17, later: the labels check now FAILS. Re-run after the clean-code pass: same label across runs
+2.78, different labels 4.10, ratio 1.47 against the 1.5 bar. Drives still pass with the recorded numbers.
+Not the refactor: the same 10-minute garden is bit-identical before and after it (trajectories, sounds,
+headbutts), and the behavior code has not changed since 0dc72a7, on the same torch and numpy. The
+recorded 1.90/4.19 does not reproduce. The rows are still luck-dominated at 4 gardens (Carefree 0.88
+bites/min in run 1, 0.00 in run 2; Chatty 0.00 then 0.38 headbutts/min), so the measure was marginal
+when it passed. Decision (Chris, 2026-09-17): leave it failing and re-judge after Gates 6 and 8, when
+timidity, sociability and curiosity have something to react to. Untried fix: average over 8 gardens,
+which is what took the ratio from 1.06 to 1.90 when gardens went 1 -> 4.
+
+Re-run with eyes open, 2026-09-17 (Gate 6 wired vision into the closed loop at VIS_GAIN 0.05):
+- **The labels check now passes.** Same label across runs 2.10, different labels 4.23, a ratio of 2.01
+  against the 1.5 bar, where blind it failed at 1.47. This is what Chris held the gate open for:
+  timidity, sociability and curiosity finally have something to react to. Still 4 gardens, so this is
+  not more averaging, it is more signal.
+- **Both swimming checks now fail, on margin and not direction.** Water love 0.1 against 0.9 swims
+  0.55 against 0.68, needing +0.15; heat tolerance 0.05 against 0.95 swims 0.35 against 0.30, needing
+  +0.10. Blind, the water-love pair read 0.19 against 0.37. So eyes roughly triple how much every duck
+  swims and the measure saturates, squeezing the knobs together rather than reversing them.
+- Why: the pond is not drawn into the retina at all (body/stub2d/retina.py renders dishes, ducks and
+  the tree, on the grounds that water is flat on the ground). A duck cannot see water, so it wanders
+  in rather than choosing it, and a knob about wanting water cannot show through. Drawing the pond is
+  the obvious next thing to try, and is a design call: a real pond is a bright reflective surface.
 """
 import argparse
 import sys
@@ -30,7 +54,7 @@ import numpy as np
 from body.stub2d.stub import DEMO_GARDEN, DT
 from brain.data import load_connectome, named_sets
 from brain.personality import preset, stack
-from gates.episodes import run
+from gates.episodes import run, verdict
 from world.fields import SHORE_M, TREE
 
 POND = (2.0, 2.0, 0.35)  # in the sun
@@ -172,11 +196,7 @@ def main() -> int:
         print(f"({time.perf_counter() - t0:.0f} s wall)")
 
         checks["labels differ more than repeats of the same label"] = different > 1.5 * same
-    for k, v in checks.items():
-        print(f"  {'ok  ' if v else 'FAIL'} {k}")
-    ok = all(checks.values())
-    print("PASS" if ok else "FAIL")
-    return 0 if ok else 1
+    return verdict(checks)
 
 
 if __name__ == "__main__":

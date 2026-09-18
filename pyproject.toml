@@ -3,6 +3,7 @@ name = "micro-garden"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
+    "flyvis>=1.2.0",
     "numpy>=2.5.3",
     "pandas>=3.0.5",
     "pyarrow>=25.0.1",

@@ -30,8 +30,9 @@ import numpy as np
 
 import brain.server as server
 
+from body.stub2d.stub import DT
 from brain.data import load_connectome, named_sets, shuffled
-from gates.episodes import ring_poses, run
+from gates.episodes import ring_poses, run, verdict
 from world.fields import DUCK_R, SHORE_M, TREE
 
 CENTRE = (2.0, 2.0)
@@ -55,7 +56,7 @@ def pond(W, ann, sets, n, seed):
     poses = ring_poses(np.random.default_rng(seed), n, POND[:2], POND_START_M)
     traj, _ = run(W, ann, sets, [dict(food_xy=[], pond=POND, pose=p) for p in poses], POND_S, seed)
     inside = np.linalg.norm(traj[:, :, :2] - POND[:2], axis=-1) < POND[2] + SHORE_M
-    return np.where(inside.any(axis=0), inside.argmax(axis=0) * 0.02, np.inf)
+    return np.where(inside.any(axis=0), inside.argmax(axis=0) * DT, np.inf)
 
 
 def touch(W, ann, sets, n, seed):
@@ -108,11 +109,7 @@ def main() -> int:
         "touch: real ducks stay in contact under 60% of the time they do when touch is not felt":
             r["touch", "real"].mean() < 0.6 * r["touch_unfelt", "real"].mean(),
     }
-    for k, v in checks.items():
-        print(f"  {'ok  ' if v else 'FAIL'} {k}")
-    ok = all(checks.values())
-    print("PASS" if ok else "FAIL")
-    return 0 if ok else 1
+    return verdict(checks)
 
 
 if __name__ == "__main__":

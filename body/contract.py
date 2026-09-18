@@ -31,6 +31,23 @@ def _reply(mid, result=None, code=None, message=""):
     return {"jsonrpc": "2.0", "id": mid, "error": {"code": code, "message": message}}
 
 
+def _refusal(mid, method, params, params_table: dict) -> dict | None:
+    """Error reply for an unknown method or unknown params, else None."""
+    if method not in params_table:
+        return _reply(mid, code=METHOD_NOT_FOUND, message=method)
+    if not isinstance(params, dict) or set(params) - set(params_table[method]):
+        return _reply(mid, code=INVALID_PARAMS, message=f"unknown params for {method}")
+    return None
+
+
+def _run(mid, method, params, params_table: dict, call, lock: threading.Lock) -> dict:
+    try:
+        with lock:
+            return _reply(mid, call(method, {**params_table[method], **params}))
+    except (ValueError, TypeError) as e:
+        return _reply(mid, code=INVALID_PARAMS, message=str(e))
+
+
 def dispatch(line: bytes, params_table: dict, call, lock: threading.Lock) -> dict | None:
     """Handle one NDJSON line. call(method, params) runs under lock; ValueError means invalid params."""
     try:
@@ -40,20 +57,8 @@ def dispatch(line: bytes, params_table: dict, call, lock: threading.Lock) -> dic
     if not isinstance(msg, dict) or msg.get("jsonrpc") != "2.0" or not isinstance(msg.get("method"), str):
         return _reply(msg.get("id") if isinstance(msg, dict) else None, code=INVALID_REQUEST, message="invalid request")
     mid, method, params = msg.get("id"), msg["method"], msg.get("params") or {}
-    if method not in params_table:
-        err = _reply(mid, code=METHOD_NOT_FOUND, message=method)
-    elif not isinstance(params, dict) or set(params) - set(params_table[method]):
-        err = _reply(mid, code=INVALID_PARAMS, message=f"unknown params for {method}")
-    else:
-        try:
-            with lock:
-                result = call(method, {**params_table[method], **params})
-            err = None
-        except (ValueError, TypeError) as e:
-            err = _reply(mid, code=INVALID_PARAMS, message=str(e))
-    if mid is None:
-        return None
-    return err or _reply(mid, result)
+    reply = _refusal(mid, method, params, params_table) or _run(mid, method, params, params_table, call, lock)
+    return None if mid is None else reply
 
 
 def serve(path: str, params_table: dict, call, lock: threading.Lock) -> socketserver.UnixStreamServer:

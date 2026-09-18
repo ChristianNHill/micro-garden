@@ -10,6 +10,7 @@ KNOBS = [
     "energy", "sleepiness", "heat_tolerance", "water_love", "boredom_rate", "chattiness", "carelessness",
     "smarts", "playfulness", "music_affinity", "hoarding", "vanity",
 ]
+KNOB_DEFAULT = 0.5
 JITTER = 0.1
 
 LABELS = {
@@ -44,7 +45,7 @@ def preset(label: str, rng: np.random.Generator | None = None) -> dict[str, floa
     """Knob values for a label, jittered when rng is given."""
     unknown = set(LABELS[label]) - set(KNOBS)
     assert not unknown, f"{label}: unknown knobs {unknown}"
-    k = {name: LABELS[label].get(name, 0.5) for name in KNOBS}
+    k = {name: LABELS[label].get(name, KNOB_DEFAULT) for name in KNOBS}
     if rng is not None:
         k = {name: float(np.clip(v + rng.uniform(-JITTER, JITTER), 0, 1)) for name, v in k.items()}
     return k
@@ -61,5 +62,5 @@ if __name__ == "__main__":
     rng = np.random.default_rng(0)
     a, b = preset("Bully", rng), preset("Bully", rng)
     assert a != b and all(0 <= v <= 1 for v in a.values())
-    assert preset("No personality") == {k: 0.5 for k in KNOBS}
+    assert preset("No personality") == {k: KNOB_DEFAULT for k in KNOBS}
     print(f"{len(LABELS)} labels over {len(KNOBS)} knobs ok")

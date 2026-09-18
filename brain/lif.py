@@ -37,15 +37,21 @@ class LIF:
         self.adapt = torch.zeros((batch, n), device=device)
         self.ref = torch.zeros((batch, n), dtype=torch.int8, device=device)
         self.n_spikes = torch.zeros((batch, n), dtype=torch.int32, device=device)
+        self.rest_current = torch.zeros(n, device=device)
 
-    def step(self, in_b: np.ndarray, in_n: np.ndarray, in_v: np.ndarray | float = THRESH) -> torch.Tensor:
-        """Advance one tick with external input in_v added at (in_b, in_n). Returns the (batch, n) spike mask."""
+    def step(self, in_b: np.ndarray, in_n: np.ndarray, graded: tuple[torch.Tensor, torch.Tensor] | None = None
+             ) -> torch.Tensor:
+        """Advance one tick with a threshold-sized kick at each (in_b, in_n). Returns the (batch, n) spike mask.
+
+        graded is (neuron indices, release in [0, 1] per brain) for cells that do not spike: the optic
+        lobe's neurons are graded in the fly, and flyvis models them that way (brain/vision.py). Their
+        release replaces their spike this tick, 1.0 being as much transmitter as one spike carries.
+        """
         V = self.V
         V.mul_(LEAK).add_(self.syn)
         b = torch.from_numpy(in_b).to(self.dev)
         n = torch.from_numpy(in_n).to(self.dev)
-        v = torch.from_numpy(np.broadcast_to(np.float32(in_v), in_b.shape).copy()).to(self.dev)
-        V.index_put_((b, n), v, accumulate=True)
+        V.index_put_((b, n), torch.full(b.shape, THRESH, device=self.dev), accumulate=True)
         V.masked_fill_(self.ref > 0, 0.0)
         spk = V >= THRESH + self.adapt
         V.masked_fill_(spk, 0.0)
@@ -53,8 +59,23 @@ class LIF:
         if ADAPT_INC:
             self.adapt.mul_(ADAPT_DECAY).add_(spk, alpha=ADAPT_INC)
         self.n_spikes += spk
-        self.syn = torch.sparse.mm(self.W, spk.T.float()).T
+        release = spk.float()
+        if graded is not None:
+            release[:, graded[0]] = graded[1]
+        self.syn = torch.sparse.mm(self.W, release.T).T - self.rest_current
         return spk
+
+    def calibrate(self, indices: torch.Tensor, rest_release: float) -> None:
+        """Take the current a set of graded cells delivers at rest as the zero point.
+
+        Graded cells release all the time, so a blank scene still pushed the whole brain (Gate 6: the
+        giant fiber fired as often with nothing to see as with a looming disc). A fly's brain is not
+        wound up by an empty grey world, so the resting release is subtracted and only departures
+        from it drive anything.
+        """
+        rest = torch.zeros(1, self.W.shape[1], device=self.dev)
+        rest[:, indices] = rest_release
+        self.rest_current = torch.sparse.mm(self.W, rest.T).T[0]
 
     def counts(self) -> np.ndarray:
         return self.n_spikes.cpu().numpy()

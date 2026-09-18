@@ -21,6 +21,7 @@ from brain.data import load_connectome, named_sets, shuffled
 from brain.decoder import Decoder
 from brain.encoder import encode
 from brain.lif import DT_MS, LIF
+from brain.vision import VIS_TONIC, Vision
 from brain.physiology import Physiology, aggression_tone
 
 BODY_DT_MS = 20.0
@@ -64,21 +65,27 @@ def sense_levels(f: np.ndarray) -> dict:
 
 class BrainServer:
     def __init__(self, W, ann, sets, bodies, seed: int, personality: dict | None = None,
-                 hunger=0.5, thirst=0.5, provoked=0.0, body_temp=24.0, **knobs):
+                 hunger=0.5, thirst=0.5, provoked=0.0, body_temp=24.0, eyes: bool = True, **knobs):
         """bodies: list of (robot socket path, frame UDP port), one brain each. personality and knobs
         (brain/personality.py names) and starting physiology are scalars or one value per body; unset
-        knobs are 0.5."""
+        knobs are 0.5.
+
+        eyes=False leaves the ducks blind and skips flyvis, for gates that only test the other senses
+        or want the wall time back: vision costs about 12 ms a step on top of 14.
+        """
         side = ann["side"].to_numpy()
         self.sets = dict(sets)
         for name in SIDED:
             for s in ("left", "right"):
                 self.sets[f"{name}_{s}"] = sets[name][side[sets[name]] == s]
         self.n = len(bodies)
-        self.k = {**(personality or {}), **knobs}
+        knobs = {**(personality or {}), **knobs}
         self.brain = LIF(W, self.n)
-        self.decoder = Decoder(ann, self.sets, self.n, seed, self.k.get("stink_affinity", 0.5))
-        self.body = Physiology(self.n, self.k, hunger, thirst, provoked, body_temp)
-        self.chattiness = np.broadcast_to(np.asarray(self.k.get("chattiness", 0.5), float), self.n)
+        self.vision = Vision(ann, self.n, device=self.brain.dev) if eyes else None
+        if self.vision is not None:
+            self.brain.calibrate(self.vision.index, VIS_TONIC)
+        self.body = Physiology(self.n, knobs, hunger, thirst, provoked, body_temp)
+        self.decoder = Decoder(ann, self.sets, self.n, seed, self.body.k["stink_affinity"])
         self.rng = np.random.default_rng(seed)
         self.voice_rng = np.random.default_rng(seed + 1)
         self.robots = [Client(path) for path, _ in bodies]
@@ -93,11 +100,29 @@ class BrainServer:
         """One body step. lockstep=True sends intents as answered requests so a stepped body sees them."""
         read = frames.newer if lockstep else frames.latest
         self.frames = [read(r, f) for r, f in zip(self.rx, self.frames)]
-        f = np.array([x if x is not None else np.zeros((), frames.FRAME) for x in self.frames], frames.FRAME)
+        f = np.array([x if x is not None else frames.blank() for x in self.frames], frames.FRAME)
         body = self.body
         self.t += BODY_DT_MS / 1000
-        falls_asleep, wakes = body.step(BODY_DT_MS / 1000, f, escaped=self.escaped, speed=self.last_vx)
+        falls_asleep, wakes = body.step(BODY_DT_MS / 1000, f, self.escaped, self.last_vx)
 
+        levels = self._levels(f)
+        self.decoder.body = {**body.motor(), "swimming": f["swimming"] > 0, "at_shore": f["water"] > 0,
+                             "thirst": body.thirst}
+        self.escaped[:] = False
+        graded = self.vision.step(f["lum"], body.sense_gains()["vision"]) if self.vision else None
+        for _ in range(TICKS_PER_STEP):
+            intents = self.decoder.update(
+                self.brain.step(*encode(self.rng, self.sets, levels, self.n), graded=graded))
+            self.escaped |= [it["escape"] for it in intents]
+        self.last_vx = np.array([it["vx"] for it in intents])
+
+        for i, (robot, it) in enumerate(zip(self.robots, intents)):
+            self._send(robot.call if lockstep else robot.notify, i, it, f[i], falls_asleep[i], wakes[i])
+        return intents
+
+    def _levels(self, f) -> dict:
+        """Encoder levels for this step's frames, shaped by the body."""
+        body = self.body
         levels = sense_levels(f)
         wet = f["swimming"] > 0  # flies do not swim: wet reads as saturated humidity and touch all over
         for s in ("left", "right"):
@@ -112,29 +137,22 @@ class BrainServer:
         food_odor = (f["odor_left"] + f["odor_right"]) / 2
         levels["pC1_aggr"] = aggression_tone(body.k["aggressiveness"], body.hunger, food_odor, body.anger,
                                              body.k["kindness"])
+        return levels
 
-        self.decoder.body = {**body.motor(), "swimming": wet, "at_shore": f["water"] > 0, "thirst": body.thirst}
-        self.escaped[:] = False
-        for _ in range(TICKS_PER_STEP):
-            intents = self.decoder.update(self.brain.step(*encode(self.rng, self.sets, levels, self.n)))
-            self.escaped |= [it["escape"] for it in intents]
-        self.last_vx = np.array([it["vx"] for it in intents])
-
-        for i, (robot, it) in enumerate(zip(self.robots, intents)):
-            send = robot.call if lockstep else robot.notify
-            if falls_asleep[i]:
-                send("robot.relax")
-            if wakes[i]:
-                send("robot.init")
-            send("robot.move", vx=it["vx"], vy=it["vy"], vyaw=it["vyaw"])
-            if it["feed"]:
-                send("robot.do", skill="drink" if f["water"][i] > 0 else "ground_pick")
-            if it["attack"]:
-                send("robot.do", skill="headbutt")
-            tag = self._voice(i, f[i], falls_asleep[i], wakes[i])
-            if tag:
-                send("robot.sound", tag=tag)
-        return intents
+    def _send(self, send, i, it, f, falls_asleep, wakes) -> None:
+        """One duck's robot calls for this step."""
+        if falls_asleep:
+            send("robot.relax")
+        if wakes:
+            send("robot.init")
+        send("robot.move", vx=it["vx"], vy=it["vy"], vyaw=it["vyaw"])
+        if it["feed"]:
+            send("robot.do", skill="drink" if f["water"] > 0 else "ground_pick")
+        if it["attack"]:
+            send("robot.do", skill="headbutt")
+        tag = self._voice(i, f, falls_asleep, wakes)
+        if tag:
+            send("robot.sound", tag=tag)
 
     def _voice(self, i, f, falls_asleep, wakes) -> str | None:
         """A quack for this step, if any: events pick the tag, chattiness picks whether to speak."""
@@ -154,10 +172,10 @@ class BrainServer:
         tag = next((t for happened, t in events if happened), None)
         if tag is None and not b.asleep[i]:
             # idle chatter, about once a minute at chattiness 1, colored by mood
-            if self.voice_rng.random() < self.chattiness[i] * BODY_DT_MS / 1000 / 60 * (1 + 3 * b.boredom[i]):
+            if self.voice_rng.random() < b.k["chattiness"][i] * BODY_DT_MS / 1000 / 60 * (1 + 3 * b.boredom[i]):
                 tag = "peck" if b.sorrow[i] > 0.5 else "inquire" if b.boredom[i] > 0.5 else "chirp"
             return tag
-        return tag if self.voice_rng.random() < 0.2 + 0.8 * self.chattiness[i] else None
+        return tag if self.voice_rng.random() < 0.2 + 0.8 * b.k["chattiness"][i] else None
 
     def close(self) -> None:
         for c in self.robots:

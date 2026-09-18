@@ -12,6 +12,7 @@ import numpy as np
 from body import frames
 from body.contract import Client
 from body.stub2d.stub import DT, Stub
+from gates.episodes import verdict
 from world.fields import CELL_M, MAX_FOOD, SIZE_M, TREE, World
 
 N, SIM_S, HOLD_STEPS = 5, 60.0, 25
@@ -105,11 +106,7 @@ def main() -> int:
         "tree drops fruit on its period and when shaken, under its canopy":
             dropped == 3 and shaken == min(dropped + 2, MAX_FOOD) and under,
     }
-    for k, v in checks.items():
-        print(f"  {'ok  ' if v else 'FAIL'} {k}")
-    ok = all(checks.values())
-    print("PASS" if ok else "FAIL")
-    return 0 if ok else 1
+    return verdict(checks)
 
 
 if __name__ == "__main__":

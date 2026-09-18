@@ -15,7 +15,7 @@ import time
 import numpy as np
 
 from brain.data import load_connectome, named_sets, shuffled
-from gates.episodes import ring_poses, run
+from gates.episodes import ring_poses, run, verdict
 
 DISH = (2.0, 2.0)
 PAIR_S = 20.0
@@ -94,11 +94,7 @@ def main() -> int:
         "attacks grade with the aggressiveness dial": graded(dial_hits, slack=0.3),
         "time near stink grades with the stink-affinity dial": graded(dial_stink, slack=0.1),
     }
-    for k, v in checks.items():
-        print(f"  {'ok  ' if v else 'FAIL'} {k}")
-    ok = all(checks.values())
-    print("PASS" if ok else "FAIL")
-    return 0 if ok else 1
+    return verdict(checks)
 
 
 if __name__ == "__main__":

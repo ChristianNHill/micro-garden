@@ -16,6 +16,7 @@ import numpy as np
 from brain.data import load_connectome, named_sets
 from brain.encoder import MAX_HZ, encode
 from brain.lif import DT_MS, LIF
+from gates.episodes import verdict
 
 INPUTS = ["sugar_grn", "orn_food", "orn_danger", "bristle", "johnstons_organ", "lamina_L1", "lamina_L2"]
 DRIVE_HZ = 20.0
@@ -59,11 +60,7 @@ def main() -> int:
         "not silent or saturated": 0.01 < rate < 100,
         "activity propagates past kicked neurons": und > 0.1,
     }
-    for k, v in checks.items():
-        print(f"  {'ok  ' if v else 'FAIL'} {k}")
-    ok = all(checks.values())
-    print("PASS" if ok else "FAIL")
-    return 0 if ok else 1
+    return verdict(checks)
 
 
 if __name__ == "__main__":

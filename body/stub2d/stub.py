@@ -22,6 +22,7 @@ import numpy as np
 
 from body import frames
 from body.contract import ROBOT_PARAMS, serve
+from body.stub2d import retina
 from world.fields import SHORE_M, SIZE_M, DUCK_R, World, contacts, temperature_at
 
 DEMO_GARDEN = dict(food_xy=((3.0, 3.0),), bites=5, danger_xy=((2.3, 1.7),), pond=(3.1, 0.9, 0.35), fruit_every_s=20.0)
@@ -60,7 +61,6 @@ class Stub:
         self.cmd = np.zeros((n, 3))
         self.head = np.zeros((n, 4))
         self.relaxed = np.zeros(n, bool)
-        self.skill = [""] * n
         self.t = 0.0
         self.lock = threading.Lock()
         self.udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -73,37 +73,57 @@ class Stub:
         self.send_frames()
 
     def _robot_call(self, i: int):
+        handlers = {"robot.move": self._move, "robot.head": self._head, "robot.do": self._do,
+                    "robot.sound": self._sound, "robot.stop": self._stop, "robot.relax": self._relax,
+                    "robot.init": self._init}
+
         def call(method, p):
-            if method == "robot.move":
-                if not self.relaxed[i]:
-                    self.cmd[i] = np.clip([float(p["vx"]), float(p["vy"]), float(p["vyaw"])],
-                                          [-MAX_V, -MAX_VY, -MAX_VYAW], [MAX_V, MAX_VY, MAX_VYAW])
-            elif method == "robot.head":
-                self.head[i] = [float(p[k]) for k in ROBOT_PARAMS["robot.head"]]
-            elif method == "robot.do":
-                self.skill[i] = str(p["skill"])  # ponytail: 2D stub acts only on ground_pick
-                *_, dish = contacts(self.pose[:, :2], self.pose[:, 2], self.world.food)
-                if p["skill"] == "ground_pick" and dish[i] >= 0 and self.t - self.last_bite[i] >= BITE_S:
-                    self.world.eat(dish[i])
-                    self.eaten.append((self.t, i))
-                    self.last_bite[i], self.ate[i] = self.t, True
-                if p["skill"] == "headbutt":
-                    self._headbutt(i)
-                shore = abs(self.world.pond_distance(self.pose[i, :2])) <= SHORE_M
-                if p["skill"] == "drink" and shore and self.t - self.last_bite[i] >= BITE_S:
-                    self.last_bite[i], self.drank[i] = self.t, True
-            elif method == "robot.sound":
-                if p["tag"] not in SOUND_TAGS:
-                    raise ValueError(f"unknown sound tag {p['tag']!r}; known: {sorted(SOUND_TAGS)}")
-                self.sounds.append((self.t, i, p["tag"]))
-            elif method == "robot.stop":
-                self.cmd[i] = 0
-            elif method == "robot.relax":
-                self.relaxed[i], self.cmd[i] = True, 0
-            elif method == "robot.init":
-                self.relaxed[i] = False
+            handlers[method](i, p)
             return {}
         return call
+
+    def _move(self, i: int, p: dict) -> None:
+        if not self.relaxed[i]:
+            self.cmd[i] = np.clip([float(p["vx"]), float(p["vy"]), float(p["vyaw"])],
+                                  [-MAX_V, -MAX_VY, -MAX_VYAW], [MAX_V, MAX_VY, MAX_VYAW])
+
+    def _head(self, i: int, p: dict) -> None:
+        self.head[i] = [float(p[k]) for k in ROBOT_PARAMS["robot.head"]]
+
+    def _do(self, i: int, p: dict) -> None:
+        """Other skill names are accepted and do nothing on the 2D stub."""
+        if p["skill"] == "ground_pick":
+            self._pick(i)
+        elif p["skill"] == "headbutt":
+            self._headbutt(i)
+        elif p["skill"] == "drink":
+            self._drink(i)
+
+    def _sound(self, i: int, p: dict) -> None:
+        if p["tag"] not in SOUND_TAGS:
+            raise ValueError(f"unknown sound tag {p['tag']!r}; known: {sorted(SOUND_TAGS)}")
+        self.sounds.append((self.t, i, p["tag"]))
+
+    def _stop(self, i: int, p: dict) -> None:
+        self.cmd[i] = 0
+
+    def _relax(self, i: int, p: dict) -> None:
+        self.relaxed[i], self.cmd[i] = True, 0
+
+    def _init(self, i: int, p: dict) -> None:
+        self.relaxed[i] = False
+
+    def _pick(self, i: int) -> None:
+        *_, dish = contacts(self.pose[:, :2], self.pose[:, 2], self.world.food)
+        if dish[i] >= 0 and self.t - self.last_bite[i] >= BITE_S:
+            self.world.eat(dish[i])
+            self.eaten.append((self.t, i))
+            self.last_bite[i], self.ate[i] = self.t, True
+
+    def _drink(self, i: int) -> None:
+        shore = abs(self.world.pond_distance(self.pose[i, :2])) <= SHORE_M
+        if shore and self.t - self.last_bite[i] >= BITE_S:
+            self.last_bite[i], self.drank[i] = self.t, True
 
     def _swimming(self) -> np.ndarray:
         return self.world.pond_distance(self.pose[:, :2]) < -SHORE_M
@@ -165,6 +185,7 @@ class Stub:
         sense["water"] = (np.abs(edge) <= SHORE_M).astype(float)
         sense["swimming"] = (edge < -SHORE_M).astype(float)
         sense["bumped"], sense["ate"], sense["drank"] = (x.astype(float) for x in (self.bumped, self.ate, self.drank))
+        sense["lum"] = retina.luminance(xy, h, w)
         self.bumped[:] = self.ate[:] = self.drank[:] = False
         for i in range(len(xy)):
             self.udp.sendto(frames.pack(

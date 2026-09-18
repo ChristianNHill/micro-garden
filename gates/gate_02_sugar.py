@@ -17,6 +17,7 @@ from brain.data import load_connectome, named_sets, shuffled
 from brain.decoder import Decoder
 from brain.encoder import encode
 from brain.lif import DT_MS, LIF
+from gates.episodes import verdict
 
 SUGAR_TICKS = 300  # 3 s
 LOOM_ONSET, GF_DEADLINE_MS = 5, 50
@@ -64,11 +65,7 @@ def main() -> int:
         "sugar raises proboscis MN rate": on[5] > off[5] + 0.5,
         f"looming fires giant fiber within {GF_DEADLINE_MS} ms": lat is not None and lat <= GF_DEADLINE_MS,
     }
-    for k, v in checks.items():
-        print(f"  {'ok  ' if v else 'FAIL'} {k}")
-    ok = all(checks.values())
-    print("PASS" if ok else "FAIL")
-    return 0 if ok else 1
+    return verdict(checks)
 
 
 if __name__ == "__main__":

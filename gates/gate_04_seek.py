@@ -24,7 +24,7 @@ import time
 import numpy as np
 
 from brain.data import load_connectome, named_sets, shuffled
-from gates.episodes import ring_poses, run
+from gates.episodes import ring_poses, run, verdict
 
 DISH = (2.0, 2.0)
 START_M, MAX_S = 1.5, 120.0
@@ -65,13 +65,7 @@ def main() -> int:
         print(f"{label:9s} {summary(results[label])}  ({time.perf_counter() - t0:.0f} s wall)", flush=True)
 
     real = np.median(results["real"])
-    if BOUND_S is None:
-        print("BOUND_S not set yet: record the real median above and commit a bound")
-        return 1
-    ok = real < BOUND_S
-    print(f"  {'ok  ' if ok else 'FAIL'} real median {real:.1f} s < bound {BOUND_S} s")
-    print("PASS" if ok else "FAIL")
-    return 0 if ok else 1
+    return verdict({f"real median {real:.1f} s < bound {BOUND_S} s": real < BOUND_S})
 
 
 if __name__ == "__main__":
