@@ -16,6 +16,7 @@ N_HEX = 721
 OMMATIDIUM_DEG = 5.8  # interommatidial angle, Drosophila
 EYE_AZ_DEG = 55.0  # each eye's optical axis, degrees off forward; the two overlap frontally to +-20 deg
 BACKGROUND, DISH_I, DUCK_I, TREE_I = 0.5, 1.0, 0.15, 0.0
+HAND_I, HAND_R = 0.9, 0.12  # the player's hand, a pale thing about the size of two dishes
 POND_I = 0.85  # water reflecting the sky; bright, but not as bright as food
 EYE_H = 0.10  # metres off the ground. ponytail: a guess at microduck eye height; measure it at Gate 10
 HORIZON_DEG = 1.5  # below this the ground point is past the garden anyway, and one column covers acres of it
@@ -36,12 +37,18 @@ def scene(world, duck_xy: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     rows = [(x, y, DISH_R, DISH_I) for x, y in world.food]
     rows += [(x, y, DUCK_R, DUCK_I) for x, y in duck_xy]
     rows.append((TREE[0], TREE[1], TREE[2], TREE_I))
-    owner = np.concatenate([np.full(len(world.food), -1), np.arange(len(duck_xy)), [-1]])
+    if getattr(world, "hand", None) is not None:
+        rows.append((world.hand[0], world.hand[1], HAND_R, HAND_I))
+    owner = np.concatenate([np.full(len(world.food), -1), np.arange(len(duck_xy)),
+                            np.full(len(rows) - len(world.food) - len(duck_xy), -1)])
     return np.array(rows, float).reshape(-1, 4), owner
 
 
-def luminance(duck_xy: np.ndarray, heading: np.ndarray, world) -> np.ndarray:
-    """(n ducks, 2 eyes, 721) intensities, left eye first. A duck does not see itself."""
+def luminance(duck_xy: np.ndarray, heading: np.ndarray, world, light: float = 1.0) -> np.ndarray:
+    """(n ducks, 2 eyes, 721) intensities, left eye first. A duck does not see itself.
+
+    `light` dims the whole scene toward the background at night, so contrast goes with the sun.
+    """
     rows, owner = scene(world, duck_xy)
     n = len(duck_xy)
     lum = np.full((n, 2, N_HEX), BACKGROUND, np.float32)
@@ -71,4 +78,4 @@ def luminance(duck_xy: np.ndarray, heading: np.ndarray, world) -> np.ndarray:
         gy = duck_xy[:, 1, None, None] + ground * np.sin(col_az)
         wet = (np.hypot(gx - px, gy - py) < pr) & (ground < nearest)
         lum[wet] = POND_I
-    return lum
+    return BACKGROUND + (lum - BACKGROUND) * light

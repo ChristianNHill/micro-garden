@@ -15,7 +15,12 @@ EMIT = 1.0
 DISH_R = 0.08
 DUCK_R = 0.07
 SUN_C, SHADE_C = 30.0, 20.0
+DAY_S = 600.0  # a whole day and night in simulated seconds; short enough that a gate can watch one
+NIGHT_C = 8.0  # how much colder the garden gets when the sun is down
+DAWN = 0.15  # fraction of the cycle that dawn and dusk take; the rest is flat day or flat night
 TREE = (1.0, 3.0, 0.7)  # shade centre x, y and radius
+MUSIC_M = 1.2  # music is half as loud every 0.8 m or so; a garden-wide thing, unlike a duck's smell
+DUCK_SMELL_M = 0.5  # another duck smells half as strong every 0.35 m or so
 HUMID_FALLOFF_M = 0.4  # humidity halves about every 0.3 m away from the pond edge
 SHORE_M = 0.1  # a duck whose centre is within this of the pond edge can drink
 FRUIT_BITES = 3
@@ -29,6 +34,8 @@ class World:
         self.bites = np.full(len(self.food), bites)
         self.danger = np.asarray(danger_xy, float).reshape(-1, 2)
         self.pond = pond
+        self.hand = None  # (x, y) while the player's hand is in the garden (PLAN.md Gate 8)
+        self.music = None  # (x, y) while something is playing (PLAN.md Gate 8b)
         self.odor = np.zeros((GRID, GRID))
         self.danger_odor = np.zeros((GRID, GRID))
         self.diffuse(2000)  # start near steady state
@@ -91,10 +98,48 @@ class World:
         return np.exp(-np.maximum(self.pond_distance(xy), 0) / HUMID_FALLOFF_M)
 
 
-def temperature_at(xy) -> np.ndarray:
-    """Sunny garden with one shade tree, soft 10 cm edge."""
+def music_at(sensor_xy, source) -> np.ndarray:
+    """How loud the music is at a point, 1 at the speaker and falling off with distance (Gate 8b)."""
+    if source is None:
+        return np.zeros(len(np.atleast_2d(sensor_xy)))
+    d = np.linalg.norm(np.atleast_2d(np.asarray(sensor_xy, float)) - np.asarray(source, float), axis=-1)
+    return np.exp(-d / MUSIC_M)
+
+
+def duck_odor_at(sensor_xy, duck_xy, exclude: int) -> np.ndarray:
+    """How strongly one duck's antenna smells the others (PLAN.md Gate 8).
+
+    Worked out per pair rather than diffused on a grid: ducks move every step, so a grid would have to
+    rewrite its sources constantly, and a shared one would have each duck smelling its own emission
+    loudest of all. A distance kernel excludes the smeller for nothing and is exact.
+    """
+    d = np.linalg.norm(np.asarray(duck_xy, float) - np.asarray(sensor_xy, float), axis=-1)
+    smell = np.exp(-d / DUCK_SMELL_M)
+    smell[exclude] = 0.0
+    return smell.sum()
+
+
+def daylight(t: float) -> float:
+    """How light the garden is, 0 at night and 1 in the day, with a dawn and a dusk (PLAN.md Gate 3).
+
+    A flat-topped cycle rather than a sine: a garden should spend most of its day being day, not
+    forever on its way to noon.
+    """
+    phase = (t % DAY_S) / DAY_S
+    if phase < 0.5 - DAWN / 2:
+        return 1.0
+    if phase < 0.5 + DAWN / 2:
+        return float(np.clip((0.5 + DAWN / 2 - phase) / DAWN, 0, 1))  # dusk
+    if phase < 1.0 - DAWN:
+        return 0.0
+    return float(np.clip((phase - (1.0 - DAWN)) / DAWN, 0, 1))  # dawn
+
+
+def temperature_at(xy, light: float = 1.0) -> np.ndarray:
+    """Sunny garden with one shade tree, soft 10 cm edge. The whole garden cools once the sun is down."""
     d = np.linalg.norm(np.asarray(xy, float) - TREE[:2], axis=-1)
-    return SHADE_C + (SUN_C - SHADE_C) / (1 + np.exp(-(d - TREE[2]) / 0.1))
+    warm = SHADE_C + (SUN_C - SHADE_C) / (1 + np.exp(-(d - TREE[2]) / 0.1))
+    return warm - NIGHT_C * (1.0 - light)
 
 
 def contacts(duck_xy: np.ndarray, heading: np.ndarray, food_xy: np.ndarray):

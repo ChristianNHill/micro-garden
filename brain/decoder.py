@@ -43,6 +43,11 @@ FEED_HZ = 1.0  # proboscis MN rate that means "eat"
 # DNp32 is one neuron per side: a stray spike adds 0.5 Hz to its 2 s average, stink holds it near 1 Hz.
 STINK_FLOOR_HZ, STINK_FULL_HZ, STINK_TAU_MS = 0.3, 0.8, 2000.0
 STINK_VYAW_PER_HZ = 0.5  # rad/s per Hz of left minus right DNp32
+MUSIC_VYAW = 1.5  # rad/s toward the louder ear at full music affinity, and away from it at none
+GROOM_HZ = 0.4  # grooming DN rate at which a duck is fussing with its head enough to shed a hat
+PREEN_REROLL_TICKS = 500  # a hatted duck reconsiders the thing on its head every 5 s, as it does wading
+PREEN_P = 0.3  # chance of shedding at each of those, at no vanity at all; a scale, not a threshold
+FEAR_STOPS_FEEDING = 0.5  # a frightened duck goes off its food, which is how one duck drives another off
 STINK_LINGER = 0.5  # a stink lover slows to this fraction of its speed in the stink
 # aIPg mean rate; silent without the mood input. The full-scale rate is what the aggressiveness knob
 # actually reaches at 1.0, measured: 0.0, 0.95, 2.63, 3.47, 4.37 Hz across the dial. It was 1.0 back
@@ -50,10 +55,14 @@ STINK_LINGER = 0.5  # a stink lover slows to this fraction of its speed in the s
 # dial into a switch (Gate 4c, 2026-09-18).
 AGGR_FLOOR_HZ, AGGR_FULL_HZ, AGGR_TAU_MS = 0.05, 4.4, 1000.0
 WADE_REROLL_TICKS = 500  # a duck at the shore reconsiders wading in every 5 s
-ATTACK_P = 0.1  # chance per tick of a headbutt while touching, at full aggression (graded, not a threshold)
+# Chance per tick of a headbutt while touching, at full aggression (graded, not a threshold). 0.1 meant
+# ten strikes a second, which is not a duck, and it put every setting above aggression 0.2 inside the
+# ~0.7 s it takes the touch rate to climb past TOUCH_HZ, so the dial could not spread. At 0.01 a fully
+# aggressive duck strikes about once a second and the dial runs 20.0, 4.8, 1.7, 1.3, 1.0 s (Gate 4c).
+ATTACK_P = 0.01
 TOUCH_HZ = 1.0  # DNg48 left plus right rate that means another duck is touching
 
-FWD, BACK, STEER_L, STEER_R, GF, FEED, STINK_L, STINK_R, TOUCH_L, TOUCH_R, AIPG = range(11)
+FWD, BACK, STEER_L, STEER_R, GF, FEED, STINK_L, STINK_R, TOUCH_L, TOUCH_R, AIPG, GROOM = range(12)
 
 
 class Decoder:
@@ -66,7 +75,8 @@ class Decoder:
 
         steer = np.concatenate([sets["DNa02"], sets["odor_steer"], sets["moist_steer"]])
         members = [sets["DNp09"], sets["moonwalker"], *by_side(steer), sets["giant_fiber"], sets["proboscis_mn"],
-                   *by_side(sets["danger_valence"]), *by_side(sets["touch_steer"]), sets["aIPg"]]
+                   *by_side(sets["danger_valence"]), *by_side(sets["touch_steer"]), sets["aIPg"],
+                   sets["grooming_dn"]]
         self.idx = torch.from_numpy(np.concatenate(members)).to(DEVICE)
         self.group = np.repeat(np.arange(len(members)), [len(m) for m in members])
         self.size = np.array([len(m) for m in members], np.float32)
@@ -120,10 +130,17 @@ class Decoder:
         self.in_stink = stink > 0
         avoid, like = stink * ~self.lingers, stink * self.lingers
         aggression = np.clip((r[AIPG] - AGGR_FLOOR_HZ) / (AGGR_FULL_HZ - AGGR_FLOOR_HZ), 0, 1)
-        feeding = (r[FEED] > FEED_HZ) & ~self.wades & ~swimming & ~asleep
+        feeding = ((r[FEED] > FEED_HZ) & ~self.wades & ~swimming & ~asleep
+                   & (b("fear", 0.0) < FEAR_STOPS_FEEDING))
         attack = ((r[TOUCH_L] + r[TOUCH_R] > TOUCH_HZ) & (self.rng.random(n) < ATTACK_P * aggression)
                   & ~swimming & ~asleep)
         zoomies = b("zoomies", False)
+        # A hat itches, and the grooming neurons say so. Vanity is what stops a duck shaking it off.
+        # Decided every few seconds rather than every tick: rolled per tick, even vanity 0.95 got six
+        # thousand chances to shed in a minute and no hat survived its first second (Gate 8b).
+        preen = ((r[GROOM] > GROOM_HZ) & b("hatted", False) & ~asleep
+                 & (self.ticks % PREEN_REROLL_TICKS == 0)
+                 & (self.rng.random(n) < PREEN_P * (1 - b("vanity", 0.5))))
 
         vx = np.clip(BASE_VX + VX_PER_HZ * (r[FWD] - r[BACK]), -RUN_VX, RUN_VX) * b("speed", 1.0)
         vx = np.where(zoomies, RUN_VX, vx)
@@ -141,11 +158,15 @@ class Decoder:
         toward_touch = np.maximum(aggression, b("social", 0.0))
         steer = (1 - share) * (r[STEER_L] - r[STEER_R]) + share * (r[TOUCH_L] - r[TOUCH_R]) * (1 - 2 * toward_touch)
         wander = self.wander * b("wander", 1.0) * np.where(zoomies, 2.0, 1.0)
+        # Music: a duck with a taste for it turns toward the louder ear, one without turns away, and a
+        # duck in the middle does neither. Whether it likes music is the knob; the sound is the garden's.
+        taste = 2 * b("music_affinity", 0.5) - 1
         vyaw = ((wander + VYAW_PER_HZ * steer) * (1 - avoid)
-                + STINK_VYAW_PER_HZ * (r[STINK_L] - r[STINK_R]) * (like - avoid))
+                + STINK_VYAW_PER_HZ * (r[STINK_L] - r[STINK_R]) * (like - avoid)
+                + MUSIC_VYAW * taste * (b("music_left", 0.0) - b("music_right", 0.0)))
         vyaw = np.where(asleep, 0.0, vyaw)
         return [
             {"vx": float(vx[b]), "vy": 0.0, "vyaw": float(vyaw[b]), "escape": bool(onset[b]),
-             "feed": bool(feeding[b]), "attack": bool(attack[b])}
+             "feed": bool(feeding[b]), "attack": bool(attack[b]), "preen": bool(preen[b])}
             for b in range(len(self.rates))
         ]

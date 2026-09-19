@@ -23,7 +23,7 @@ import torch
 
 from brain.encoder import graded as graded_senses
 from brain.lif import DT_MS, LIF
-from brain.plasticity import sparsen
+from brain.plasticity import Plasticity, sparsen, strip
 from brain.vision import VIS_TONIC, Vision
 from brain.physiology import Physiology, aggression_tone
 
@@ -34,13 +34,18 @@ ODOR_HALF = 0.5  # odor concentration that gives input level 0.5; the dish itsel
 # the normalized left/right difference is a modelling assumption standing in for peripheral sharpening.
 # Real and shuffled brains get the same input.
 ODOR_CONTRAST = 8.0
+DUCK_HALF = 0.3  # a duck about half a metre away gives an input level of 0.5
 HUMID_HALF = 0.1  # humidity 1 m from the pond edge is about 0.08
 DRY_LEVEL = 0.2  # dry-air neurons at full dryness; kept low so dry air does not swamp other senses
 TEMP_COMFORT_C, TEMP_SPAN_C, TEMP_LEVEL = 25.0, 5.0, 0.5
 TOUCH_LEVEL = 0.2  # bristle input per side while another duck touches that side
+PET_LEVEL = 0.6  # a hand on the head is felt on every bristle, harder than a duck brushing past
 VOICE_COOLDOWN_S = 3.0
 NO_SPIKES = np.empty(0, np.int64)  # every sense is graded now; nothing is injected as spikes
-SIDED = ["orn_food", "orn_danger", "moist_air", "dry_air", "heat", "cold", "bristle"]
+SCARE_LEVEL = 0.8  # a clap, straight onto the looming detectors
+SIDED = ["orn_food", "orn_danger", "moist_air", "dry_air", "heat", "cold", "bristle", "orn_pheromone"]
+MUSIC_HALF = 0.4  # loudness that gives an input level of 0.5 on the Johnston's organ
+HAT_LEVEL = 0.5  # a hat sits on the head, felt on every bristle for as long as it is there
 
 
 def bilateral(left, right, half):
@@ -55,27 +60,36 @@ def sense_levels(f: np.ndarray) -> dict:
     """Frame records (structured array, one per brain) -> encoder levels."""
     lv = {}
     for name, key, half in (("orn_food", "odor", ODOR_HALF), ("orn_danger", "danger", ODOR_HALF),
-                            ("moist_air", "humidity", HUMID_HALF)):
+                            ("moist_air", "humidity", HUMID_HALF), ("orn_pheromone", "duck", DUCK_HALF)):
         lv[f"{name}_left"], lv[f"{name}_right"] = bilateral(f[f"{key}_left"], f[f"{key}_right"], half)
     for side in ("left", "right"):
         temp = f[f"temp_{side}"]
         lv[f"heat_{side}"] = TEMP_LEVEL * np.clip((temp - TEMP_COMFORT_C) / TEMP_SPAN_C, 0, 1)
         lv[f"cold_{side}"] = TEMP_LEVEL * np.clip((TEMP_COMFORT_C - temp) / TEMP_SPAN_C, 0, 1)
         lv[f"dry_air_{side}"] = DRY_LEVEL * (1 - f[f"humidity_{side}"])
-        lv[f"bristle_{side}"] = TOUCH_LEVEL * np.minimum(f[f"touch_{side}"], 1)
+        lv[f"bristle_{side}"] = np.maximum(np.maximum(TOUCH_LEVEL * np.minimum(f[f"touch_{side}"], 1),
+                                                      PET_LEVEL * f["petted"]),  # a hand covers both sides
+                                           HAT_LEVEL * f["hat"])
+    music = (f["music_left"] + f["music_right"]) / 2
+    lv["johnstons_organ"] = music / (music + MUSIC_HALF)
+    lv["LPLC2"] = SCARE_LEVEL * f["scared"]  # the clap the player makes
     lv["sugar"], lv["water_taste"] = f["sugar"], f["water"]  # combined into sugar_grn after gains
     return lv
 
 
 class BrainServer:
     def __init__(self, W, ann, sets, bodies, seed: int, personality: dict | None = None,
-                 hunger=0.5, thirst=0.5, provoked=0.0, body_temp=24.0, eyes: bool = True, **knobs):
+                 hunger=0.5, thirst=0.5, provoked=0.0, body_temp=24.0, eyes: bool = True, learns: bool = False, **knobs):
         """bodies: list of (robot socket path, frame UDP port), one brain each. personality and knobs
         (brain/personality.py names) and starting physiology are scalars or one value per body; unset
         knobs are 0.5.
 
         eyes=False leaves the ducks blind and skips flyvis, for gates that only test the other senses
         or want the wall time back: vision costs about 12 ms a step on top of 14.
+
+        learns=True gives each duck its own mushroom body, depressed by sugar and by the player's hand
+        (brain/plasticity.py). Off by default: a duck that learns behaves differently in every scenario,
+        so it wants proving at Gate 8 before the earlier gates inherit it.
         """
         side = ann["side"].to_numpy()
         self.sets = dict(sets)
@@ -84,8 +98,9 @@ class BrainServer:
                 self.sets[f"{name}_{s}"] = sets[name][side[sets[name]] == s]
         self.n = len(bodies)
         knobs = {**(personality or {}), **knobs}
-        self.brain = LIF(W, self.n)
+        self.brain = LIF(strip(W, sets) if learns else W, self.n)
         sparsen(self.brain, sets)  # a sparse odor code, as in the fly (Gate 7)
+        self.plastic = Plasticity(W, sets, self.n, self.brain.dev) if learns else None
         self.vision = Vision(ann, self.n, device=self.brain.dev) if eyes else None
         if self.vision is not None:
             self.brain.calibrate(self.vision.index, VIS_TONIC)
@@ -112,7 +127,9 @@ class BrainServer:
 
         levels = self._levels(f)
         self.decoder.body = {**body.motor(), "swimming": f["swimming"] > 0, "at_shore": f["water"] > 0,
-                             "thirst": body.thirst}
+                             "thirst": body.thirst, "hatted": f["hat"] > 0, "fear": body.fear,
+                             "music_left": f["music_left"], "music_right": f["music_right"],
+                             "music_affinity": body.k["music_affinity"], "vanity": body.k["vanity"]}
         self.escaped[:] = False
         # Senses release steadily rather than firing a random subset of each set per tick: the same
         # mean current with none of the sampling noise, which is what makes a smell recognisable from
@@ -121,8 +138,14 @@ class BrainServer:
         if self.vision is not None:
             eye = self.vision.step(f["lum"], body.sense_gains()["vision"])
             drive = (torch.cat([drive[0], eye[0]]), torch.cat([drive[1], eye[1]], dim=1))
+        # Sugar and a hand on the head are what dopamine is for; a startle is the punishing kind.
+        reward = np.maximum(f["ate"], f["petted"]) if self.plastic else None
+        punish = np.maximum(f["scared"], self.escaped.astype(float)) if self.plastic else None
         for _ in range(TICKS_PER_STEP):
-            intents = self.decoder.update(self.brain.step(NO_SPIKES, NO_SPIKES, graded=drive))
+            spk = self.brain.step(NO_SPIKES, NO_SPIKES, graded=drive, plastic=self.plastic)
+            if self.plastic is not None:
+                self.plastic.step(spk, reward, punish)
+            intents = self.decoder.update(spk)
             self.escaped |= [it["escape"] for it in intents]
         self.last_vx = np.array([it["vx"] for it in intents])
 
@@ -160,6 +183,8 @@ class BrainServer:
             send("robot.do", skill="drink" if f["water"] > 0 else "ground_pick")
         if it["attack"]:
             send("robot.do", skill="headbutt")
+        if it["preen"]:
+            send("robot.do", skill="preen")
         tag = self._voice(i, f, falls_asleep, wakes)
         if tag:
             send("robot.sound", tag=tag)

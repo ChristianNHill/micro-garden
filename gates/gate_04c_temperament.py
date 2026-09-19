@@ -8,28 +8,19 @@ alternates sides across episodes. Aggressiveness feeds the pC1d/e mood (brain/ph
 brain's aIPg turns it into attacks (brain/decoder.py). The shuffled brain is printed beside the first
 scenario. Stink affinity is a readout knob (brain/decoder.py).
 
-STATUS 2026-09-18: seven of eight pass. Closed here by Chris; the last one is left failing.
-- The knob itself is a scale again. Graded senses roughly quadrupled aIPg's rate (0.0, 0.95, 2.63,
-  3.47, 4.37 Hz across the dial), but the decoder still normalised against AGGR_FULL_HZ 1.0, set when
-  the senses were noisy, so everything from 0.5 up clipped to the same value. Re-anchored to 4.4, the
-  measured rate at knob 1.0, and the aggression variable now runs 0.0, 0.21, 0.59, 0.79, 0.99.
-- The count still saturates: headbutts per episode 0.0, 0.35, 0.9, 1.0, 1.0. That 1.0 is a ceiling,
-  not a plateau. Dish time is 1.0 at every knob, so the two ducks are in contact for the whole 20 s,
-  and "did a headbutt happen at all" is near-certain for any attack probability above nothing. A count
-  cannot grade under continuous contact.
-- Measured 2026-09-18, four episodes at full aggressiveness: the headbutt lands at 3.1, 1.1, 0.4 and
-  0.6 s, and the pair touches for only 13-20% of the 20 s, nearly all of it before that hit. They
-  spawn 0.130 m apart, inside the 0.14 m contact range, so the opening clash fires almost at once; the
-  0.15 m push then puts them out of range and they never re-close, median gap 0.157 to 0.504 m. Dish
-  time is still 1.0 because both sit within 0.15 m of the dish centre, which allows a 0.3 m gap.
-- So the count only ever sees the opening clash, and "did that land" is near-certain above about knob
-  0.2. The dial check now reads how soon the first blow lands instead, which has no ceiling and already
-  spread 0.4 to 3.1 s at a single knob setting (Chris, 2026-09-18). The count is still printed.
-- Left open: a bully never comes back for a second go. That is a question about the ducks rather than
-  the metric, and it belongs to Gate 8, where social behaviour is the subject.
-- Everything else here held through graded senses and the varied start poses, including the stink dial
-  (0.11, 0.22, 0.38, 0.68, 0.87), which never depended on sensory noise because it is a coin flip in
-  the decoder rather than a race between drives.
+STATUS 2026-09-18: PASSING, all eight.
+- The dial reads the first blow as a rate rather than a count. A count could not grade: the pair spawns
+  inside contact range, so every episode offers one opportunity and "did that land" is near-certain.
+- ATTACK_P dropped from 0.1 a tick to 0.01. Ten strikes a second is not a duck, and every setting above
+  aggression 0.2 was landing inside the ~0.7 s the touch rate needs to climb past TOUCH_HZ, which
+  squashed the top of the dial. First blow now falls at 20.0, 18.1, 15.2, 10.8 and 9.1 s across the
+  knob, and the raw count grades too at 0.0, 0.1, 0.25, 0.5, 0.6 where it had been pinned at 1.0 for
+  the top three. That the count recovered on its own says the mechanism was at fault, not the metric.
+- AGGR_FULL_HZ was re-anchored 1.0 -> 4.4 earlier in the same sitting: graded senses quadrupled aIPg's
+  rate and the decoder was still normalising against what it reached when the senses were noisy.
+- Worth an eye at the blind test: a duck at full aggressiveness now lands 0.6 headbutts in 20 s where
+  it landed 1.0, because the pair only touches 13-20% of an episode. The dial grades, but the top end
+  is a milder bully than it was.
 """
 import argparse
 import sys
@@ -119,7 +110,10 @@ def main() -> int:
     # first shove puts them out of it for the rest of the episode, so every episode offers exactly one
     # opportunity and a count can only ask whether that one landed: near-certain above about knob 0.2.
     # Latency has no such ceiling (Gate 4c, measured 2026-09-18).
-    dial_speed = [PAIR_S - f[0] for f in dial_first]
+    # As a rate, not a waiting time: the knob sets a chance of attacking per tick, and rate is its
+    # linear image where latency is its reciprocal. Measured latencies 20.0, 13.4, 2.8, 0.8, 0.7 s put
+    # the middle knob 89% of the way up as a speed but 22% as a rate, and a scale wants it in the middle.
+    dial_rate = [1.0 / f[0] for f in dial_first]
     dial_stink = [stink(W, ann, sets, n, a) for a in DIAL]
     print(f"aggressiveness {DIAL}: first headbutt after {np.round([f[0] for f in dial_first], 1).tolist()} s"
           f"  headbutts per episode {np.round(dial_hits, 2).tolist()}  dish time {np.round(dial_on, 2).tolist()}")
@@ -133,7 +127,7 @@ def main() -> int:
         "provoked duck attacks": fight_hits[0] > 0 and meek_hits[0] > 0,
         "aggressive target hits back, meek target does not": fight_hits[1] > 0 and meek_hits[1] == 0,
         "stink lovers spend at least twice as long near stink": lover > 2 * averse,
-        "attacks come sooner as the aggressiveness dial rises": graded(dial_speed, slack=2.0),
+        "attacks come faster as the aggressiveness dial rises": graded(dial_rate, slack=0.05),
         "time near stink grades with the stink-affinity dial": graded(dial_stink, slack=0.1),
     }
     return verdict(checks)

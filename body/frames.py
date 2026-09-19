@@ -16,8 +16,14 @@ FRAME = np.dtype([
     ("humidity_left", "<f4"), ("humidity_right", "<f4"),
     ("temp_left", "<f4"), ("temp_right", "<f4"),
     ("touch_left", "<f4"), ("touch_right", "<f4"),
+    ("duck_left", "<f4"), ("duck_right", "<f4"),  # how strongly the other ducks smell, per antenna
     ("sugar", "<f4"), ("water", "<f4"),  # water: beak can reach the pond (shore band)
     ("bumped", "<f4"),  # 1 on the step another duck headbutted this one
+    ("petted", "<f4"),  # 1 on the step the player petted this one (PLAN.md Gate 8)
+    ("scared", "<f4"),  # 1 on the step something startled this one
+    ("light", "<f4"),  # how light the garden is, 0 at night and 1 in the day
+    ("music_left", "<f4"), ("music_right", "<f4"),  # how loud the music is at each ear (Gate 8b)
+    ("hat", "<f4"),  # 1 while this duck is wearing a hat
     ("ate", "<f4"),  # 1 on the step this duck took a bite
     ("drank", "<f4"),  # 1 on the step this duck took a sip
     ("swimming", "<f4"),  # 1 while the duck is in the pond past the shore band

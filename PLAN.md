@@ -90,7 +90,7 @@ Check: `gates/gate_04c_temperament.py`:
 - in-between knob values give in-between behavior (knobs are scales, not switches)
 - the shuffled brain is printed beside the first scenario
 
-Re-run with graded senses (2026-09-18): **seven of eight pass, closed with the last one failing** (Chris). The aggressiveness knob is a proper scale again once `AGGR_FULL_HZ` was re-anchored from 1.0 to 4.4, the rate aIPg actually reaches now that the senses are not noisy; the aggression variable runs 0.0, 0.21, 0.59, 0.79, 0.99. But headbutts per episode still read 0.0, 0.35, 0.9, 1.0, 1.0, because dish time is 1.0 at every knob: the ducks are in contact for the whole 20 s, so at least one headbutt is near-certain and a count has a ceiling. Time to the first headbutt would grade where a count cannot; not tried.
+Re-run with graded senses (2026-09-18): **passing, all eight.** The dial reads the first blow as a rate rather than counting blows, and `ATTACK_P` dropped from 0.1 a tick to 0.01: ten strikes a second is not a duck, and every setting above aggression 0.2 was landing inside the ~0.7 s the touch rate needs to pass `TOUCH_HZ`. First blow now falls at 20.0, 18.1, 15.2, 10.8, 9.1 s across the knob and the raw count grades too (0.0, 0.1, 0.25, 0.5, 0.6) where it had been pinned at 1.0. `AGGR_FULL_HZ` was also re-anchored 1.0 to 4.4, since graded senses quadrupled aIPg's rate. A full-aggression duck is now a milder bully, 0.6 headbutts in 20 s against 1.0.
 
 ### Gate 5: physiology and personality presets (M)
 Build: `brain/physiology.py` hunger, thirst, fatigue, sleep pressure, temperature comfort; fast reactions Joy, Fear, Urge to Cry with decay rates; gain scaling and neuromodulator tone into the encoder. `brain/personality.py` the knobs and the label presets from ARCHITECTURE.md §2.4 with jitter. Sleep sends `robot.relax`.
@@ -168,6 +168,10 @@ Check: `gates/gate_08b_toys.py`, headless:
 - a hat stays on a duck with a high vanity knob longer than on one with a low knob
 - the shuffled brain is printed beside each
 Earlier sensory hookups (music as Johnston's organ input, danger odor, bitter taste, touch) can land before Gate 5 as small steps if Chris asks.
+
+Built and **passing** 2026-09-18, music and hats only. A duck that likes music ends up 1.79 m from the speaker against 2.28 m for one that does not (shuffled 1.90 m), and a hat stays on 100% of the time at vanity 0.95 against 28% at 0.05, grading in between. Music is heard through the 1,103 Johnston's organ neurons with the sound falling off across the garden; a hat is felt on all 1,417 bristles and the grooming neurons answer the itch. Both knobs were defined at Gate 5 and had never been used.
+**The ball and the shiny rocks wait on vision.** Both are things a duck has to see, and vision runs at a fifth of the gain Gate 6 alone would want so that it does not drown the nose, which is the same reason Gate 8's hand is printed rather than asserted. Music and hats ride hearing and touch, which carry.
+Music steering is explicit in the decoder rather than emergent: a duck turns toward or away from the louder ear according to its affinity. The plan puts the decision with the knob, but no sound-responsive descending neuron was found by screening the way `odor_steer` and `danger_valence` were, and that screen is the more faithful route.
 
 ### Gate 9: persistence (S)
 Build: `brain/save.py` serializes physiology, plasticity weights, personality, world objects (including hats worn, rocks at nests), seed; on load, simulates elapsed wall-clock forward in coarse steps, capped at three simulated days.

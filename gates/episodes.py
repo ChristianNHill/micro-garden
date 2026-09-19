@@ -1,13 +1,38 @@
 """Closed-loop episodes for gate checks: one stub per episode, every duck of every episode driven by one
 batched brain, in lockstep over the contract. Also the shared pass/fail report."""
+import socket
 import tempfile
 from contextlib import ExitStack, closing
 
 import numpy as np
 
+from body import frames
 from body.contract import Client
 from body.stub2d.stub import DT, Stub
 from brain.server import BrainServer
+
+
+def free_port_base(wanted: int, count: int, tries: int = 40) -> int:
+    """A block of `count` UDP ports nobody else holds, starting at or after `wanted`.
+
+    Gates bind a port per duck and two running at once used to collide on the default, which kills one
+    of them partway through a long run. Asking the operating system is cheaper than remembering.
+    """
+    for attempt in range(tries):
+        base = wanted + attempt * 64
+        probes = []
+        try:
+            for i in range(count):
+                sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                sock.bind((frames.HOST, base + i))
+                probes.append(sock)
+            return base
+        except OSError:
+            continue
+        finally:
+            for sock in probes:
+                sock.close()
+    raise OSError(f"no free block of {count} ports from {wanted}")
 
 
 def run(W, ann, sets, episodes: list[dict], max_s: float, seed: int, port_base: int = 7700, until=None,
@@ -19,6 +44,8 @@ def run(W, ann, sets, episodes: list[dict], max_s: float, seed: int, port_base: 
     closed but keep their state (eaten, world).
     """
     with ExitStack() as cleanup:
+        port_base = free_port_base(port_base, sum(len(np.asarray(e["pose"], float).reshape(-1, 3))
+                                                  for e in episodes))
         stubs, bodies, ctls, port = [], [], [], port_base
         for ep in episodes:
             d = cleanup.enter_context(tempfile.TemporaryDirectory(prefix="mg"))

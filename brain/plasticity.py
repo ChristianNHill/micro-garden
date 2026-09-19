@@ -21,6 +21,11 @@ from brain.lif import DT_MS, SYN_GAIN
 # odor and two odors share 79% of their cells, so depressing one odor's synapses depresses the other's
 # and nothing can be learned about one smell in particular. At +1.0 about 5% respond, which is what is
 # measured in the fly (Turner et al. 2008), and the overlap falls to 0.44. At +2.0 they go silent.
+# The mushroom body's own synapse, stronger than the brain's uniform SYN_GAIN. Kenyon cells are 77% of
+# an MBON's excitatory input by weight, but sparsening them (which odor specificity needs) left them
+# supplying only 22% of its firing, so the MBONs were driven by the tonic rest and learning could not
+# move them. At x10 they supply 79%, which is what the wiring says they should (Gate 8, 2026-09-18).
+MB_GAIN = 10.0
 KC_THRESHOLD = 1.0
 KC_TRACE_MS = 1000.0  # how long a Kenyon cell stays eligible after firing; the pairing window
 DEPRESS_PER_S = 3.0  # fraction of a synapse's remaining weight lost per second of full coincidence
@@ -36,7 +41,7 @@ class Plasticity:
         self.post = torch.from_numpy(sets["MBON"][block.row].astype(np.int64)).to(device)
         self.pre = torch.from_numpy(sets["kenyon_cells"][block.col].astype(np.int64)).to(device)
         self.pre_local = torch.from_numpy(block.col.astype(np.int64)).to(device)  # into trace, not the brain
-        self.base = torch.from_numpy((block.data * SYN_GAIN).astype(np.float32)).to(device)
+        self.base = torch.from_numpy((block.data * SYN_GAIN * MB_GAIN).astype(np.float32)).to(device)
         self.w = self.base.repeat(batch, 1)  # (batch, edges), the only weights that ever change
         self.trace = torch.zeros((batch, len(sets["kenyon_cells"])), device=device)
         self.kc = torch.from_numpy(sets["kenyon_cells"].astype(np.int64)).to(device)

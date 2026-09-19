@@ -19,6 +19,8 @@ THIRST_RISE_S = 400.0
 SIP_QUENCH = 0.1
 FATIGUE_M = 30.0  # metres of walking from rested to exhausted, at energy 0.5
 REST_S = 60.0  # standing still from exhausted to rested
+NIGHT_SLEEPINESS = 2.0  # sleep pressure builds this many times faster once the sun is down
+DAY_WAKING = 1.0  # daylight cancels an ordinary duck's build entirely, so it stays up all day; a sleepy one still naps
 AWAKE_S = 600.0  # awake time before sleep pressure is full, at sleepiness 0.5
 SLEEP_S = 120.0  # asleep time to clear full sleep pressure
 BODY_TEMP_TAU_S, WATER_C = 30.0, 18.0
@@ -60,8 +62,14 @@ class Physiology:
         tire = speed * dt / FATIGUE_M * (1.5 - k["energy"])
         rest = np.where(speed < 0.01, dt / REST_S, 0.0) * (1 + self.asleep)
         self.fatigue = np.clip(self.fatigue + tire - rest, 0, 1)
+        # Night is what makes a duck sleepy; daylight is what wears the sleepiness off. Without this a
+        # duck simply ran down like a clock and slept whenever its 10 minutes were up (PLAN.md Gate 3).
+        light = np.asarray(f["light"], float) if "light" in f.dtype.names else np.ones_like(self.hunger)
+        dark = 1.0 - light
+        build = dt / AWAKE_S * (0.5 + k["sleepiness"]) * (1 + NIGHT_SLEEPINESS * dark)
         self.sleep_pressure = np.clip(
-            self.sleep_pressure + np.where(self.asleep, -dt / SLEEP_S, dt / AWAKE_S * (0.5 + k["sleepiness"])), 0, 1)
+            self.sleep_pressure + np.where(self.asleep, -dt / SLEEP_S, build)
+            - dt / AWAKE_S * DAY_WAKING * light, 0, 1)
         target = np.where(swimming, WATER_C, ambient)
         self.body_temp += (target - self.body_temp) * dt / BODY_TEMP_TAU_S
 
@@ -73,8 +81,13 @@ class Physiology:
         # slows Anger's; curiosity speeds Sorrow's)
         fade = lambda x, tau: x * np.exp(-dt / tau)
         self.joy = np.clip(fade(self.joy, 10.0) + 0.3 * (ate | drank), 0, 1)
-        self.fear = np.clip(fade(self.fear, 3 + 15 * k["timidity"] + 5 * (1 - k["aggressiveness"])) + 0.8 * escaped, 0, 1)
-        self.anger = np.where(bumped, 1.0, fade(self.anger, 3 + 15 * k["aggressiveness"]))
+        # Being shoved frightens a timid duck and angers an aggressive one. It used to anger every duck
+        # alike, so a Scaredy walked straight back to the dish it had just been driven off and a Bully
+        # displaced nobody (Gate 8, 2026-09-18).
+        self.fear = np.clip(fade(self.fear, 3 + 15 * k["timidity"] + 5 * (1 - k["aggressiveness"]))
+                            + 0.8 * escaped + bumped * k["timidity"], 0, 1)
+        self.anger = np.clip(np.where(bumped, self.anger + k["aggressiveness"],
+                                      fade(self.anger, 3 + 15 * k["aggressiveness"])), 0, 1)
         lonely = (self.alone_s > LONELY_S) & (k["sociability"] > 0.5)
         mope = dt / 30.0 * lonely * (k["sociability"] - 0.5) * 2 + 0.3 * bumped * k["timidity"]
         self.sorrow = np.clip(fade(self.sorrow, 5 + 20 * (1 - k["curiosity"])) + mope, 0, 1)
@@ -95,7 +108,8 @@ class Physiology:
         """Multipliers on encoder levels, by input set name (sides share a gain)."""
         k = self.k
         hot, cold = self.discomfort()
-        food = (0.5 + self.hunger) * (0.75 + 0.5 * k["appetite"])
+        # A frightened duck goes off its food, which is what lets one duck drive another off a dish
+        food = (0.5 + self.hunger) * (0.75 + 0.5 * k["appetite"]) * (1 - 0.6 * self.fear)
         # A hot duck has two ways to cool down and water love decides which it reaches for: one wades
         # in, another sits under the tree. Both are what a duck does, so it is a knob and not a bug
         # (Chris, 2026-09-18). It also stops the two pulling against each other, which is what made a

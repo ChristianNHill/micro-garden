@@ -6,7 +6,10 @@ frame_port + duck. robot.do ground_pick on a dish eats it; robot.do headbutt pus
 in front of the attacker back by PUSH_M. robot.do drink at the pond's shore band takes a sip; past the
 shore a duck swims at SWIM_SPEED. robot.sound is logged. With fruit_every_s set, the shade tree drops fruit on that
 period; garden.shake_tree on control.sock (a player action) drops SHAKE_FRUIT at once. In the viewer,
-click the tree.
+click the tree. garden.pet {duck} is the player's hand on a duck's head: bristles, and a reward.
+garden.scare claps, startling every duck. garden.hand {x, y, feed} puts the hand in the garden, where
+the ducks can see it, and drops that many bites at it. garden.music {x, y, on} starts something playing
+and garden.hat {duck, on} puts a hat on one; a duck shakes a hat off by grooming.
 
 Run free at real time with the debug window:  uv run python -m body.stub2d.stub --view --wander
 Without --wander the ducks stand still until a client sends robot.move.
@@ -23,7 +26,8 @@ import numpy as np
 from body import frames
 from body.contract import ROBOT_PARAMS, serve
 from body.stub2d import retina
-from world.fields import SHORE_M, SIZE_M, DUCK_R, World, contacts, temperature_at
+from world.fields import (SHORE_M, SIZE_M, DUCK_R, World, contacts, daylight, duck_odor_at,
+                          music_at, temperature_at)
 
 DEMO_GARDEN = dict(food_xy=((3.0, 3.0),), bites=5, danger_xy=((2.3, 1.7),), pond=(3.1, 0.9, 0.35), fruit_every_s=20.0)
 
@@ -31,7 +35,9 @@ DT = 0.02
 # ponytail: guessed limits standing in for robotd's clamps; replace with the sim's real ones at Gate 10
 MAX_V, MAX_VY, MAX_VYAW = 0.3, 0.15, 2.0
 ANTENNA = np.array([0.06, 0.05])  # forward, lateral offset of each odor sample, metres
-CONTROL_PARAMS = {"sim.step": {"n": 1}, "sim.state": {}, "garden.shake_tree": {}}
+CONTROL_PARAMS = {"sim.step": {"n": 1}, "sim.state": {}, "garden.shake_tree": {}, "garden.pet": {"duck": 0},
+                  "garden.scare": {}, "garden.hand": {"x": 0.0, "y": 0.0, "feed": 0},
+                  "garden.music": {"x": 0.0, "y": 0.0, "on": 1}, "garden.hat": {"duck": 0, "on": 1}}
 SHAKE_FRUIT = 2
 PUSH_M = 0.15
 SWIM_SPEED = 0.5  # fraction of commanded speed while swimming
@@ -54,6 +60,11 @@ class Stub:
         self.eaten = []  # (t, duck)
         self.headbutts = []  # (t, attacker, victim)
         self.bumped = np.zeros(n, bool)
+        self.petted = np.zeros(n, bool)
+        self.scared = np.zeros(n, bool)
+        self.hats = np.zeros(n, bool)
+        self.preened = []  # (t, duck) each time one is shaken off
+        self.pets = []  # (t, duck)
         self.ate = np.zeros(n, bool)
         self.drank = np.zeros(n, bool)
         self.sounds = []  # (t, duck, tag)
@@ -98,6 +109,9 @@ class Stub:
             self._headbutt(i)
         elif p["skill"] == "drink":
             self._drink(i)
+        elif p["skill"] == "preen" and self.hats[i]:
+            self.hats[i] = False  # shaken off
+            self.preened.append((self.t, i))
 
     def _sound(self, i: int, p: dict) -> None:
         if p["tag"] not in SOUND_TAGS:
@@ -143,6 +157,26 @@ class Stub:
         return self.world.drop_fruit(self.fruit_rng, SHAKE_FRUIT)
 
     def _control_call(self, method, p):
+        if method == "garden.pet":
+            i = int(p["duck"])
+            self.petted[i] = True
+            self.pets.append((self.t, i))
+            return {}
+        if method == "garden.music":
+            self.world.music = (float(p["x"]), float(p["y"])) if int(p["on"]) else None
+            return {}
+        if method == "garden.hat":
+            self.hats[int(p["duck"])] = bool(int(p["on"]))
+            return {}
+        if method == "garden.scare":
+            self.scared[:] = True  # a clap: everything in the garden hears it
+            return {}
+        if method == "garden.hand":
+            self.world.hand = (float(p["x"]), float(p["y"]))
+            if p.get("feed"):
+                self.world.food = np.vstack([self.world.food, self.world.hand])
+                self.world.bites = np.append(self.world.bites, int(p["feed"]))
+            return {}
         if method == "garden.shake_tree":
             return {"fell": self.shake_tree()}
         if method == "sim.step":
@@ -173,20 +207,26 @@ class Stub:
         left = np.column_stack([-np.sin(h), np.cos(h)])
         base = xy + ANTENNA[0] * fwd
         w = self.world
+        light = daylight(self.t)
         sense = {}
         for side, p in (("left", base + ANTENNA[1] * left), ("right", base - ANTENNA[1] * left)):
             sense[f"odor_{side}"] = w.odor_at(p)
             sense[f"danger_{side}"] = w.odor_at(p, w.danger_odor)
             sense[f"humidity_{side}"] = w.humidity_at(p)
-            sense[f"temp_{side}"] = temperature_at(p)
+            sense[f"temp_{side}"] = temperature_at(p, light)
+            sense[f"duck_{side}"] = np.array([duck_odor_at(p[i], xy, i) for i in range(len(xy))])
+            sense[f"music_{side}"] = music_at(p, w.music)
         sense["touch_left"], sense["touch_right"], dish = contacts(xy, h, w.food)
         sense["sugar"] = (dish >= 0).astype(float)
         edge = w.pond_distance(xy)
         sense["water"] = (np.abs(edge) <= SHORE_M).astype(float)
         sense["swimming"] = (edge < -SHORE_M).astype(float)
-        sense["bumped"], sense["ate"], sense["drank"] = (x.astype(float) for x in (self.bumped, self.ate, self.drank))
-        sense["lum"] = retina.luminance(xy, h, w)
-        self.bumped[:] = self.ate[:] = self.drank[:] = False
+        sense["bumped"], sense["ate"], sense["drank"], sense["petted"], sense["scared"] = (
+            x.astype(float) for x in (self.bumped, self.ate, self.drank, self.petted, self.scared))
+        sense["lum"] = retina.luminance(xy, h, w, light)
+        self.bumped[:] = self.ate[:] = self.drank[:] = self.petted[:] = self.scared[:] = False
+        sense["light"] = np.full(len(xy), light)
+        sense["hat"] = self.hats.astype(float)
         for i in range(len(xy)):
             self.udp.sendto(frames.pack(
                 t=self.t, duck=i, x=xy[i, 0], y=xy[i, 1], heading=h[i], **{k: v[i] for k, v in sense.items()},
@@ -209,6 +249,11 @@ def main() -> None:
     ap.add_argument("--sock-dir", default=os.path.expanduser("~/.cache/micro-garden"))
     ap.add_argument("--view", action="store_true")
     ap.add_argument("--wander", action="store_true", help="random walk every 0.5 s, for watching the stub alone")
+    ap.add_argument("--brain", action="store_true",
+                    help="drive the ducks from here with the real brain, so the viewer has drives to show")
+    ap.add_argument("--labels", default="Bully,Napper,Carefree,Chatty,Scaredy",
+                    help="one personality per duck when --brain is on")
+    ap.add_argument("--learns", action="store_true", help="let the ducks learn from sugar and petting")
     args = ap.parse_args()
     os.makedirs(args.sock_dir, exist_ok=True)
     stub = Stub(args.ducks, args.seed, args.sock_dir, **DEMO_GARDEN)
@@ -217,6 +262,20 @@ def main() -> None:
     if args.view:
         from viewer.debug2d import Viewer
         view = Viewer()
+    server = None
+    if args.brain:
+        from brain.data import load_connectome, named_sets
+        from brain.personality import preset, stack
+        from brain.server import BrainServer
+        print("loading the connectome, which takes a moment ...")
+        W, ann = load_connectome()
+        rng_k = np.random.default_rng(args.seed)
+        labels = (args.labels.split(",") * args.ducks)[:args.ducks]
+        bodies = [(os.path.join(args.sock_dir, f"{name}.sock"), frames.FRAME_PORT + i)
+                  for i, name in enumerate(stub.names)]
+        server = BrainServer(W, ann, named_sets(ann), bodies, args.seed, learns=args.learns,
+                             personality=stack([preset(x, rng_k) for x in labels]))
+        print(f"driving {', '.join(labels)}")
     rng = np.random.default_rng(args.seed)
     next_t, ticks = time.monotonic(), 0
     def click(xy):
@@ -231,8 +290,11 @@ def main() -> None:
                                             rng.uniform(-1.5, 1.5, args.ducks)])
             ticks += 1
             stub.step()
+        if server is not None:
+            server.step(lockstep=False)  # outside the lock: it talks to the stub over its sockets
+        with stub.lock:
             if view:
-                view.draw(stub)
+                view.draw(stub, server)
         next_t += DT
         time.sleep(max(0.0, next_t - time.monotonic()))
 
