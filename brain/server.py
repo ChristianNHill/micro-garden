@@ -19,8 +19,11 @@ from body import frames
 from body.contract import Client
 from brain.data import load_connectome, named_sets, shuffled
 from brain.decoder import Decoder
-from brain.encoder import encode
+import torch
+
+from brain.encoder import graded as graded_senses
 from brain.lif import DT_MS, LIF
+from brain.plasticity import sparsen
 from brain.vision import VIS_TONIC, Vision
 from brain.physiology import Physiology, aggression_tone
 
@@ -36,6 +39,7 @@ DRY_LEVEL = 0.2  # dry-air neurons at full dryness; kept low so dry air does not
 TEMP_COMFORT_C, TEMP_SPAN_C, TEMP_LEVEL = 25.0, 5.0, 0.5
 TOUCH_LEVEL = 0.2  # bristle input per side while another duck touches that side
 VOICE_COOLDOWN_S = 3.0
+NO_SPIKES = np.empty(0, np.int64)  # every sense is graded now; nothing is injected as spikes
 SIDED = ["orn_food", "orn_danger", "moist_air", "dry_air", "heat", "cold", "bristle"]
 
 
@@ -81,6 +85,7 @@ class BrainServer:
         self.n = len(bodies)
         knobs = {**(personality or {}), **knobs}
         self.brain = LIF(W, self.n)
+        sparsen(self.brain, sets)  # a sparse odor code, as in the fly (Gate 7)
         self.vision = Vision(ann, self.n, device=self.brain.dev) if eyes else None
         if self.vision is not None:
             self.brain.calibrate(self.vision.index, VIS_TONIC)
@@ -109,10 +114,15 @@ class BrainServer:
         self.decoder.body = {**body.motor(), "swimming": f["swimming"] > 0, "at_shore": f["water"] > 0,
                              "thirst": body.thirst}
         self.escaped[:] = False
-        graded = self.vision.step(f["lum"], body.sense_gains()["vision"]) if self.vision else None
+        # Senses release steadily rather than firing a random subset of each set per tick: the same
+        # mean current with none of the sampling noise, which is what makes a smell recognisable from
+        # one whiff to the next (Gate 7). Vision already worked this way, so the two just concatenate.
+        drive = graded_senses(self.sets, levels, self.n, self.brain.dev, self.rng)
+        if self.vision is not None:
+            eye = self.vision.step(f["lum"], body.sense_gains()["vision"])
+            drive = (torch.cat([drive[0], eye[0]]), torch.cat([drive[1], eye[1]], dim=1))
         for _ in range(TICKS_PER_STEP):
-            intents = self.decoder.update(
-                self.brain.step(*encode(self.rng, self.sets, levels, self.n), graded=graded))
+            intents = self.decoder.update(self.brain.step(NO_SPIKES, NO_SPIKES, graded=drive))
             self.escaped |= [it["escape"] for it in intents]
         self.last_vx = np.array([it["vx"] for it in intents])
 

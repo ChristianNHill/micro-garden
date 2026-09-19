@@ -44,6 +44,37 @@ Re-run with eyes open, 2026-09-17 (Gate 6 wired vision into the closed loop at V
   the tree, on the grounds that water is flat on the ground). A duck cannot see water, so it wanders
   in rather than choosing it, and a knob about wanting water cannot show through. Drawing the pond is
   the obvious next thing to try, and is a design call: a real pond is a bright reflective surface.
+
+Re-run with the pond drawn into the retina, 2026-09-18:
+- **Water lovers now pass.** Swim time 0.41 against 0.64 for water love 0.1 against 0.9, a gap of 0.23
+  against the 0.15 wanted, where a blind-to-water duck read 0.55 against 0.68. Both numbers fell: ducks
+  stopped blundering into water they could not see and started choosing it, which is what the knob means.
+- **Heat tolerance now fails the other way round**, 0.18 for an intolerant duck against 0.29 for a
+  tolerant one, where it wants the intolerant one higher. This looks like a real conflict rather than
+  noise. `physiology.sense_gains` turns a hot duck's cold sense up (`"cold": 1 + 2 * hot`) so it steers
+  toward cold to find shade, and POND sits in the sun on purpose. Now that water is visible and steering
+  can act, shade-seeking beats cooling off: the hot duck walks away from the sunny pond. Blind, it
+  wandered in regardless. SHADED_POND already exists in this file if the intent is to test the swim urge
+  without the steering fighting it.
+- The labels ratio fell from 2.01 to 1.52 against the 1.5 bar (same label 2.73, different labels 4.16).
+  Still passing, but back to the thin margin this check has always had.
+
+Re-run with graded senses, 2026-09-18: four of five pass.
+- **The labels check is comfortable at last**, 4.28 against 1.87, a ratio of 2.29 where it read 1.47
+  failing and then 1.52. Graded senses sharpened the signatures: Scaredy moves 0.87 of the time at
+  nearly twice everyone's speed and keeps the least company, Napper is the only one that sleeps,
+  Chatty quacks 6.5 a minute against Scaredy's 2.7.
+- Water lovers pass more clearly too: 0.15 against 0.43 swimming, a gap of 0.28 where 0.15 is wanted.
+- **The shade-or-water knob came out inverted** (0.21 for a water lover, 0.34 for a water-shy duck).
+  First explanation, that cold-seeking walks a duck into the pond, was wrong: `temperature_at` depends
+  only on distance from the tree, so the pond is not cold to sense and cold-seeking does steer to shade.
+  The real fault was arithmetic. `swim_urge` was `clip(water_love + hot)`, and heat alone pinned it at
+  1.00 for every duck, so one that hates water waded in exactly as readily as one that loves it. Heat
+  now multiplies the taste for water instead of standing in for it, `clip(water_love * (1 + hot))`,
+  which leaves the shade case untouched (0.10 and 0.90) and separates the sunny one (0.20 against 1.00).
+  Re-run: the drives half passes all four. A hot duck with water love 0.9 swims 0.24 against 0.12 for
+  one with 0.1, the right way round where it read 0.21 against 0.34, and the shade figures are
+  bit-identical at 0.15 and 0.43. The margin is 0.12 against a 0.10 bar, so it is thin.
 """
 import argparse
 import sys
@@ -167,18 +198,20 @@ def main() -> int:
         shy = swim_time(W, ann, sets, pond=SHADED_POND, water_love=0.1, body_temp=21.0)
         lover = swim_time(W, ann, sets, pond=SHADED_POND, water_love=0.9, body_temp=21.0)
         print(f"time swimming in the shade: water love 0.1 {shy:.2f}, 0.9 {lover:.2f}")
-        # same sunny pond: heat-intolerant ducks overheat sooner and go back in to cool off (swimming cools a
-        # duck, so a hot duck's swims are short; comparing two ponds also mixed in their positions)
-        intolerant = swim_time(W, ann, sets, pond=POND, water_love=0.3, heat_tolerance=0.05)
-        tolerant = swim_time(W, ann, sets, pond=POND, water_love=0.3, heat_tolerance=0.95)
-        print(f"time swimming at the sunny pond: heat tolerance 0.05 {intolerant:.2f}, 0.95 {tolerant:.2f}")
+        # Two ducks equally bad at heat, at the same sunny pond, differing only in water love: one
+        # cools off by wading in and the other by sitting in the shade. Which it picks is the knob, not
+        # the temperature (Chris, 2026-09-18). Asking instead whether every hot duck swims had it
+        # backwards, because shade-seeking beat cooling off once the water became visible.
+        waders = swim_time(W, ann, sets, pond=POND, water_love=0.9, heat_tolerance=0.05)
+        shaders = swim_time(W, ann, sets, pond=POND, water_love=0.1, heat_tolerance=0.05)
+        print(f"hot ducks at the sunny pond: water love 0.9 swims {waders:.2f}, 0.1 swims {shaders:.2f}")
         napper, energetic = sleep_time(W, ann, sets, "Napper", minutes), sleep_time(W, ann, sets, "Energetic", minutes)
         print(f"time asleep over {minutes:g} min: Napper {napper:.2f}, Energetic {energetic:.2f}")
 
         checks |= {
             "drinking lowers thirst": after < before - 0.3,
             "water lovers swim more": lover > shy + 0.15,
-            "heat-intolerant ducks swim more in the sun": intolerant > tolerant + 0.1,
+            "a hot duck cools off in the way its water love picks": waders > shaders + 0.1,
             "Napper sleeps more than Energetic": napper > energetic + 0.05,
         }
     if args.part in ("labels", "all"):

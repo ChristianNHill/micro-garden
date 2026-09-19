@@ -44,7 +44,11 @@ FEED_HZ = 1.0  # proboscis MN rate that means "eat"
 STINK_FLOOR_HZ, STINK_FULL_HZ, STINK_TAU_MS = 0.3, 0.8, 2000.0
 STINK_VYAW_PER_HZ = 0.5  # rad/s per Hz of left minus right DNp32
 STINK_LINGER = 0.5  # a stink lover slows to this fraction of its speed in the stink
-AGGR_FLOOR_HZ, AGGR_FULL_HZ, AGGR_TAU_MS = 0.05, 1.0, 1000.0  # aIPg mean rate; silent without the mood input
+# aIPg mean rate; silent without the mood input. The full-scale rate is what the aggressiveness knob
+# actually reaches at 1.0, measured: 0.0, 0.95, 2.63, 3.47, 4.37 Hz across the dial. It was 1.0 back
+# when the senses were noisy, which clipped every knob from 0.5 up to the same value and turned the
+# dial into a switch (Gate 4c, 2026-09-18).
+AGGR_FLOOR_HZ, AGGR_FULL_HZ, AGGR_TAU_MS = 0.05, 4.4, 1000.0
 WADE_REROLL_TICKS = 500  # a duck at the shore reconsiders wading in every 5 s
 ATTACK_P = 0.1  # chance per tick of a headbutt while touching, at full aggression (graded, not a threshold)
 TOUCH_HZ = 1.0  # DNg48 left plus right rate that means another duck is touching

@@ -96,16 +96,19 @@ class Physiology:
         k = self.k
         hot, cold = self.discomfort()
         food = (0.5 + self.hunger) * (0.75 + 0.5 * k["appetite"])
-        # 1.0 for a comfortable thirst-0.5, love-0.5 duck; heat pulls toward water whatever the love
-        water = 0.25 + self.thirst + 0.5 * k["water_love"] + hot
+        # A hot duck has two ways to cool down and water love decides which it reaches for: one wades
+        # in, another sits under the tree. Both are what a duck does, so it is a knob and not a bug
+        # (Chris, 2026-09-18). It also stops the two pulling against each other, which is what made a
+        # heat-intolerant duck walk away from a sunny pond once it could see the water (Gate 5).
+        water = 0.25 + self.thirst + 0.5 * k["water_love"] + hot * k["water_love"]
         care = 1 - 0.6 * k["carelessness"]
         # cold sensors steer toward cold (Gate 4b probe), so a hot duck turns up its cold sense to find
-        # shade, and a cold duck its heat sense
+        # shade, and a cold duck its heat sense; a water lover skips the shade and heads for the pond
         return {
             "orn_food": food, "sugar": food,  # sugar and water share the sugar/water taste neurons
             "water_taste": 0.5 + self.thirst,
             "moist_air": water,
-            "cold": 1 + 2 * hot, "heat": 1 + 2 * cold,
+            "cold": 1 + 2 * hot * (1 - k["water_love"]), "heat": 1 + 2 * cold,
             "orn_danger": care,
             "vision": (0.5 + k["timidity"]) * care * (1 + self.fear),  # brain/vision.py, not a set
         }
@@ -119,7 +122,10 @@ class Physiology:
             "zoomies": (self.boredom > 0.8) & (k["energy"] > 0.6) & (self.fatigue < 0.3),
             "social": np.clip((k["sociability"] - 0.5) * 2, 0, 1),
             "asleep": self.asleep,
-            "swim_urge": np.clip(k["water_love"] + self.discomfort()[0], 0, 1),
+            # Heat multiplies a duck's taste for water rather than standing in for it. Added, heat
+            # alone pinned the urge at 1.0 for every duck, so one that hates water waded in exactly as
+            # readily as one that loves it and the knob could not act at all (Gate 5, 2026-09-18).
+            "swim_urge": np.clip(k["water_love"] * (1 + self.discomfort()[0]), 0, 1),
             "swim_thirst_weight": 1 - 0.5 * k["water_love"],  # water lovers wade in even a little thirsty
         }
 

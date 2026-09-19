@@ -38,14 +38,20 @@ class LIF:
         self.ref = torch.zeros((batch, n), dtype=torch.int8, device=device)
         self.n_spikes = torch.zeros((batch, n), dtype=torch.int32, device=device)
         self.rest_current = torch.zeros(n, device=device)
+        # Per-neuron threshold, above the shared one. Kenyon cells need it: in the fly each fires only
+        # when several of its few inputs coincide, and that is what keeps the odor code sparse.
+        self.thresh_offset = torch.zeros(n, device=device)
 
-    def step(self, in_b: np.ndarray, in_n: np.ndarray, graded: tuple[torch.Tensor, torch.Tensor] | None = None
-             ) -> torch.Tensor:
+    def step(self, in_b: np.ndarray, in_n: np.ndarray, graded: tuple[torch.Tensor, torch.Tensor] | None = None,
+             plastic=None) -> torch.Tensor:
         """Advance one tick with a threshold-sized kick at each (in_b, in_n). Returns the (batch, n) spike mask.
 
         graded is (neuron indices, release in [0, 1] per brain) for cells that do not spike: the optic
         lobe's neurons are graded in the fly, and flyvis models them that way (brain/vision.py). Their
         release replaces their spike this tick, 1.0 being as much transmitter as one spike carries.
+
+        plastic is a brain.plasticity.Plasticity, whose Kenyon cell -> MBON synapses are per duck and
+        so cannot live in the shared matrix. It must own that block (see `strip`) or it counts twice.
         """
         V = self.V
         V.mul_(LEAK).add_(self.syn)
@@ -53,7 +59,7 @@ class LIF:
         n = torch.from_numpy(in_n).to(self.dev)
         V.index_put_((b, n), torch.full(b.shape, THRESH, device=self.dev), accumulate=True)
         V.masked_fill_(self.ref > 0, 0.0)
-        spk = V >= THRESH + self.adapt
+        spk = V >= THRESH + self.adapt + self.thresh_offset
         V.masked_fill_(spk, 0.0)
         self.ref.sub_(1).clamp_(min=0).masked_fill_(spk, REFRAC)
         if ADAPT_INC:
@@ -63,6 +69,8 @@ class LIF:
         if graded is not None:
             release[:, graded[0]] = graded[1]
         self.syn = torch.sparse.mm(self.W, release.T).T - self.rest_current
+        if plastic is not None:
+            self.syn += plastic.current(spk)
         return spk
 
     def calibrate(self, indices: torch.Tensor, rest_release: float) -> None:
