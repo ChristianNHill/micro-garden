@@ -24,6 +24,9 @@ FRAME = np.dtype([
     ("light", "<f4"),  # how light the garden is, 0 at night and 1 in the day
     ("music_left", "<f4"), ("music_right", "<f4"),  # how loud the music is at each ear (Gate 8b)
     ("hat", "<f4"),  # 1 while this duck is wearing a hat
+    # The wind on the antennae: how hard it blows, 0 to 1, and where it comes from, in radians off the
+    # nose and positive to the left. A still garden sends zeros.
+    ("wind", "<f4"), ("wind_from", "<f4"),
     ("ate", "<f4"),  # 1 on the step this duck took a bite
     ("drank", "<f4"),  # 1 on the step this duck took a sip
     ("swimming", "<f4"),  # 1 while the duck is in the pond past the shore band

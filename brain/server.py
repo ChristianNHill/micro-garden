@@ -26,14 +26,24 @@ from brain.lif import DT_MS, LIF
 from brain.plasticity import Plasticity, sparsen, strip
 from brain.vision import VIS_TONIC, Vision
 from brain.physiology import Physiology, aggression_tone
+from world.fields import CELL_M, DECAY, DIFFUSION
 
 BODY_DT_MS = 20.0
 TICKS_PER_STEP = int(BODY_DT_MS / DT_MS)
 ODOR_HALF = 0.5  # odor concentration that gives input level 0.5; the dish itself is about 3
+# A stink now carries as far as food does, so a duck would read a faint one everywhere as alarm. It
+# should flee a stink it is standing in, not one it can just smell (audit, 2026-09-19).
+DANGER_HALF = 1.5
 # Antennae 10 cm apart see about 1.17:1; steering DNs need about 3:1 (Gate 4 model work). This gain on
 # the normalized left/right difference is a modelling assumption standing in for peripheral sharpening.
 # Real and shuffled brains get the same input.
 ODOR_CONTRAST = 8.0
+# That 8 was set when a smell's decay length was 0.62 m. Two antennae 10 cm apart in an exponential
+# plume differ by about (10 cm / 2) / decay length, so a smell that carries further is a shallower one:
+# at 1 m the difference is 5% where it was 8%, and Gate 4 fell from 20/20 to 10/20 with nothing else
+# changed (A/B, 2026-09-19). The diffused smells scale the contrast with their decay length, so the
+# brain is handed the same left/right ratio it was tuned on however far the smell carries.
+PLUME_CONTRAST = ODOR_CONTRAST * (np.sqrt(DIFFUSION / DECAY) * CELL_M) / 0.625
 DUCK_HALF = 0.3  # a duck about half a metre away gives an input level of 0.5
 HUMID_HALF = 0.1  # humidity 1 m from the pond edge is about 0.08
 DRY_LEVEL = 0.2  # dry-air neurons at full dryness; kept low so dry air does not swamp other senses
@@ -43,15 +53,17 @@ PET_LEVEL = 0.6  # a hand on the head is felt on every bristle, harder than a du
 VOICE_COOLDOWN_S = 3.0
 NO_SPIKES = np.empty(0, np.int64)  # every sense is graded now; nothing is injected as spikes
 SCARE_LEVEL = 0.8  # a clap, straight onto the looming detectors
-SIDED = ["orn_food", "orn_danger", "moist_air", "dry_air", "heat", "cold", "bristle", "orn_pheromone"]
+SIDED = ["orn_food", "orn_danger", "moist_air", "dry_air", "heat", "cold", "bristle", "orn_pheromone",
+         "jo_push", "jo_pull"]
+ANTENNA_OUT = np.pi / 4  # each antenna points about 45 degrees out from the nose
 MUSIC_HALF = 0.4  # loudness that gives an input level of 0.5 on the Johnston's organ
 HAT_LEVEL = 0.5  # a hat sits on the head, felt on every bristle for as long as it is there
 
 
-def bilateral(left, right, half):
-    """Per-side input levels: saturating overall level, left/right difference amplified by ODOR_CONTRAST."""
+def bilateral(left, right, half, contrast=ODOR_CONTRAST):
+    """Per-side input levels: saturating overall level, left/right difference amplified by contrast."""
     mean = (left + right) / 2
-    d = ODOR_CONTRAST * (left - right) / np.maximum(left + right, 1e-9)
+    d = contrast * (left - right) / np.maximum(left + right, 1e-9)
     level = mean / (mean + half)
     return level * np.clip(1 + d, 0, 2), level * np.clip(1 - d, 0, 2)
 
@@ -59,9 +71,11 @@ def bilateral(left, right, half):
 def sense_levels(f: np.ndarray) -> dict:
     """Frame records (structured array, one per brain) -> encoder levels."""
     lv = {}
-    for name, key, half in (("orn_food", "odor", ODOR_HALF), ("orn_danger", "danger", ODOR_HALF),
-                            ("moist_air", "humidity", HUMID_HALF), ("orn_pheromone", "duck", DUCK_HALF)):
-        lv[f"{name}_left"], lv[f"{name}_right"] = bilateral(f[f"{key}_left"], f[f"{key}_right"], half)
+    for name, key, half, contrast in (("orn_food", "odor", ODOR_HALF, PLUME_CONTRAST),
+                                      ("orn_danger", "danger", DANGER_HALF, PLUME_CONTRAST),
+                                      ("moist_air", "humidity", HUMID_HALF, ODOR_CONTRAST),
+                                      ("orn_pheromone", "duck", DUCK_HALF, ODOR_CONTRAST)):
+        lv[f"{name}_left"], lv[f"{name}_right"] = bilateral(f[f"{key}_left"], f[f"{key}_right"], half, contrast)
     for side in ("left", "right"):
         temp = f[f"temp_{side}"]
         lv[f"heat_{side}"] = TEMP_LEVEL * np.clip((temp - TEMP_COMFORT_C) / TEMP_SPAN_C, 0, 1)
@@ -70,6 +84,11 @@ def sense_levels(f: np.ndarray) -> dict:
         lv[f"bristle_{side}"] = np.maximum(np.maximum(TOUCH_LEVEL * np.minimum(f[f"touch_{side}"], 1),
                                                       PET_LEVEL * f["petted"]),  # a hand covers both sides
                                            HAT_LEVEL * f["hat"])
+    # Wind pushes back the antenna it blows onto and pulls the far one forward, most for wind along
+    # that antenna's own axis, so the two sides between them say where it is coming from.
+    for side, out in (("left", ANTENNA_OUT), ("right", -ANTENNA_OUT)):
+        along = f["wind"] * np.cos(f["wind_from"] - out)
+        lv[f"jo_push_{side}"], lv[f"jo_pull_{side}"] = np.maximum(along, 0), np.maximum(-along, 0)
     music = (f["music_left"] + f["music_right"]) / 2
     lv["johnstons_organ"] = music / (music + MUSIC_HALF)
     lv["LPLC2"] = SCARE_LEVEL * f["scared"]  # the clap the player makes
@@ -100,11 +119,11 @@ class BrainServer:
         knobs = {**(personality or {}), **knobs}
         self.brain = LIF(strip(W, sets) if learns else W, self.n)
         sparsen(self.brain, sets)  # a sparse odor code, as in the fly (Gate 7)
-        self.plastic = Plasticity(W, sets, self.n, self.brain.dev) if learns else None
         self.vision = Vision(ann, self.n, device=self.brain.dev) if eyes else None
         if self.vision is not None:
             self.brain.calibrate(self.vision.index, VIS_TONIC)
         self.body = Physiology(self.n, knobs, hunger, thirst, provoked, body_temp)
+        self.plastic = Plasticity(W, sets, self.n, self.brain.dev, self.body.k["smarts"]) if learns else None
         self.decoder = Decoder(ann, self.sets, self.n, seed, self.body.k["stink_affinity"])
         self.rng = np.random.default_rng(seed)
         self.voice_rng = np.random.default_rng(seed + 1)
@@ -126,11 +145,11 @@ class BrainServer:
         falls_asleep, wakes = body.step(BODY_DT_MS / 1000, f, self.escaped, self.last_vx)
 
         levels = self._levels(f)
-        self.decoder.body = {**body.motor(), "swimming": f["swimming"] > 0, "at_shore": f["water"] > 0,
+        self.decoder.body = {**body.motor(), "surge": self.following, "swimming": f["swimming"] > 0, "at_shore": f["water"] > 0,
                              "thirst": body.thirst, "hatted": f["hat"] > 0, "fear": body.fear,
+                             "hunger": body.hunger, "tasting": (f["sugar"] > 0) | (f["water"] > 0),
                              "music_left": f["music_left"], "music_right": f["music_right"],
                              "music_affinity": body.k["music_affinity"], "vanity": body.k["vanity"]}
-        self.escaped[:] = False
         # Senses release steadily rather than firing a random subset of each set per tick: the same
         # mean current with none of the sampling noise, which is what makes a smell recognisable from
         # one whiff to the next (Gate 7). Vision already worked this way, so the two just concatenate.
@@ -141,6 +160,7 @@ class BrainServer:
         # Sugar and a hand on the head are what dopamine is for; a startle is the punishing kind.
         reward = np.maximum(f["ate"], f["petted"]) if self.plastic else None
         punish = np.maximum(f["scared"], self.escaped.astype(float)) if self.plastic else None
+        self.escaped[:] = False  # after punish has read it: cleared first, no escape ever punished
         for _ in range(TICKS_PER_STEP):
             spk = self.brain.step(NO_SPIKES, NO_SPIKES, graded=drive, plastic=self.plastic)
             if self.plastic is not None:
@@ -166,6 +186,20 @@ class BrainServer:
             base = key.removesuffix("_left").removesuffix("_right")
             if base in gains:
                 levels[key] = levels[key] * gains[base]
+        # A fly finds food by turning into the wind when it smells it, not by comparing its antennae
+        # (PLAN.md Gate 9b: no descending neuron carries the comparison). Nothing in this brain gates
+        # wind on smell either, which the fly does in its fan-shaped body, so the body does it the way
+        # it does everything else, by turning a sense up: a duck attends to the wind as far as it
+        # smells food it wants, and food's own gain already carries the hunger. Close to the food it
+        # stops listening to the wind and searches (brain/physiology.py `near`).
+        # Water is found the same way: a thirsty duck follows damp air up the wind, and thirst is already
+        # in the damp sense's gain.
+        scent = np.clip((levels["orn_food_left"] + levels["orn_food_right"]) / 2, 0, 1) * (1 - body.near())
+        damp = (np.clip((levels["moist_air_left"] + levels["moist_air_right"]) / 2, 0, 1)
+                * (1 - body.at_water((f["humidity_left"] + f["humidity_right"]) / 2)) * ~wet)
+        self.following = np.maximum(scent, damp) * (f["wind"] > 0)  # how far it is following its nose upwind
+        for key in ("jo_push_left", "jo_push_right", "jo_pull_left", "jo_pull_right"):
+            levels[key] = levels[key] * np.maximum(scent, damp)
         levels["sugar_grn"] = np.maximum(levels.pop("sugar"), levels.pop("water_taste"))
         food_odor = (f["odor_left"] + f["odor_right"]) / 2
         levels["pC1_aggr"] = aggression_tone(body.k["aggressiveness"], body.hunger, food_odor, body.anger,

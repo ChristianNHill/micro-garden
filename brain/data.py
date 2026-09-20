@@ -31,7 +31,13 @@ NAMED_SETS = {
     "cold": ("cell_type", r"TRN_VP3[ab]"),
     "moist_air": ("cell_type", r"HRN_VP5"),
     "dry_air": ("cell_type", r"HRN_VP4"),
-    "johnstons_organ": ("cell_type", r"JO-.*"),
+    # Sound is the A and B neurons. It was every JO neuron, which also played music into the wind and
+    # grooming ones (2026-09-19).
+    "johnstons_organ": ("cell_type", r"JO-[AB].*"),
+    # Wind: the E neurons answer an antenna pushed back, the C neurons one pulled forward (Yorozu et
+    # al. 2009; Patella and Wilson 2018).
+    "jo_push": ("cell_type", r"JO-E.*"),
+    "jo_pull": ("cell_type", r"JO-C.*"),
     "lamina_L1": ("cell_type", r"L1"),
     "lamina_L2": ("cell_type", r"L2"),
     "LPLC2": ("cell_type", r"LPLC2"),
@@ -44,6 +50,11 @@ NAMED_SETS = {
     # fires for danger smell (0.6-0.8 Hz) and not for food, heat, cold, humidity, touch, sugar or
     # looming, more on the danger's side, on two held-out seed sets (Gate 4b, 2026-09-16); not from literature
     "danger_valence": ("cell_type", r"DNp32"),
+    # Fires on the side the wind comes from: 8 cells a side, +3.2 Hz at 45 degrees off the nose and half
+    # that at 15, identical on a held-out seed, silent in the shuffled brain, and almost no built-in
+    # left/right offset (-0.08 Hz; DNg07, the runner-up, carries 1.4). Food smell lateralizes no
+    # descending type a twentieth as well (PLAN.md Gate 9b, 2026-09-19); not from literature.
+    "wind_steer": ("cell_type", r"DNge091"),
     # ipsilateral to one-sided humidity on two held-out seed sets (Gate 4b); not from literature
     "moist_steer": ("cell_type", r"DNp12|DNp44"),
     # fires for touch only, on the side opposite the touch, both sides, two held-out seed sets (Gate 4b)

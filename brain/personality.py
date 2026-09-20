@@ -10,6 +10,9 @@ KNOBS = [
     "energy", "sleepiness", "heat_tolerance", "water_love", "boredom_rate", "chattiness", "carelessness",
     "smarts", "playfulness", "music_affinity", "hoarding", "vanity",
 ]
+# Read by nothing yet: playfulness and hoarding wait for the ball and the shiny rocks (PLAN.md Gate 8b),
+# which wait on vision. Until then Zoomer, Naughty, Energetic and Show-off differ only by their other knobs.
+UNBUILT = {"playfulness", "hoarding"}
 KNOB_DEFAULT = 0.5
 JITTER = 0.1
 

@@ -16,6 +16,8 @@
   toward touch. At the pond's shore a duck either drinks or wades in to swim, chosen on arrival and
   every WADE_REROLL_TICKS after with a chance that rises with its swim urge and falls with thirst; a duck that chose to swim paddles nearly in
   place, the more so the stronger its urge, and one that did not walks back out.
+- DNge091 fires on the side the wind comes from and turns the duck into it; the body only lets it hear
+  the wind while it smells food it wants, which is how a fly finds food (Gate 9b).
 - aIPg is aggression (its mood input is set in physiology). While it is active the touch turn flips
   toward the other duck, and a touching duck attacks (runs at it and headbutts) with a chance per tick
   that scales with aggression.
@@ -62,7 +64,7 @@ WADE_REROLL_TICKS = 500  # a duck at the shore reconsiders wading in every 5 s
 ATTACK_P = 0.01
 TOUCH_HZ = 1.0  # DNg48 left plus right rate that means another duck is touching
 
-FWD, BACK, STEER_L, STEER_R, GF, FEED, STINK_L, STINK_R, TOUCH_L, TOUCH_R, AIPG, GROOM = range(12)
+FWD, BACK, STEER_L, STEER_R, GF, FEED, STINK_L, STINK_R, TOUCH_L, TOUCH_R, AIPG, GROOM, WIND_L, WIND_R = range(14)
 
 
 class Decoder:
@@ -76,7 +78,7 @@ class Decoder:
         steer = np.concatenate([sets["DNa02"], sets["odor_steer"], sets["moist_steer"]])
         members = [sets["DNp09"], sets["moonwalker"], *by_side(steer), sets["giant_fiber"], sets["proboscis_mn"],
                    *by_side(sets["danger_valence"]), *by_side(sets["touch_steer"]), sets["aIPg"],
-                   sets["grooming_dn"]]
+                   sets["grooming_dn"], *by_side(sets["wind_steer"])]
         self.idx = torch.from_numpy(np.concatenate(members)).to(DEVICE)
         self.group = np.repeat(np.arange(len(members)), [len(m) for m in members])
         self.size = np.array([len(m) for m in members], np.float32)
@@ -96,6 +98,7 @@ class Decoder:
         self.body = {}  # set by the server each body step; see Physiology.motor
         self.lingers = np.zeros(batch, bool)
         self.gf_recent = np.zeros((ESCAPE_WINDOW, batch))
+
         self.ticks = 0
 
     def update(self, spk: torch.Tensor) -> list[dict]:
@@ -128,9 +131,14 @@ class Decoder:
         meeting = (stink > 0) & ~self.in_stink
         self.lingers = np.where(meeting, self.rng.random(len(stink)) < self.stink_affinity, self.lingers)
         self.in_stink = stink > 0
-        avoid, like = stink * ~self.lingers, stink * self.lingers
+        # Lingering in a smell it likes keeps a duck in the smell, which keeps it lingering. Hunger is
+        # what breaks that loop, as it is for the pond (audit, 2026-09-19).
+        avoid, like = stink * ~self.lingers, stink * self.lingers * (1 - b("hunger", 0.0))
         aggression = np.clip((r[AIPG] - AGGR_FLOOR_HZ) / (AGGR_FULL_HZ - AGGR_FLOOR_HZ), 0, 1)
-        feeding = ((r[FEED] > FEED_HZ) & ~self.wades & ~swimming & ~asleep
+        # A duck stops to eat when there is something under its beak. The proboscis neurons also fire to
+        # touch, so two sociable ducks leaning on each other each set the other's feeding intent, which
+        # stopped them both where they stood, in a corner, starving (Gate 9b, 2026-09-19).
+        feeding = ((r[FEED] > FEED_HZ) & ~self.wades & ~swimming & ~asleep & b("tasting", True)
                    & (b("fear", 0.0) < FEAR_STOPS_FEEDING))
         attack = ((r[TOUCH_L] + r[TOUCH_R] > TOUCH_HZ) & (self.rng.random(n) < ATTACK_P * aggression)
                   & ~swimming & ~asleep)
@@ -142,13 +150,18 @@ class Decoder:
                  & (self.ticks % PREEN_REROLL_TICKS == 0)
                  & (self.rng.random(n) < PREEN_P * (1 - b("vanity", 0.5))))
 
-        vx = np.clip(BASE_VX + VX_PER_HZ * (r[FWD] - r[BACK]), -RUN_VX, RUN_VX) * b("speed", 1.0)
+        vx = np.clip(BASE_VX * b("restlessness", 1.0) + VX_PER_HZ * (r[FWD] - r[BACK]),
+                     -RUN_VX, RUN_VX) * b("speed", 1.0)
         vx = np.where(zoomies, RUN_VX, vx)
         # a duck that chose to swim paddles nearly in place, the more so the stronger its urge; one that
         # did not walks back out at its normal pace
         vx = np.where(swimming & self.wades, vx * (1 - 0.9 * b("swim_urge", 0.5)), vx)
         vx = np.where(self.escape_left > 0, -RUN_VX, vx)
         vx = vx + (RUN_VX - vx) * avoid
+        # A fly that smells food surges: it turns upwind and it speeds up (Alvarez-Salvado et al. 2018). A
+        # duck following a plume at its ambling 0.06 m/s took over a minute to cross a garden whose food
+        # lay uneaten, so it picks up its feet as far as it is following one, as it does fleeing a stink.
+        vx = vx + (RUN_VX - np.maximum(vx, 0)) * b("surge", 0.0) * (vx > 0)
         vx = vx * (1 - (1 - STINK_LINGER) * like)
         vx = np.where(feeding, 0.0, vx)  # stop to eat
         vx = np.where(attack, RUN_VX, vx)
@@ -156,12 +169,23 @@ class Decoder:
 
         share = self.touch_share
         toward_touch = np.maximum(aggression, b("social", 0.0))
+        # The pooled readout carries a built-in turn of about 0.4 rad/s (PLAN.md Gate 9b screen). Taking
+        # its own 30 s average as zero removed it and halved water-finding with it, 105 sips a garden to
+        # 50 over three gardens: humid air is the one smell whose left and right are strong and lasting,
+        # and a lasting signal is exactly what a moving zero subtracts. The turn stays.
         steer = (1 - share) * (r[STEER_L] - r[STEER_R]) + share * (r[TOUCH_L] - r[TOUCH_R]) * (1 - 2 * toward_touch)
         wander = self.wander * b("wander", 1.0) * np.where(zoomies, 2.0, 1.0)
         # Music: a duck with a taste for it turns toward the louder ear, one without turns away, and a
         # duck in the middle does neither. Whether it likes music is the knob; the sound is the garden's.
         taste = 2 * b("music_affinity", 0.5) - 1
-        vyaw = ((wander + VYAW_PER_HZ * steer) * (1 - avoid)
+        # Fleeing a stink adds a turn away from it; it does not stop a duck steering by everything
+        # else. The (1 - avoid) factor here used to scale down all the rest, so a hungry duck within
+        # smell of the demo garden's stink patch lost a third of its steering toward the dish, ran past
+        # at speed and never came back: it got to 0.41 m and ended 2.28 m away (audit, 2026-09-19).
+        # DNge091 fires on the side the wind comes from, so read like the other steering neurons it
+        # turns a duck upwind, at the same gain. It only fires as far as the duck smells food it wants
+        # (brain/server.py), so this is a duck following its nose up the wind and nothing else.
+        vyaw = ((wander + VYAW_PER_HZ * (steer + r[WIND_L] - r[WIND_R]))
                 + STINK_VYAW_PER_HZ * (r[STINK_L] - r[STINK_R]) * (like - avoid)
                 + MUSIC_VYAW * taste * (b("music_left", 0.0) - b("music_right", 0.0)))
         vyaw = np.where(asleep, 0.0, vyaw)

@@ -4,7 +4,7 @@ Run: uv run python -m gates.gate_09_persist [--minutes 10]
 
 Two things have to be true. Saving and loading must lose nothing, and the catch-up that ages a duck
 over the gap must land where actually living through the gap would have landed it. The second is the
-real check: `brain/save.py` integrates the drives in one-minute steps with no body and no garden, and
+real check: `brain/save.py` integrates the drives in 5 s steps with no body and no garden, and
 this compares that against the same stretch lived properly in the stub.
 
 The garden is empty on purpose. Catch-up cannot know that a duck found a dish while nobody was
@@ -93,6 +93,26 @@ def round_trip(n):
     return worst, path
 
 
+def garden_round_trip(n) -> bool:
+    """The garden comes back too: where the ducks stood, who wore a hat, what was on the ground, what
+    was playing, and the time of day, moved on by the gap."""
+    from body.stub2d.stub import DEMO_GARDEN, Stub
+    from gates.episodes import free_port_base
+    port = free_port_base(7760, n)
+    a = Stub(n, 0, tempfile.mkdtemp(), **DEMO_GARDEN, frame_port=port)
+    a.hats[n - 1], a.t, a.world.music = True, 123.0, (1.0, 2.0)
+    a.world.eat(0)
+    path = Path(tempfile.mkdtemp()) / "garden.npz"
+    save(path, Physiology(n, {}), stub=a, when=1000.0)
+    a.close()
+    b = Stub(n, 9, tempfile.mkdtemp(), frame_port=port)  # a different garden, different ducks
+    load(path, Physiology(n, {}), stub=b, now=1060.0)
+    b.close()
+    return bool(np.allclose(a.pose, b.pose) and (a.hats == b.hats).all() and b.t == 183.0
+                and b.world.music == (1.0, 2.0) and np.allclose(a.world.food, b.world.food)
+                and (a.world.bites == b.world.bites).all())
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--minutes", type=float, default=10.0)
@@ -124,6 +144,7 @@ def main() -> int:
 
     return verdict({
         "saving and loading loses nothing": worst < 1e-6,
+        "the garden comes back as it was left, a minute later in its day": garden_round_trip(args.ducks),
         "hunger, thirst and sleep age exactly as they would have": all(gaps[d] <= TOLERANCE
                                                                       for d in CLOCK_DRIVES),
         f"three days away loads in under {THREE_DAY_BUDGET_S:g} s": three_days < THREE_DAY_BUDGET_S,

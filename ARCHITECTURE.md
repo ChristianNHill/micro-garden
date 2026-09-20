@@ -1,6 +1,6 @@
 # Quiet Garden Architecture
 
-Status: draft for Chris to drive. Written 2026-09-16. Companion to `RESEARCH.md` (goal block at its top and §8 are the settled direction; this file is the design). The gated build plan comes after the three open decisions in §6 are made.
+Status: the design of record. Written 2026-09-16, ledger brought up to date 2026-09-19; PLAN.md has what each gate found. Companion to `RESEARCH.md` (goal block at its top and §8 are the settled direction; this file is the design). The three decisions in §6 are made (ledger below); the tradeoff tables are kept as the reasons.
 
 ---
 
@@ -8,14 +8,14 @@ Status: draft for Chris to drive. Written 2026-09-16. Companion to `RESEARCH.md`
 
 | # | Decision | Status | Where |
 |---|---|---|---|
-| 1 | Where the world simulation lives | **Open, tradeoffs in §6.1** | |
-| 2 | Renderer and final "room" (virtual garden, physical room, or both) | **Open, tradeoffs in §6.2** | |
-| 3 | Brain compute path | **Measure first** in Gate 1: PyTorch on Metal vs event-driven CPU | §3.7 |
+| 1 | Where the world simulation lives | **Settled 2026-09-16: Python, beside the brain** (option A) | §6.1, `world/fields.py` |
+| 2 | Renderer and final "room" (virtual garden, physical room, or both) | **Settled 2026-09-16: both** (option C). Godot garden over the MuJoCo body now, physical room later; no Godot work before the MuJoCo gates pass | §6.2 |
+| 3 | Brain compute path | **Settled at Gate 1: PyTorch sparse on MPS**, 10 ms tick. Five ducks with eyes run at about 0.77x real time, which Phase C has to fix | §3.7, `brain/lif.py` |
 | 4 | Personalities | **Settled: Chao-style labels over continuous knob presets; Chao Doctor list plus six of ours (2026-09-16)** | §2.4 |
-| 5 | Vision | **Settled: yes.** Ducks see. Player can possess a duck and see its POV | §2.6, §3.4 |
-| 6 | Transport between brain and body | **Open, tradeoffs in §6.3** | |
+| 5 | Vision | **Settled: yes, through a flyvis front end** (2026-09-17): direct photoreceptor injection never reached LPLC2. Possession is Gate 11 | §2.6, §3.4, PLAN.md Gate 6 |
+| 6 | Transport between brain and body | **Settled 2026-09-16: microduck JSON-RPC over NDJSON for intents, raw float32 over UDP for sensory frames** (option A) | §6.3, `body/contract.py`, `body/frames.py` |
 | 7 | Persistence | **Settled: catch-up on launch first, always-on brain later** | §3.8 |
-| 8 | Body contract | **Proposed: adopt microduck's own JSON-RPC** so sim, virtual, and physical bodies are interchangeable | §1, §3.2 |
+| 8 | Body contract | **Settled: microduck's own JSON-RPC**, built at Gate 3 | §1, §3.2 |
 | 9 | Look | **Settled 2026-09-16: a blend of retro looks.** A Dreamcast low-poly garden rendered as a halftone print diorama (Chris knows it is hard to pull off) | §4 |
 
 ---

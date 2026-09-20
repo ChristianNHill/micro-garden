@@ -5,7 +5,8 @@ and the ducks as circles with a heading line, a retina fan and a mood halo. The 
 sun goes down. A panel on the right for whichever duck is selected: its drives, its descending
 neurons, and a running list of what has just happened to anyone.
 
-Debug only, never a gate check. Click a duck to follow it, click the tree to shake it.
+Debug only, never a gate check. Click a duck to follow it, click the tree to shake it; the keys
+are the player's verbs: P pet, C clap, F feed at the mouse, M music at the mouse, H hat.
 
 With a brain attached (`stub --view --brain`) the panel has something to show; without one the ducks
 stand still and only the garden is worth looking at.
@@ -37,13 +38,17 @@ class Viewer:
         self.seen = {"eaten": 0, "headbutts": 0, "pets": 0, "sounds": 0}
         self.toasts = []
 
-    def alive(self, on_click=None) -> bool:
-        """Handle window events; on_click gets each left click in garden metres."""
+    def alive(self, on_click=None, on_key=None) -> bool:
+        """Handle window events; on_click gets each left click in garden metres, on_key each key's
+        name and where the mouse is."""
         for e in pygame.event.get():
             if e.type == pygame.QUIT:
                 return False
             if e.type == pygame.KEYDOWN and e.key == pygame.K_ESCAPE:
                 return False
+            if e.type == pygame.KEYDOWN and on_key:
+                mx, my = pygame.mouse.get_pos()
+                on_key(pygame.key.name(e.key), (min(mx / PX, SIZE_M), SIZE_M - my / PX))
             if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
                 xy = (e.pos[0] / PX, SIZE_M - e.pos[1] / PX)
                 if e.pos[0] < SIZE_M * PX:
@@ -158,6 +163,8 @@ class Viewer:
                 y += 17
 
         y += 10
+        self.screen.blit(self.font.render("P pet  C clap  F feed  M music  H hat", True, (120, 130, 145)), (left + 12, y))
+        y += 22
         self.screen.blit(self.font.render("just happened", True, (215, 220, 230)), (left + 12, y))
         y += 18
         for t, line in self.toasts[::-1]:

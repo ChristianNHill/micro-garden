@@ -9,7 +9,11 @@ SIZE_M = 4.0
 GRID = 64
 CELL_M = SIZE_M / GRID
 DIFFUSION = 0.2  # per substep, stable below 0.25
-DECAY = 0.002  # per substep; decay length sqrt(DIFFUSION / DECAY) = 10 cells, about 0.6 m
+# Per substep; the decay length is sqrt(DIFFUSION / DECAY) cells. At 0.002 it was 0.62 m in a 4 m
+# garden, so a duck starting where the demo garden puts them, 1.5 to 2.5 m from the only dish, could
+# not smell it at all. A longer smell is a shallower one, so DANGER_HALF keeps a faint stink from
+# reading as alarm (audit, 2026-09-19).
+DECAY = 0.0008  # about 1 m
 SUBSTEPS = 5  # per 20 ms body step
 EMIT = 1.0
 DISH_R = 0.08
@@ -19,17 +23,31 @@ DAY_S = 600.0  # a whole day and night in simulated seconds; short enough that a
 NIGHT_C = 8.0  # how much colder the garden gets when the sun is down
 DAWN = 0.15  # fraction of the cycle that dawn and dusk take; the rest is flat day or flat night
 TREE = (1.0, 3.0, 0.7)  # shade centre x, y and radius
+WIND_FULL_MS = 1.5  # light air; this reads as 1.0 on the antennae
 MUSIC_M = 1.2  # music is half as loud every 0.8 m or so; a garden-wide thing, unlike a duck's smell
 DUCK_SMELL_M = 0.5  # another duck smells half as strong every 0.35 m or so
 HUMID_FALLOFF_M = 0.4  # humidity halves about every 0.3 m away from the pond edge
 SHORE_M = 0.1  # a duck whose centre is within this of the pond edge can drink
+# Damp air off the pond, carried on the wind like a smell. Per pond cell per substep, set so that two
+# metres downwind the air reads about 0.1, which is the damp sense's half level (brain/server.py
+# HUMID_HALF), as food two metres downwind reads a little under its own; in still air the pond is only
+# its own edge.
+POND_DAMP = 0.004
+WALL_CLEAR_M = 0.6  # fruit does not land nearer a wall than this: a duck cannot search around what is against one
 FRUIT_BITES = 3
 MAX_FOOD = 4  # the tree stops dropping while this much food is on the ground
 
 
 class World:
-    def __init__(self, food_xy, danger_xy=(), pond=None, bites=1):
-        """pond is (x, y, radius) or None. Each dish holds `bites` bites."""
+    def __init__(self, food_xy, danger_xy=(), pond=None, bites=1, wind=None, wind_turns_s=None):
+        """pond is (x, y, radius) or None. Each dish holds `bites` bites. wind is the (x, y) velocity
+        the air moves at, in m/s, or None for still air: it carries the smells and the pond's damp air
+        downwind, so a plume reaches a long way on one side of its source and hardly at all on the
+        other. wind_turns_s is how long the breeze takes to swing right round the compass, or None
+        for a steady one: in a steady wind whatever lies downwind of the ducks can never be found."""
+        self.wind0 = self.wind = None if wind is None else np.asarray(wind, float)
+        self.wind_turns_s = wind_turns_s
+        self.damp = np.zeros((GRID, GRID))
         self.food = np.asarray(food_xy, float).reshape(-1, 2)
         self.bites = np.full(len(self.food), bites)
         self.danger = np.asarray(danger_xy, float).reshape(-1, 2)
@@ -40,17 +58,36 @@ class World:
         self.danger_odor = np.zeros((GRID, GRID))
         self.diffuse(2000)  # start near steady state
 
+    def _pond_cells(self):
+        c = (np.indices((GRID, GRID)).reshape(2, -1).T + 0.5) * CELL_M
+        return np.argwhere((self.pond_distance(c) < 0).reshape(GRID, GRID))
+
     def diffuse(self, n: int) -> None:
-        for grid, sources in ((self.odor, self.food), (self.danger_odor, self.danger)):
-            if len(sources) == 0 and not grid.any():
+        fields = [(self.odor, self.food, EMIT), (self.danger_odor, self.danger, EMIT)]
+        if self.wind is not None and self.pond is not None:
+            fields.append((self.damp, None, POND_DAMP))
+        for grid, sources, emit in fields:
+            if sources is not None and len(sources) == 0 and not grid.any():
                 continue
-            src = np.clip((sources / CELL_M).astype(int), 0, GRID - 1)
+            src = self._pond_cells() if sources is None else np.clip((sources / CELL_M).astype(int), 0, GRID - 1)
             for _ in range(n):
                 p = np.pad(grid, 1, mode="edge")
                 grid += DIFFUSION * (p[:-2, 1:-1] + p[2:, 1:-1] + p[1:-1, :-2] + p[1:-1, 2:] - 4 * grid) - DECAY * grid
-                np.add.at(grid, (src[:, 0], src[:, 1]), EMIT)
+                if self.wind is not None:
+                    # first-order upwind: each cell takes from the neighbour the air comes from. At the
+                    # downwind wall nothing comes back, so the smell blows out of the garden.
+                    # The air that blows in is clean: padded with the wall's own value, as diffusion is,
+                    # the upwind wall kept its smell and five ducks followed it there and stayed.
+                    cx, cy = self.wind * (0.02 / SUBSTEPS) / CELL_M  # cells per substep, far below 1
+                    q = np.pad(grid, 1)
+                    grid -= abs(cx) * (grid - (q[:-2, 1:-1] if cx > 0 else q[2:, 1:-1]))
+                    grid -= abs(cy) * (grid - (q[1:-1, :-2] if cy > 0 else q[1:-1, 2:]))
+                np.add.at(grid, (src[:, 0], src[:, 1]), emit)
 
-    def step(self) -> None:
+    def step(self, t: float = 0.0) -> None:
+        if self.wind0 is not None and self.wind_turns_s:
+            a = 2 * np.pi * t / self.wind_turns_s
+            self.wind = np.array([[np.cos(a), -np.sin(a)], [np.sin(a), np.cos(a)]]) @ self.wind0
         self.diffuse(SUBSTEPS)
 
     def eat(self, dish: int) -> None:
@@ -65,7 +102,7 @@ class World:
         fell = 0
         while fell < n and len(self.food) < MAX_FOOD:
             a, r = rng.uniform(-np.pi, np.pi), rng.uniform(0.2, TREE[2] + 0.2)
-            xy = np.clip(np.array(TREE[:2]) + r * np.array([np.cos(a), np.sin(a)]), DISH_R, SIZE_M - DISH_R)
+            xy = np.clip(np.array(TREE[:2]) + r * np.array([np.cos(a), np.sin(a)]), WALL_CLEAR_M, SIZE_M - WALL_CLEAR_M)
             self.food = np.vstack([self.food, xy])
             self.bites = np.append(self.bites, FRUIT_BITES)
             fell += 1
@@ -94,8 +131,20 @@ class World:
         return np.linalg.norm(xy - self.pond[:2], axis=-1) - self.pond[2]
 
     def humidity_at(self, xy) -> np.ndarray:
-        """1 at and inside the pond edge, falling off outside."""
-        return np.exp(-np.maximum(self.pond_distance(xy), 0) / HUMID_FALLOFF_M)
+        """1 at and inside the pond edge, falling off outside, plus whatever damp air the wind carries."""
+        near = np.exp(-np.maximum(self.pond_distance(xy), 0) / HUMID_FALLOFF_M)
+        return near if self.wind is None else np.clip(near + self.odor_at(xy, self.damp), 0, 1)
+
+
+def wind_on(heading, wind) -> tuple[np.ndarray, np.ndarray]:
+    """What each duck's antennae feel: (strength 0-1, where it comes from in radians off the nose,
+    positive to the left). Wind is where the air goes, so it comes from the opposite way."""
+    heading = np.asarray(heading, float)
+    if wind is None:
+        return np.zeros_like(heading), np.zeros_like(heading)
+    source = np.arctan2(-wind[1], -wind[0]) - heading
+    return (np.full_like(heading, min(np.hypot(*wind) / WIND_FULL_MS, 1.0)),
+            (source + np.pi) % (2 * np.pi) - np.pi)
 
 
 def music_at(sensor_xy, source) -> np.ndarray:

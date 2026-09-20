@@ -16,7 +16,7 @@ import time
 from pathlib import Path
 
 GATES = ["00_data", "01_tick", "02_sugar", "03_stub", "04_seek", "04b_senses", "04c_temperament",
-         "05_personality", "06_vision", "07_learn", "08_social", "09_persist"]
+         "05_personality", "06_vision", "07_learn", "08_social", "08b_toys", "09_persist", "09b_soak"]
 FAST = {"00_data", "01_tick", "02_sugar", "03_stub", "06_vision", "07_learn", "09_persist"}
 # The line worth putting in the table, per gate. First capture group wins; nothing means no number.
 HEADLINE = {
@@ -30,6 +30,8 @@ HEADLINE = {
     "06_vision": r"loom\s+LPLC2\s+[\d.]+\s*->\s*([\d.]+ Hz)",
     "07_learn": r"weights, paired duck: (odor A's own synapses [\d.]+)",
     "08_social": r"one dish, [^:]*:\s+(share of the bites .*)",
+    "08b_toys": r"(a hat stays on [^\n]*)",
+    "09b_soak": r"soak: ([^\n]*)",
     "09_persist": r"(three days away catches up in [\d.]+ s)",
 }
 
@@ -62,7 +64,7 @@ def main() -> int:
         chosen = [g for g in GATES if g in FAST]
     if args.which:
         want = {w.lstrip("0") or "0" for w in args.which}
-        chosen = [g for g in chosen if g.split("_")[0].lstrip("0") in want or g.split("_")[0] in want]
+        chosen = [g for g in chosen if (g.split("_")[0].lstrip("0") or "0") in want or g.split("_")[0] in want]
     if not chosen:
         print("no gates matched")
         return 2

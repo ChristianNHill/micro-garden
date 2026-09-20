@@ -6,7 +6,8 @@ frame_port + duck. robot.do ground_pick on a dish eats it; robot.do headbutt pus
 in front of the attacker back by PUSH_M. robot.do drink at the pond's shore band takes a sip; past the
 shore a duck swims at SWIM_SPEED. robot.sound is logged. With fruit_every_s set, the shade tree drops fruit on that
 period; garden.shake_tree on control.sock (a player action) drops SHAKE_FRUIT at once. In the viewer,
-click the tree. garden.pet {duck} is the player's hand on a duck's head: bristles, and a reward.
+click the tree; P pets the selected duck, C claps, F feeds by hand at the mouse, M starts or stops
+music there, H puts a hat on the selected duck or takes it off. garden.pet {duck} is the player's hand on a duck's head: bristles, and a reward.
 garden.scare claps, startling every duck. garden.hand {x, y, feed} puts the hand in the garden, where
 the ducks can see it, and drops that many bites at it. garden.music {x, y, on} starts something playing
 and garden.hat {duck, on} puts a hat on one; a duck shakes a hat off by grooming.
@@ -26,10 +27,21 @@ import numpy as np
 from body import frames
 from body.contract import ROBOT_PARAMS, serve
 from body.stub2d import retina
-from world.fields import (SHORE_M, SIZE_M, DUCK_R, World, contacts, daylight, duck_odor_at,
-                          music_at, temperature_at)
+from world.fields import (DAY_S, SHORE_M, SIZE_M, DUCK_R, World, contacts, daylight, duck_odor_at,
+                          music_at, temperature_at, wind_on)
 
-DEMO_GARDEN = dict(food_xy=((3.0, 3.0),), bites=5, danger_xy=((2.3, 1.7),), pond=(3.1, 0.9, 0.35), fruit_every_s=20.0)
+# Light air that starts in the north and swings right round the compass every 0.7 of a day, so that no
+# hour always has the same wind: at once a day the south wind, the one that brings the pond to the ducks,
+# only ever blew at night while they slept, and the Napper never drank. From the north the
+# smell of the dish and the fruit tree lies across the garden and a duck at the pond can follow it home;
+# from the south the pond's damp air reaches the ducks that are eating. A steady wind can only do one.
+# The tree drops a fruit every 10 s. At 20 the garden ran out: the dish is gone in the first minute, the
+# tree stops dropping with four things on the ground, which is all night while the ducks sleep, and what
+# fell in their waking hours came to about 100 bites in twenty minutes against the 108 five ducks need. They
+# ate all of it and a third of them still starved, the Bully first, since its appetite asks 40% more
+# (Gate 9b; Claude's call while Chris was out, 2026-09-19, for him to ratify).
+DEMO_GARDEN = dict(food_xy=((3.0, 3.0),), bites=5, danger_xy=((2.3, 1.7),), pond=(3.1, 0.9, 0.35), fruit_every_s=10.0,
+                   wind=(0.0, -1.0), wind_turns_s=0.7 * DAY_S)
 
 DT = 0.02
 # ponytail: guessed limits standing in for robotd's clamps; replace with the sim's real ones at Gate 10
@@ -48,11 +60,12 @@ BITE_S = 0.5  # ground_pick takes this long, so at most one bite per BITE_S
 
 class Stub:
     def __init__(self, n: int, seed: int, sock_dir: str, food_xy=((3.0, 3.0), (1.0, 1.0)), danger_xy=(),
-                 pond=None, bites=1, fruit_every_s=None, frame_port: int = frames.FRAME_PORT, pose=None):
+                 pond=None, bites=1, fruit_every_s=None, frame_port: int = frames.FRAME_PORT, pose=None,
+                 wind=None, wind_turns_s=None):
         rng = np.random.default_rng(seed)
         self.fruit_rng = np.random.default_rng(seed + 1)
         self.fruit_every_s = fruit_every_s
-        self.world = World(food_xy, danger_xy, pond, bites)
+        self.world = World(food_xy, danger_xy, pond, bites, wind, wind_turns_s)
         self.pose = np.column_stack([rng.uniform(0.5, SIZE_M - 0.5, (n, 2)), rng.uniform(-np.pi, np.pi, n)])
         if pose is not None:
             self.pose = np.array(pose, float).reshape(n, 3)
@@ -195,7 +208,7 @@ class Stub:
         y += (vx * np.sin(h) + vy * np.cos(h)) * DT
         np.clip(self.pose[:, :2], DUCK_R, SIZE_M - DUCK_R, out=self.pose[:, :2])
         self.pose[:, 2] = (h + np.pi) % (2 * np.pi) - np.pi
-        self.world.step()
+        self.world.step(self.t)
         self.t += DT
         if self.fruit_every_s and int(self.t / self.fruit_every_s) > int((self.t - DT) / self.fruit_every_s):
             self.world.drop_fruit(self.fruit_rng)
@@ -227,6 +240,7 @@ class Stub:
         self.bumped[:] = self.ate[:] = self.drank[:] = self.petted[:] = self.scared[:] = False
         sense["light"] = np.full(len(xy), light)
         sense["hat"] = self.hats.astype(float)
+        sense["wind"], sense["wind_from"] = wind_on(h, w.wind)
         for i in range(len(xy)):
             self.udp.sendto(frames.pack(
                 t=self.t, duck=i, x=xy[i, 0], y=xy[i, 1], heading=h[i], **{k: v[i] for k, v in sense.items()},
@@ -254,6 +268,13 @@ def main() -> None:
     ap.add_argument("--labels", default="Bully,Napper,Carefree,Chatty,Scaredy",
                     help="one personality per duck when --brain is on")
     ap.add_argument("--learns", action="store_true", help="let the ducks learn from sugar and petting")
+    ap.add_argument("--save", default=os.path.expanduser("~/.cache/micro-garden/garden.npz"),
+                    help="with --brain: the garden is loaded from here on launch, aged by however long you "
+                         "were away, and saved here on exit")
+    ap.add_argument("--fresh", action="store_true", help="ignore the save and hatch new ducks")
+    ap.add_argument("--blind", action="store_true",
+                    help="the Gate 5 blind test: deal --labels to the ducks in an order nobody is told, "
+                         "ignore any save, and print who was who on exit")
     args = ap.parse_args()
     os.makedirs(args.sock_dir, exist_ok=True)
     stub = Stub(args.ducks, args.seed, args.sock_dir, **DEMO_GARDEN)
@@ -271,19 +292,56 @@ def main() -> None:
         W, ann = load_connectome()
         rng_k = np.random.default_rng(args.seed)
         labels = (args.labels.split(",") * args.ducks)[:args.ducks]
+        if args.blind:
+            labels = list(np.random.default_rng().permutation(labels))  # unseeded on purpose
         bodies = [(os.path.join(args.sock_dir, f"{name}.sock"), frames.FRAME_PORT + i)
                   for i, name in enumerate(stub.names)]
         server = BrainServer(W, ann, named_sets(ann), bodies, args.seed, learns=args.learns,
                              personality=stack([preset(x, rng_k) for x in labels]))
-        print(f"driving {', '.join(labels)}")
+        print(f"driving {', '.join(sorted(labels) if args.blind else labels)}")
+        if os.path.exists(args.save) and not args.fresh and not args.blind:
+            from brain.save import load
+            gap = load(args.save, server.body, server.plastic, stub)
+            server.decoder.stink_affinity = server.body.k["stink_affinity"].copy()  # the saved ducks, not --labels
+            print(f"welcome back: {gap / 60:.0f} minutes away")
     rng = np.random.default_rng(args.seed)
-    next_t, ticks = time.monotonic(), 0
+
     def click(xy):
         if view.on_tree(xy):
             with stub.lock:
                 stub.shake_tree()
 
-    while view is None or view.alive(on_click=click):
+    def key(name, xy):
+        """The player's verbs, the same calls a client makes on control.sock."""
+        duck = view.selected
+        with stub.lock:
+            if name == "p":
+                stub._control_call("garden.pet", {"duck": duck})
+            elif name == "c":
+                stub._control_call("garden.scare", {})
+            elif name == "f":
+                stub._control_call("garden.hand", {"x": xy[0], "y": xy[1], "feed": 3})
+            elif name == "m":
+                stub._control_call("garden.music", {"x": xy[0], "y": xy[1], "on": int(stub.world.music is None)})
+            elif name == "h":
+                stub._control_call("garden.hat", {"duck": duck, "on": int(not stub.hats[duck])})
+
+    try:
+        run_loop(args, stub, view, server, rng, click, key)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        if args.blind and server is not None:
+            print("who was who: " + ", ".join(f"{n} = {l}" for n, l in zip(stub.names, labels)))
+        elif server is not None:
+            from brain.save import save
+            save(args.save, server.body, server.plastic, stub)
+            print(f"saved to {args.save}")
+
+
+def run_loop(args, stub, view, server, rng, click, key) -> None:
+    next_t, ticks = time.monotonic(), 0
+    while view is None or view.alive(on_click=click, on_key=key):
         with stub.lock:
             if args.wander and ticks % 25 == 0:
                 stub.cmd = np.column_stack([rng.uniform(-0.1, 0.3, args.ducks), np.zeros(args.ducks),

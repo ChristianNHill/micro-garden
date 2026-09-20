@@ -36,11 +36,12 @@ def free_port_base(wanted: int, count: int, tries: int = 40) -> int:
 
 
 def run(W, ann, sets, episodes: list[dict], max_s: float, seed: int, port_base: int = 7700, until=None,
-        **brain_kwargs):
+        watch=None, **brain_kwargs):
     """episodes: Stub keyword args per episode, each with pose=(ducks, 3). brain_kwargs go to
     BrainServer (personality, starting physiology), one value per duck across all episodes.
 
-    until(stubs) -> bool stops early. Returns (trajectory [steps, all ducks, 3], stubs); stubs are
+    until(stubs) -> bool stops early. watch(server, stubs) is called after every step, for a gate that
+    needs the drives as well as the poses. Returns (trajectory [steps, all ducks, 3], stubs); stubs are
     closed but keep their state (eaten, world).
     """
     with ExitStack() as cleanup:
@@ -63,6 +64,8 @@ def run(W, ann, sets, episodes: list[dict], max_s: float, seed: int, port_base: 
             for c in ctls:
                 c.call("sim.step", n=1)
             traj.append(np.concatenate([s.pose for s in stubs]))
+            if watch is not None:
+                watch(server, stubs)
             if until is not None and until(stubs):
                 break
     return np.array(traj), stubs
