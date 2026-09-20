@@ -29,6 +29,13 @@ of food has nothing to smell and finding it is luck, which is not what this gate
 brain's wind neurons are silent, so the comparison still means what it did.
 Result (2026-09-19): real 19/20, median 35.4 s; shuffled 1/20. That is inside the 40 s bound set on
 2026-09-16, which is left as it was.
+2026-09-20: that 19/20 had help from a bug. A duck that had never smelled anything, or whose memory of a
+smell had faded, was scored as having lost one and searched, wide-turning and slow, for ever, which is a
+fine way to stumble back onto a dish it overshot. With the bug fixed and a 5 s smell memory: 13/20, median
+39.3 s. With the memory at 30 s, which is what a walking fly's local search lasts: 17/20, median 38.4 s,
+shuffled 2/20. Still inside the original bound, with less room than it looked.
+Later the same day the close-to-food search was removed (its threshold did not survive more than one source,
+brain/physiology.py) and this gate did better without it: 20/20, median 27.6 s, shuffled 1/20.
 """
 import argparse
 import sys

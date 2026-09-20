@@ -40,7 +40,7 @@ from world.fields import (DAY_S, SHORE_M, SIZE_M, DUCK_R, World, contacts, dayli
 # fell in their waking hours came to about 100 bites in twenty minutes against the 108 five ducks need. They
 # ate all of it and a third of them still starved, the Bully first, since its appetite asks 40% more
 # (Gate 9b; Claude's call while Chris was out, 2026-09-19, for him to ratify).
-DEMO_GARDEN = dict(food_xy=((3.0, 3.0),), bites=5, danger_xy=((2.3, 1.7),), pond=(3.1, 0.9, 0.35), fruit_every_s=10.0,
+DEMO_GARDEN = dict(food_xy=((3.0, 3.0),), bites=10, danger_xy=((2.3, 1.7),), pond=(3.1, 0.9, 0.35), fruit_every_s=10.0,
                    wind=(0.0, -1.0), wind_turns_s=0.7 * DAY_S)
 
 DT = 0.02

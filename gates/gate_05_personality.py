@@ -4,6 +4,28 @@ Run: uv run python -m gates.gate_05_personality [--minutes 10]
 Knobs and labels: brain/personality.py, ARCHITECTURE.md §2.4. Drives and emotions: brain/physiology.py.
 Blind test (manual, Chris): watch the 2D view for 5 minutes with labels hidden and guess. Score: not yet run.
 
+2026-09-20 record: the labels check FAILS, 3.37 for the same label across runs against 4.09 for different
+labels (1.21, bar 1.5; it was 2.29 on 09-18), in the demo garden as it now is (breeze, day-scale hunger,
+fruit every 10 s). The table is the finding, not the ratio: every label moves 0.63 to 0.70 of the time,
+sleeps 0.14 to 0.18, walks 0.06 m/s and swims under 0.05. The Napper naps 0.18 against everyone's 0.16,
+because night puts every duck to sleep and daylight cancels an ordinary duck's sleepiness, leaving the
+Napper about one extra nap in two days. Chatty quacks no more than the Napper, since most quacks are
+events (a bite, a sip) that every duck has. What still shows: the Bully headbutts (0.15 a minute against
+0.03), the Napper keeps to itself (near others 0.3 against 0.5). The likely reason is structural. Needs
+outrank likes now, which is right, nearly every knob acts through a like or a temperament, and the ducks
+are in need most of the time, so there is rarely a comfortable duck for a personality to show in. That is
+a question about the economy and about which knobs should be visible, and it is Chris's; nothing was
+tuned to move this number.
+
+2026-09-20, after making room (a find is a ten-bite meal; a need is ignored below 0.4 and total by 0.8, so
+ducks have both needs low 32% of their waking time where it was 11%): 3.53 against 4.28, the same 1.21. What
+holds across both runs: the Napper moves least (0.55, 0.54 against about 0.65) and slowest, Chatty quacks
+most (3.4 and 4.0 a minute against 2.0 to 2.9), the Bully eats most (1.8, 2.0 bites a minute). Swimming
+does not pick out Carefree because in the day's heat every duck's swim urge is at its ceiling. A knob shows
+only through a channel that moves a duck: speed, sleep, wind-following, wading, music, hats, attacks and
+voice do; steering by the smell of other ducks or of a stink is mostly noise, which is where sociability
+and stink affinity live. The blind test is the better instrument and is Chris's to run next.
+
 2026-09-17 record:
 - drives: thirst 1.00 -> 0.01 in 30 s at the shore; swimming in the shade, water love 0.1 vs 0.9: 0.19 vs 0.37;
   at the sunny pond, heat tolerance 0.05 vs 0.95: 0.36 vs 0.24; asleep over 10 min, Napper 0.14 vs Energetic 0.00.
@@ -131,7 +153,9 @@ def drinking(W, ann, sets):
 
 def swim_time(W, ann, sets, pond=POND, **kw):
     eps = [dict(food_xy=[], pond=pond, pose=p) for p in shore_poses(N, pond)]
-    traj, _ = run(W, ann, sets, eps, 60.0, seed=0, thirst=0.0, **kw)
+    # Fed as well as watered: a like is tested on a duck with nothing pressing, since likes yield to
+    # hunger now and a half-hungry duck swims about half as much whatever it thinks of water (2026-09-20).
+    traj, _ = run(W, ann, sets, eps, 60.0, seed=0, thirst=0.0, hunger=0.0, **kw)
     return (np.linalg.norm(traj[:, :, :2] - pond[:2], axis=-1) < pond[2] - SHORE_M).mean()
 
 

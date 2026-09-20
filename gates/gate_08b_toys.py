@@ -49,7 +49,8 @@ def music_walk(W, ann, sets, n, seed, affinity):
         return False
 
     traj, _ = run(W, ann, sets, [dict(food_xy=[], pose=START) for _ in range(n)], MUSIC_S, seed,
-                  until=play, music_affinity=affinity, hunger=0.0, thirst=0.0)
+                  until=play, music_affinity=affinity)  # half hungry, like any duck: a sated one stands and
+    # listens (brain/physiology.py restlessness, 2026-09-19), and this asks where music steers a walking duck
     tail = traj[-len(traj) // 3:]
     return float(np.linalg.norm(tail[:, :, :2] - np.array(MUSIC_AT), axis=-1).mean())
 

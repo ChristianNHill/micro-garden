@@ -33,6 +33,12 @@ MB_GAIN = 10.0
 KC_THRESHOLD = 1.0
 KC_TRACE_MS = 1000.0  # how long a Kenyon cell stays eligible after firing; the pairing window
 DEPRESS_PER_S = 3.0  # fraction of a synapse's remaining weight lost per second of full coincidence
+# A dopamine neuron's burst to a shock or to sugar lasts about a second. In the garden an event is one
+# body step, 20 ms: a clap, a startle, a bite, a hand on the head. Delivered as that, eight startles beside
+# another duck left the weights at 0.996 of baseline and the steering untouched, so nothing a duck lived
+# through ever taught it anything, while Gate 7, which holds its reward on for seconds, learned fine
+# (bench, 2026-09-20). Each event now leaves dopamine that fades over DOPAMINE_S.
+DOPAMINE_S = 1.0
 RECOVER_S = 300.0  # weights drift back over about five minutes: the forgetting curve
 # What is left once the fast part has gone. A design choice, not a measurement: a fifth of a lesson
 # kept is enough to see tomorrow and small enough that a duck still visibly gets over things today.
@@ -56,6 +62,7 @@ class Plasticity:
         self.w = self.base.repeat(batch, 1)  # (batch, edges), the only weights that ever change
         self.slow = self.base.repeat(batch, 1)  # where w recovers to: the part of a lesson that lasts
         self.trace = torch.zeros((batch, len(sets["kenyon_cells"])), device=device)
+        self.dopamine = torch.zeros((2, batch, 1), device=device)  # reward, punishment: what is left of each burst
         self.kc = torch.from_numpy(sets["kenyon_cells"].astype(np.int64)).to(device)
         # which dopamine group gates which synapse: an edge is reinforced only if its MBON is one the
         # group actually synapses onto. That stands in for the compartment map, from the wiring itself.
@@ -81,7 +88,9 @@ class Plasticity:
         decay = np.exp(-DT_MS / KC_TRACE_MS)
         self.trace.mul_(decay).add_(spikes[:, self.kc].float()).clamp_(max=1.0)
         as_col = lambda x: torch.as_tensor(np.asarray(x, np.float32), device=self.device).reshape(-1, 1)
-        dope = (as_col(reward) * self.reward_gate + as_col(punish) * self.punish_gate).clamp_(0, 1)
+        self.dopamine = torch.maximum(self.dopamine * float(np.exp(-DT_MS / 1000 / DOPAMINE_S)),
+                                      torch.stack([as_col(reward), as_col(punish)]))
+        dope = (self.dopamine[0] * self.reward_gate + self.dopamine[1] * self.punish_gate).clamp_(0, 1)
         eligible = self.trace.gather(1, self.pre_local.expand(self.trace.shape[0], -1))
         lost = self.w * eligible * dope * self.rate * (DEPRESS_PER_S * DT_MS / 1000)
         self.w -= lost
@@ -153,7 +162,11 @@ def demo() -> None:
     quiet = torch.zeros_like(spikes)
     for _ in range(int(RECOVER_S * 1000 / DT_MS)):  # one recovery time constant of nothing
         p.step(quiet, np.array([0.0]), np.array([0.0]))
-    assert p.strength()[0] > paired + 0.5 * (1 - paired), f"must forget: {paired} -> {p.strength()[0]}"
+    # One time constant gives back 1 - 1/e of the part that fades, and CONSOLIDATE of the lesson does not
+    # fade on this clock at all: 0.51 of the way back. Asked for 0.8 of that, since the dopamine and the
+    # Kenyon cells' trace both outlast the pairing by a second and deepen the lesson a little after `paired`.
+    due = 0.8 * (1 - CONSOLIDATE) * (1 - np.exp(-1))
+    assert p.strength()[0] > paired + due * (1 - paired), f"must forget: {paired} -> {p.strength()[0]}"
     after = p.strength()[0]
     p.rest(8 * 3600.0)  # a night away: the fast part is gone, the consolidated part is not
     kept = 1 - p.strength()[0]

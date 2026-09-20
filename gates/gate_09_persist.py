@@ -8,7 +8,20 @@ real check: `brain/save.py` integrates the drives in 5 s steps with no body and 
 this compares that against the same stretch lived properly in the stub.
 
 The garden is empty on purpose. Catch-up cannot know that a duck found a dish while nobody was
-watching, so the honest comparison is a stretch where there was nothing to find. Ducks run blind here
+watching, so the honest comparison is a stretch where there was nothing to find. Each duck also lives
+its stretch alone, in a garden of its own: five in a row used to drift apart, but a contented duck can
+stand still now, so they dozed in a huddle and a neighbour's nudge fired a sleeper's escape and woke it
+at 537 s, which put its sleep 0.66 out against a catch-up that had no neighbour to reckon with
+(2026-09-20). Being woken is something that happens in a garden, like finding a dish.
+
+Alone is not enough either, and why is worth knowing: the giant fiber fires at about 0.6 Hz whatever the
+duck senses, asleep and blind with nothing but dry air included, and at that rate three spikes land inside
+the decoder's 100 ms escape window by chance about once in six duck-minutes (8 escapes among 5 lone blind
+ducks in 10 minutes). Two of those woke a sleeper. So sleep is asserted on the ducks nothing disturbed, no
+escape while asleep or in the minute before dropping off, which is the stretch catch-up claims to describe;
+LIVED_DUCKS of them live it so that enough are left, and the disturbed ones are printed. The false startles
+themselves are left alone here: the escape threshold sits at the giant fiber's refractory limit, so moving
+it is a decision about the model rather than a fix to this gate. Ducks run blind here
 too, since none of this is about vision and it halves the wall time.
 
 Measured 2026-09-18 over the full ten minutes, which is one whole day at DAY_S: hunger and thirst come
@@ -45,11 +58,14 @@ WORLD_DRIVES = ("fatigue", "boredom", "body_temp")
 DRIVES = CLOCK_DRIVES + WORLD_DRIVES
 TOLERANCE = 0.05  # per drive, on a 0-1 scale
 THREE_DAY_BUDGET_S = 10.0
+LIVED_DUCKS = 8  # lone ducks in the lived comparison; about a quarter get startled in their sleep
+UNDISTURBED_MIN = 3  # and the sleep check needs at least this many that were not
+SETTLE_S = 60.0  # an escape this soon before dropping off delays it (fear has to fade first)
 
 
 def lived(W, ann, sets, minutes, n):
     """Drives after really living through the stretch, in an empty garden."""
-    poses = [[[1.0 + 0.4 * i, 2.0, 0.0] for i in range(n)]]
+    poses = [[[2.0, 2.0, 0.0]]] * n  # one duck to a garden
     kept = {}
 
     def remember(stubs):
@@ -59,7 +75,14 @@ def lived(W, ann, sets, minutes, n):
     original = server.BrainServer.step
 
     def step(self, lockstep):
+        was_asleep = self.body.asleep.copy()
         out = original(self, lockstep)
+        startled = np.asarray(self.escaped, bool)
+        last = kept.setdefault("last_startle", np.full(len(startled), -np.inf))
+        dropped_off = self.body.asleep & ~was_asleep
+        kept["disturbed"] = (kept.get("disturbed", np.zeros(len(startled), bool)) | (startled & was_asleep)
+                             | (dropped_off & (self.t - last < SETTLE_S)))
+        last[startled] = self.t
         kept["body"] = self.body
         return out
 
@@ -69,7 +92,7 @@ def lived(W, ann, sets, minutes, n):
             until=remember, eyes=False, hunger=0.2, thirst=0.2, body_temp=24.0)
     finally:
         server.BrainServer.step = original
-    return {d: np.asarray(getattr(kept["body"], d), float).copy() for d in DRIVES}
+    return {d: np.asarray(getattr(kept["body"], d), float).copy() for d in DRIVES}, kept["disturbed"]
 
 
 def caught_up(minutes, n):
@@ -125,12 +148,14 @@ def main() -> int:
     worst, path = round_trip(args.ducks)
     print(f"save and load, nothing else: worst drive off by {worst:.4f}")
 
-    real = lived(W, ann, sets, args.minutes, args.ducks)
-    away = caught_up(args.minutes, args.ducks)
+    real, disturbed = lived(W, ann, sets, args.minutes, LIVED_DUCKS)
+    away = caught_up(args.minutes, LIVED_DUCKS)
+    calm = ~disturbed
+    print(f"{int(disturbed.sum())} of {LIVED_DUCKS} lone ducks were startled in or just before their sleep")
     print(f"after {args.minutes:g} minutes, lived against spent away:")
     gaps = {}
     for d in DRIVES:
-        gaps[d] = float(np.max(np.abs(real[d] - away[d])))
+        gaps[d] = float(np.max(np.abs(real[d] - away[d])[calm if d == "sleep_pressure" else slice(None)], initial=0))
         tag = "" if d in CLOCK_DRIVES else "   (needs the garden; not asserted)"
         print(f"  {d:15s} {np.mean(real[d]):6.3f} against {np.mean(away[d]):6.3f}"
               f"   worst duck off by {gaps[d]:.3f}{tag}")
@@ -145,8 +170,9 @@ def main() -> int:
     return verdict({
         "saving and loading loses nothing": worst < 1e-6,
         "the garden comes back as it was left, a minute later in its day": garden_round_trip(args.ducks),
-        "hunger, thirst and sleep age exactly as they would have": all(gaps[d] <= TOLERANCE
-                                                                      for d in CLOCK_DRIVES),
+        "hunger, thirst and undisturbed sleep age exactly as they would have": all(gaps[d] <= TOLERANCE
+                                                                                  for d in CLOCK_DRIVES),
+        f"at least {UNDISTURBED_MIN} ducks slept undisturbed": int(calm.sum()) >= UNDISTURBED_MIN,
         f"three days away loads in under {THREE_DAY_BUDGET_S:g} s": three_days < THREE_DAY_BUDGET_S,
     })
 

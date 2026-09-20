@@ -34,7 +34,12 @@ SHORE_M = 0.1  # a duck whose centre is within this of the pond edge can drink
 # its own edge.
 POND_DAMP = 0.004
 WALL_CLEAR_M = 0.6  # fruit does not land nearer a wall than this: a duck cannot search around what is against one
-FRUIT_BITES = 3
+# A fruit is a meal: ten bites is what takes a starving duck to full (brain/physiology.py BITE_FULLNESS).
+# At three a find never filled anyone, so nobody was ever done foraging: ducks had both needs low for 11%
+# of their waking time and spent 40 to 55% of it following a plume, and five personalities that mostly act
+# through what a duck does with its free time looked alike (Gate 5; Chris, 2026-09-20: personality should
+# show as much as possible).
+FRUIT_BITES = 10
 MAX_FOOD = 4  # the tree stops dropping while this much food is on the ground
 
 

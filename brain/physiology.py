@@ -28,13 +28,27 @@ REST_S = 60.0  # standing still from exhausted to rested
 # seconds, a local search that puts it back in the plume (Alvarez-Salvado et al. 2018, the OFF response).
 # Without it a duck walks up the wind in a straight line and straight past a dish a hand's width to one
 # side, because going upwind never corrects sideways (2026-09-19: 8 of 8 aligned upwind, 1 of 8 arrived).
-SCENT_MEMORY_S = 5.0  # how long the smell it had stays with it
-# Close to food the wind stops helping: it says which way the smell came from, not which side the dish
-# is on, and ducks ended up leaning on the garden wall with a fruit a hand's width to one side. So a smell
-# this strong is searched rather than followed. 0.5 is the smell half a metre downwind of a dish and 1.5
-# is two thirds of the smell standing on one.
-NEAR_FROM, NEAR_FULL = 0.5, 1.5
+# How long the smell it had stays with it, and so how long it searches for one it lost. A walking fly keeps
+# a local search going for tens of seconds after losing a food cue, not five: at 5 s a duck that overshot
+# the dish gave up and walked off before it had turned round (Gate 4, 13/20 found; at 30 s, 17/20).
+SCENT_MEMORY_S = 30.0
+# A duck can only lose a smell it had. Below this its memory of one counts as none: without the floor a
+# duck that had never smelled anything read as having lost everything, and searched, at half speed and
+# turning three times as wide, for as long as there was nothing to smell, which is every garden without
+# food in it (found at Gate 8b, 2026-09-20). 0.05 is a tenth of the smell sense's half level.
+SCENT_FLOOR = 0.05
+# There was also a search for when the smell was strong, "close to food", set on the smell of one dish. Four
+# fruits' plumes add up, so it read "close" over 19 to 45% of the garden, out to 2.7 m downwind, and ducks
+# that far off stopped following the wind and dithered; and with one dish Gate 4 does better without it, 20/20
+# at 27.6 s against 17/20 at 38.4 s, because the search for a lost smell already covers the last step. Removed
+# 2026-09-20.
 SEARCH_TURN, SEARCH_SLOW = 3.0, 0.5  # at a smell fully lost: wander this many times wider, walk this much slower
+# A duck does not have to be full to be happy (Chris, 2026-09-20). A need leaves a duck alone until it
+# passes CONTENT_BELOW and has all of its attention by PRESSING_AT, a ramp and not a switch. Every place a
+# like gives way to a need uses this, so a duck that is a bit peckish still swims, keeps company and
+# dawdles in a smell it likes, and its personality has most of the day to show in. It used to give way in
+# proportion to hunger from zero: at hunger 0.4 a water lover's love of water was already down a third.
+CONTENT_BELOW, PRESSING_AT = 0.4, 0.8
 REST_BELOW = 0.15  # a duck whose hunger, thirst and boredom are all under this has no reason to move
 NIGHT_SLEEPINESS = 2.0  # sleep pressure builds this many times faster once the sun is down
 DAY_WAKING = 1.0  # daylight cancels an ordinary duck's build entirely, so it stays up all day; a sleepy one still naps
@@ -46,6 +60,11 @@ BORED_S = 120.0  # uneventful time to full boredom, at boredom rate 0.5
 LONELY_S = 60.0  # time without touching another duck before a sociable duck starts to mope
 AGGR_TONE_MAX = 0.8  # pC1d/e input at full aggressiveness and full trigger; aIPg about 1.2 Hz at a dish
 FOOD_NEAR_HALF = 0.5  # food odor at which "near food" is 0.5
+
+
+def pressing(need):
+    """How far a need has a duck's attention, 0 to 1."""
+    return np.clip((np.asarray(need, float) - CONTENT_BELOW) / (PRESSING_AT - CONTENT_BELOW), 0, 1)
 
 
 def _knob(personality, name, n):
@@ -117,10 +136,6 @@ class Physiology:
         self.asleep = (self.asleep | falls_asleep) & ~wakes
         return falls_asleep, wakes
 
-    def near(self):
-        """How close to food the smell says it is, 0 to 1."""
-        return np.clip((self.scent - NEAR_FROM) / (NEAR_FULL - NEAR_FROM), 0, 1)
-
     def at_water(self, humidity):
         """How close to water the air says it is, 0 to 1: past half saturated the pond is a step or two
         away and the humidity neurons' own left and right do the rest (Gate 4b)."""
@@ -156,12 +171,13 @@ class Physiology:
         # pond louder than a dish two metres off and never went (audit, 2026-09-19).
         # Cooling off in the pond is a like too, and yields to hunger by the factor the swim urge does:
         # ungated, a hot water lover followed damp air while it starved (Gate 9b, Carefree).
-        water = (self.thirst * thirsty + hot * k["water_love"] * (1 - 0.8 * self.hunger)
-                 + 0.5 * k["water_love"] * (1 - self.hunger))
+        hungry_now = pressing(self.hunger)
+        water = (self.thirst * thirsty + hot * k["water_love"] * (1 - 0.8 * hungry_now)
+                 + 0.5 * k["water_love"] * (1 - hungry_now))
         # Company is a like, not a need. Sociability sets how much another duck's smell draws this one
         # (ARCHITECTURE.md 2.4; until now no knob touched it and every duck was drawn alike), and it
         # fades once hunger or thirst passes halfway, or a huddle holds itself together while it starves.
-        company = 2 * k["sociability"] * np.clip(2 * (1 - np.maximum(self.hunger, self.thirst)), 0, 1)
+        company = 2 * k["sociability"] * (1 - pressing(np.maximum(self.hunger, self.thirst)))
         care = 1 - 0.6 * k["carelessness"]
         # cold sensors steer toward cold (Gate 4b probe), so a hot duck turns up its cold sense to find
         # shade, and a cold duck its heat sense; a water lover skips the shade and heads for the pond
@@ -184,12 +200,13 @@ class Physiology:
             "vision": (0.5 + k["timidity"]) * care * (1 + self.fear),  # brain/vision.py, not a set
         }
 
-    def motor(self) -> dict[str, np.ndarray]:
+    def motor(self, wants=0.0, damp=0.0) -> dict[str, np.ndarray]:
         """How the body shapes movement: speed and wander scales, and whether the duck approaches touches."""
         k = self.k
         # how much of the smell it was following is gone, 0 to 1, weighed by wanting it
-        lost = np.clip(1 - self.scent / np.maximum(self.scent_was, 1e-6), 0, 1)
-        lost = np.maximum(lost, self.near()) * np.clip(2 * self.hunger, 0, 1)
+        lost = np.clip(1 - self.scent / np.maximum(self.scent_was, 1e-6), 0, 1) * (self.scent_was > SCENT_FLOOR)
+        lost = lost * pressing(self.hunger)
+        swim_urge = np.clip(k["water_love"] * (1 + self.discomfort()[0]) * (1 - 0.8 * pressing(self.hunger)), 0, 1)
         return {
             "speed": ((0.4 + 1.2 * k["energy"]) * (1 - 0.6 * self.fatigue) * (1 - 0.5 * self.sorrow)
                       * (1 - SEARCH_SLOW * lost)),
@@ -203,14 +220,21 @@ class Physiology:
             # Hunger gets a duck out of the pond. Without it a water lover paddles at a fifth of its
             # speed, cannot eat while swimming, and has only a small chance every few seconds of
             # choosing to leave, so it can sit there and starve (audit, 2026-09-19).
-            "swim_urge": np.clip(k["water_love"] * (1 + self.discomfort()[0]) * (1 - 0.8 * self.hunger), 0, 1),
+            "swim_urge": swim_urge,
             "swim_thirst_weight": 1 - 0.5 * k["water_love"],  # water lovers wade in even a little thirsty
             # Whether a duck has any reason to be walking. BASE_VX used to be added unconditionally,
             # from before the ducks had eyes and anything reached DNp09, so one could never stand still:
             # fatigue only ever climbed, because resting needs speed under 0.01 (Chris, watching the
             # sim, 2026-09-19). A duck with nothing it wants stands about instead, and boredom is what
             # eventually gets it going again.
-            "restlessness": np.clip((np.maximum.reduce([self.hunger, self.thirst, self.boredom])
+            # `wants` is anything else pulling at it, 0 to 1, which the server knows and the body does
+            # not: music, to a duck that loves or hates it. Without it a fed, watered duck stood and
+            # listened from across the garden, liking the tune or not (Gate 8b, 2026-09-20).
+            # A swim is a want too, for a duck that likes water and can tell there is some about (`damp`
+            # is how humid the air is): a fed, watered water lover stood on the shore until it got bored.
+            "restlessness": np.clip((np.maximum.reduce([self.hunger, self.thirst, self.boredom,
+                                                        np.broadcast_to(wants, self.hunger.shape),
+                                                        swim_urge * damp])
                                      - REST_BELOW) / 0.5, 0, 1),
         }
 

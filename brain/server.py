@@ -25,7 +25,7 @@ from brain.encoder import graded as graded_senses
 from brain.lif import DT_MS, LIF
 from brain.plasticity import Plasticity, sparsen, strip
 from brain.vision import VIS_TONIC, Vision
-from brain.physiology import Physiology, aggression_tone
+from brain.physiology import Physiology, aggression_tone, pressing
 from world.fields import CELL_M, DECAY, DIFFUSION
 
 BODY_DT_MS = 20.0
@@ -145,10 +145,17 @@ class BrainServer:
         falls_asleep, wakes = body.step(BODY_DT_MS / 1000, f, self.escaped, self.last_vx)
 
         levels = self._levels(f)
-        self.decoder.body = {**body.motor(), "surge": self.following, "swimming": f["swimming"] > 0, "at_shore": f["water"] > 0,
+        tune = np.abs(2 * body.k["music_affinity"] - 1) * levels["johnstons_organ"]  # strong taste, loud music
+        self.decoder.body = {**body.motor(wants=tune, damp=(f["humidity_left"] + f["humidity_right"]) / 2),
+                             "surge": self.following, "swimming": f["swimming"] > 0, "at_shore": f["water"] > 0,
                              "thirst": body.thirst, "hatted": f["hat"] > 0, "fear": body.fear,
-                             "hunger": body.hunger, "tasting": (f["sugar"] > 0) | (f["water"] > 0),
-                             "music_left": f["music_left"], "music_right": f["music_right"],
+                             "hunger": pressing(body.hunger),  # how far hunger outranks a smell it likes
+                             "tasting": (f["sugar"] > 0) | (f["water"] > 0),
+                             # the ears get the contrast the antennae get: raw, two ears 10 cm apart differ
+                             # by 0.01 of full loudness, a 0.01 rad/s turn under 1.5 of steering noise, and
+                             # music never steered a duck (Gate 8b's old pass was two paths diverging)
+                             **dict(zip(("music_left", "music_right"),
+                                        bilateral(f["music_left"], f["music_right"], MUSIC_HALF))),
                              "music_affinity": body.k["music_affinity"], "vanity": body.k["vanity"]}
         # Senses release steadily rather than firing a random subset of each set per tick: the same
         # mean current with none of the sampling noise, which is what makes a smell recognisable from
@@ -190,11 +197,13 @@ class BrainServer:
         # (PLAN.md Gate 9b: no descending neuron carries the comparison). Nothing in this brain gates
         # wind on smell either, which the fly does in its fan-shaped body, so the body does it the way
         # it does everything else, by turning a sense up: a duck attends to the wind as far as it
-        # smells food it wants, and food's own gain already carries the hunger. Close to the food it
-        # stops listening to the wind and searches (brain/physiology.py `near`).
+        # smells food it wants, and food's own gain already carries the hunger.
         # Water is found the same way: a thirsty duck follows damp air up the wind, and thirst is already
         # in the damp sense's gain.
-        scent = np.clip((levels["orn_food_left"] + levels["orn_food_right"]) / 2, 0, 1) * (1 - body.near())
+        # ... as far as hunger is pressing: the food sense keeps a floor so that a full duck still notices
+        # a dish, and on that floor a duck that had just eaten went on following food smell at two thirds
+        # strength. Water needs no such factor: its gain is thirst itself, plus what the duck likes.
+        scent = np.clip((levels["orn_food_left"] + levels["orn_food_right"]) / 2, 0, 1) * pressing(body.hunger)
         damp = (np.clip((levels["moist_air_left"] + levels["moist_air_right"]) / 2, 0, 1)
                 * (1 - body.at_water((f["humidity_left"] + f["humidity_right"]) / 2)) * ~wet)
         self.following = np.maximum(scent, damp) * (f["wind"] > 0)  # how far it is following its nose upwind

@@ -32,6 +32,10 @@ time) and one Napper (parched 0.37); by label the Bully starves 0.23 of the time
 0.02. The Bully's appetite asks 40% more food than anyone's, so it is the hungriest duck in every garden,
 and its margin under the limit is thin. The mean still fails a label that starves as a rule: two runs
 earlier the Bully's three gardens read 0.28, 0.31 and 0.70.
+
+Chris ratified that bar on 2026-09-20, and decided the Bully's hunger is character rather than a fault:
+on the final tree it starves 0.30 of the time and no other label more than 0.21. It is exempt from the
+starving limit by name (HUNGRY_BY_NATURE) and still has to eat, drink and sleep like everyone else.
 """
 import argparse
 import sys
@@ -49,6 +53,10 @@ LABELS = "Bully,Napper,Carefree,Chatty,Scaredy"  # the demo's
 NEEDY = 0.8
 STUCK_S, STUCK_M = 120, 0.2
 PINNED, PINNED_SHARE = 0.95, 0.25
+# The Bully goes hungry because it would rather fight than eat: it turns on a rival at the food instead of
+# eating, needs 40% more than anyone, and eats the fewest bites. Chris, 2026-09-20: that is emergent and it
+# stays. So the Bully is held to eating at all (every duck eats), not to the starving limit.
+HUNGRY_BY_NATURE = {"Bully"}
 MOVING_MS = 0.02
 
 
@@ -57,7 +65,7 @@ def soak(W, ann, sets, labels, minutes, seed, gardens):
     n = len(labels) * gardens
     rng = np.random.default_rng(seed)
     pose = np.column_stack([rng.uniform(0.5, SIZE_M - 0.5, (n, 2)), rng.uniform(-np.pi, np.pi, n)])
-    log = {k: [] for k in ("xy", "asleep", "hunger", "thirst", "swimming", "sips")}
+    log = {k: [] for k in ("xy", "asleep", "hunger", "thirst", "swimming", "sips", "fear", "following")}
     sips, steps = np.zeros(n), [0]
 
     def watch(server, stubs):
@@ -69,7 +77,8 @@ def soak(W, ann, sets, labels, minutes, seed, gardens):
         b = server.body
         log["xy"].append(np.concatenate([s.pose[:, :2] for s in stubs]))
         log["swimming"].append(np.array([x["swimming"] > 0 for x in f]))
-        for k, v in (("asleep", b.asleep), ("hunger", b.hunger), ("thirst", b.thirst), ("sips", sips)):
+        for k, v in (("asleep", b.asleep), ("hunger", b.hunger), ("thirst", b.thirst), ("sips", sips),
+                     ("fear", b.fear), ("following", server.following)):
             log[k].append(np.array(v, float))
 
     per = len(labels)
@@ -95,6 +104,22 @@ def stuck_seconds(d) -> np.ndarray:
     bad = (need > NEEDY) & (d["asleep"] == 0)
     whole = np.array([bad[i:i + STUCK_S].all(axis=0) for i in range(len(bad) - STUCK_S)])
     return (went & unfed & whole).sum(axis=0)
+
+
+def describe_stuck(d, labels, i) -> str:
+    """Where a stuck duck was and what state it was in, over its first stuck two minutes."""
+    xy, fed = d["xy"], d["bites"] + d["sips"]
+    bad = (np.maximum(d["hunger"], d["thirst"]) > NEEDY) & (d["asleep"] == 0)
+    for t in range(len(xy) - STUCK_S):
+        if (np.linalg.norm(xy[t + STUCK_S, i] - xy[t, i]) < STUCK_M and fed[t + STUCK_S, i] == fed[t, i]
+                and bad[t:t + STUCK_S, i].all()):
+            w = slice(t, t + STUCK_S)
+            path = np.linalg.norm(np.diff(xy[w, i], axis=0), axis=1).sum()
+            return (f"{labels[i % len(labels)]} in garden {i // len(labels)} from {t} s at ({xy[t, i, 0]:.2f}, {xy[t, i, 1]:.2f}): "
+                    f"walked {path:.1f} m going nowhere, hunger {d['hunger'][w, i].mean():.2f}, thirst "
+                    f"{d['thirst'][w, i].mean():.2f}, fear {d['fear'][w, i].mean():.2f}, following a plume "
+                    f"{d['following'][w, i].mean():.2f}")
+    return ""
 
 
 def main() -> int:
@@ -130,7 +155,11 @@ def main() -> int:
         print(f"  over the limit: {labels[i % per]} in garden {i // per}: starving {cols[4][i]:.2f}, parched "
               f"{cols[5][i]:.2f} of the time, {d['bites'][-1, i]:.0f} bites, {d['sips'][-1, i]:.0f} sips")
 
-    pinned = np.maximum(mean(cols[4]), mean(cols[5]))  # per label, over the gardens
+    held = np.array([label not in HUNGRY_BY_NATURE for label in labels])
+    for i in np.flatnonzero(stuck > 0):
+        print(f"  stuck: {describe_stuck(d, labels, i)}")
+
+    pinned = np.maximum(np.where(held, mean(cols[4]), 0), mean(cols[5]))  # per label, over the gardens
     return verdict({
         "every duck eats": bool((d["bites"][-1] > 0).all()),
         "every duck drinks": bool((d["sips"][-1] > 0).all()),

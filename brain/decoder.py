@@ -39,6 +39,11 @@ VYAW_PER_HZ = 1.0  # rad/s per Hz of left minus right steering DNs, positive = t
 ESCAPE_TICKS = 50  # 0.5 s of running backward
 # giant fiber spikes within 10 ticks (100 ms). Sun and dry air alone reach 2 in 5% of windows and 3 in
 # none; looming reaches 3 in about 20% (Gate 4b).
+# Measured over lone ducks, 2026-09-20: three spikes land in a window by chance 0.44 times a duck-minute
+# blind and 1.19 with its eyes open (its own turning sweeps the garden across the retina), while a hand
+# swooping in from 1.6 m trips it 18% of the time. So most startles are at nothing. Chris, 2026-09-20: keep
+# them; a duck that jumps at shadows is a duck. Four spikes would all but end the false ones (0.06) and the
+# real ones with them (1%).
 ESCAPE_SPIKES, ESCAPE_WINDOW = 3, 10
 WANDER_VYAW, WANDER_TICKS = 0.5, 50  # spontaneous turn rate, redrawn every 0.5 s
 FEED_HZ = 1.0  # proboscis MN rate that means "eat"

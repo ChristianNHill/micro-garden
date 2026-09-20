@@ -22,7 +22,36 @@ and 0.67 m from it, which is no preference at all. Making it learnable needs the
 something, and the only free glomeruli are ones food already uses, so it waits on vision getting
 stronger or on a fourth odor.
 
-STATUS 2026-09-18: PASSING, both asserted checks.
+DECIDED 2026-09-20 (Chris): a Bully that costs itself food is emergent behaviour and stays. The dish
+contest is printed, not asserted; what it shows is who a Bully is, not a fault to fix.
+
+2026-09-20, later, on why the startled pair learns nothing that shows. Two things, found on a bench
+(trained brains smell a duck while startled eight times, yoked controls only smell it, then the smell is
+put on one side, mirrored). First, an event in the garden delivered dopamine for one body step, 20 ms, and
+eight of them left the weights at 0.996 of baseline; `brain/plasticity.py` now gives each burst the second
+a real one lasts, and the same eight startles cut the MBONs' answer to that duck's smell by a third, 1.17
+to 0.78 Hz. So a duck does now learn who it was startled beside. Second, that lesson stops at the MBONs:
+the turn toward the other duck reads +0.238 Hz trained against +0.234 control, and no descending type
+changes beyond chance. Nothing in this wiring carries mushroom-body output to a left or a right. A duck
+that acts on what it learned needs an explicit readout of MBON valence, as the stink and the music have,
+and that is a feature for Chris to want or not. Until then this check fails and says so.
+
+STATUS 2026-09-20: FAILING, both asserted checks, and neither of the 09-18 passes below survives a look.
+- The Bully's 0.75 of the bites rested on a bug. A full duck kept tasting food (taste had a floor), so
+  both stood at the 1000-bite dish for the whole minute and the Bully had all that time to drive the
+  Scaredy off. With taste gated on hunger a starving duck eats its fill in about five seconds and walks
+  away, the two are at the dish together for those seconds only, and nobody landed a headbutt in ten
+  episodes: 0.47 against 0.53. Making the dish scarce (10 bites, one duck's fill) does not rescue it:
+  the Scaredy takes 59 bites to the Bully's 30, because the Bully spends its seconds at the dish
+  turning on the other duck (2 headbutts in ten episodes) while the quicker Scaredy eats. Whether and how
+  a Bully gets food by bullying is a question about the aggression design, and it is Chris's.
+- The startled pair's widening gap was never learning. It compared a pair with its own start, and two
+  ducks set down face to face wander apart whatever happens: learning and clapped at +0.13 m, not
+  learning and clapped at +0.17 m, learning and never clapped at +0.29 m (10 pairs each, s.e. 0.09 to
+  0.19). The check is now against a yoked pair that is never clapped at, and it fails, which is the
+  honest reading: there is no evidence yet that a duck learns to avoid the one it was startled beside.
+
+STATUS 2026-09-18 (superseded): PASSING, both asserted checks.
 - A Bully takes 0.75 of the bites against a Scaredy's 0.25. It used to be 0.50 against 0.50, and the
   fix is not more attacks: being shoved now frightens a timid duck where it angered every duck alike,
   and a frightened duck goes off its food. So a Scaredy yields a dish it has been driven off, and Gate
@@ -73,13 +102,14 @@ def bully_and_scaredy(W, ann, sets, n, seed):
     return bites / max(bites.sum(), 1)  # (bully's share, scaredy's share)
 
 
-def startled_together(W, ann, sets, n, seed):
-    """Two ducks, clapped at while they are side by side. Returns their mean gap before and after."""
+def startled_together(W, ann, sets, n, seed, clap=True):
+    """Two ducks, clapped at while they are side by side. Returns their mean gap before and after.
+    clap=False is the yoked pair: the same ducks, garden and time, and nothing happens to them."""
     gaps = []
 
     def claps(stubs):
         for s in stubs:
-            if s.t > STARTLE_S / 3 and int(s.t * 10) % int(STARTLE_S / STARTLES * 10) == 0:
+            if clap and s.t > STARTLE_S / 3 and int(s.t * 10) % int(STARTLE_S / STARTLES * 10) == 0:
                 s.scared[:] = True
         return False
 
@@ -126,17 +156,19 @@ def main() -> int:
     sets = named_sets(ann)
 
     bully, scaredy = bully_and_scaredy(W, ann, sets, n, seed=0)
-    print(f"one dish, Bully against Scaredy:  share of the bites {bully:.2f} against {scaredy:.2f}")
+    print(f"one dish, Bully against Scaredy:  share of the bites {bully:.2f} against {scaredy:.2f}"
+          "   (printed, not asserted: Chris, 2026-09-20)")
     before, after = startled_together(W, ann, sets, n, seed=1)
-    print(f"clapped at {STARTLES} times together:      gap {before:.2f} m at the start, {after:.2f} m by the end")
+    _, left_alone = startled_together(W, ann, sets, n, seed=1, clap=False)
+    print(f"clapped at {STARTLES} times together:      gap {before:.2f} m at the start, {after:.2f} m by the end; "
+          f"a pair nobody clapped at ends {left_alone:.2f} m apart")
     fed_near, ignored_near = follows_the_hand(W, ann, sets, n, seed=2)
     print(f"the hand, after feeding one duck: fed duck came {fed_near:.2f} m from it, "
           f"the other {ignored_near:.2f} m   (printed, not asserted; see the note above)")
     print(f"({time.perf_counter() - t0:.0f} s wall)")
 
     return verdict({
-        "a Bully takes the food a Scaredy wanted": bully > scaredy + 0.15,
-        "ducks startled together keep their distance afterwards": after > before + 2 * DUCK_R,
+        "ducks startled together end up further apart than a pair left alone": after > left_alone + 2 * DUCK_R,
     })
 
 
