@@ -19,18 +19,16 @@ const Hats := preload("res://hats.gd")
 const BrainView := preload("res://brainview.gd")
 const MusicBox := preload("res://musicbox.gd")
 const SNAPSHOT_PORT := 7650  # actions go back on the next one up; --port moves the pair
-const HELP := """click a duck          select it, and see its needs and its brain
-click the tree, or F  shake fruit down
-H                     drop a hat at the mouse, for whoever wants it
-B                     drop a ball at the mouse
-M                     put the music box down at the mouse, or pick it up
-click the music box   step its volume
-C                     clap
-drag                  turn the camera        scroll   zoom
-/                     hide this"""
-const HELP_SELECTED := """Tab                   ride this duck
-P                     pet it
-click the grass       let it go
+const HELP := """tap a duck      select it: its needs, its brain
+hold and drag   pick up fruit, a hat, a ball, the music box, a duck
+let go moving   throw it (a thrown duck thinks less of you)
+tap the tree/F  shake fruit down       C   clap
+H  B  M         drop a hat, a ball, the music box (M again picks it up)
+tap the box     its volume
+right-drag      turn the camera        scroll   zoom
+/               hide this"""
+const HELP_SELECTED := """Tab  ride it      P  pet it      G  hand it a fruit
+tap the grass   let it go
 """
 const HELP_RIDING := "W A S D  steer      O  hide its eyes      Tab  get off"
 const PITCH := Vector2(0.35, 1.25)  # radians above the horizon the camera may sit
@@ -49,6 +47,10 @@ var props := {}  # what is in the garden now, by kind, as the nodes drawn for it
 var cam := Camera3D.new()
 var orbit := Vector3(0.75, 0.7, 8.8)  # yaw, pitch, distance
 var centre := Vector3.INF  # what the camera turns about
+var glove := Node3D.new()  # the player's hand, where the mouse is over the garden
+var gripping := false  # the left button is down: the hand is closed on whatever was there
+var pressed_at := 0.0
+var trail: Array = []  # [seconds, garden xy] of the hand lately, for how fast it was moving when it let go
 var dragging := false
 var dragged := 0.0
 var still := 0.0  # seconds since the player last moved the camera
@@ -110,7 +112,7 @@ func _ready() -> void:
 	overlay.draw.connect(_draw_overlay)
 	ui.add_child(overlay)
 	card.position = Vector2(24, 20)
-	help.add_theme_font_size_override("font_size", 14)
+	help.add_theme_font_size_override("font_size", 13)
 	var mono := SystemFont.new()
 	mono.font_names = PackedStringArray(["Menlo", "Monaco", "Courier New", "monospace"])
 	help.add_theme_font_override("font", mono)  # the two columns line up
@@ -119,6 +121,16 @@ func _ready() -> void:
 	help.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	toasts.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT, Control.PRESET_MODE_MINSIZE, 24)
 	toasts.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	# a white glove with a cuff, as in the Chao gardens: a palm, four fingers and a thumb
+	Ink.part(glove, Ink.ball(0.07, 8), Color.WHITE, Vector3.ZERO, Vector3(1.0, 0.55, 1.1), 5.0, -1.0, true).material_override.set_shader_parameter("lift", 0.4)
+	for k in 4:
+		Ink.part(glove, Ink.cone(0.018, 0.09, 0.015, 6), Color.WHITE, Vector3(0.075, -0.01, -0.05 + 0.033 * k), Vector3.ONE, 5.0, -1.0, true).rotation.z = -PI / 2 - 0.35
+	Ink.part(glove, Ink.cone(0.02, 0.07, 0.016, 6), Color.WHITE, Vector3(0.01, -0.005, 0.085), Vector3.ONE, 5.0, -1.0, true).rotation.x = PI / 2 - 0.4
+	Ink.part(glove, Ink.cone(0.055, 0.05, 0.05, 8), Ink.CORAL, Vector3(-0.075, 0, 0), Vector3.ONE, 5.0, -1.0, true).rotation.z = PI / 2
+	glove.scale = Vector3.ONE * 1.6
+	glove.visible = false
+	add_child(glove)
+	Input.mouse_mode = Input.MOUSE_MODE_HIDDEN if not args.has("shot") else Input.MOUSE_MODE_VISIBLE
 	music.set_script(MusicBox)
 	add_child(music)
 	music.setup(args.get("music", OS.get_environment("HOME").path_join(".cache/micro-garden/music")))
@@ -171,6 +183,7 @@ func _process(dt: float) -> void:
 				_build()
 			_show(first)
 	_camera(dt)
+	_hand(dt)
 	_pond_sound()
 
 
@@ -230,8 +243,6 @@ func _show(first: bool) -> void:
 	_props("music", [snap.music] if snap.music != null else [], func(n: Node3D, f: Array) -> void:
 		Ink.part(n, BoxMesh.new(), Ink.CORAL, Vector3(0, 0.05, 0), Vector3(0.14, 0.1, 0.14), 7.0, -1.0, true)
 		Ink.part(n, Ink.cone(0.02, 0.16, 0.1, 8), Ink.MUSTARD, Vector3(0.03, 0.18, 0), Vector3.ONE, 7.0, -1.0, true).rotation.z = -0.5)
-	_props("hand", [snap.hand] if snap.hand != null else [], func(n: Node3D, f: Array) -> void:
-		Ink.part(n, Ink.ball(0.12, 8), Ink.CREAM, Vector3(0, 0.3, 0), Vector3(1, 0.5, 1), 7.0, -1.0, true))
 	var wind = snap.get("wind")
 	var blowing: bool = wind != null and Vector2(wind[0], wind[1]).length() > 0.05
 	var flutter := sin(Time.get_ticks_msec() / 160.0) * 0.14 * calm
@@ -239,6 +250,14 @@ func _show(first: bool) -> void:
 	flag.rotation.z = lerp(flag.rotation.z, 0.0 if blowing else -1.35, 0.05)  # no wind, and it hangs
 	for i in falls.size():
 		falls[i].scale.z = 0.5 * (1.0 + 0.12 * calm * sin(Time.get_ticks_msec() / 130.0 + i * 1.7))
+	var held = snap.get("held")
+	for kind in ["balls", "hats", "food", "music"]:  # what the hand holds rides up in it
+		var nodes: Array = props.get(kind, [])
+		for k in nodes.size():
+			var up: bool = held != null and held[0] + ("s" if held[0] in ["ball", "hat"] else "") == kind and int(held[1]) == k
+			nodes[k].position.y = lerp(nodes[k].position.y, 0.3 if up else 0.0, 0.3)
+	for i in ducks.size():
+		ducks[i].lifted = held != null and held[0] == "duck" and int(held[1]) == i
 	for n in props.get("music", []):
 		n.scale = Vector3.ONE * (1.0 + 0.06 * calm * sin(Time.get_ticks_msec() / 90.0))  # it plays
 	# ask for the selected duck's brain, and again every second in case the garden was restarted
@@ -277,13 +296,21 @@ func _show(first: bool) -> void:
 	help.text = HELP_RIDING if possessing else (HELP_SELECTED + HELP if selected >= 0 else HELP)
 	if selected >= 0:
 		var d: Dictionary = snap.ducks[selected]
-		card.text = "%s   %s\n%s" % [d.name, d.label, ("asleep" if d.asleep else d.mood)]
+		card.text = "%s   %s\n%s" % [d.name, d.label, ("asleep" if d.asleep else ("crying" if d.get("crying", false) else d.mood))]
+		var a: Dictionary = d.get("among", {})
+		if not a.is_empty():
+			card.text += "\n\nlikes %s best\n%s" % [a.favourite, a.hand]
+			if a.friend != "":
+				card.text += "\nfriend: %s" % a.friend
+			if a.grudge != "":
+				card.text += "\ngrudge against: %s" % a.grudge
+			card.text += "\nswimmer %d%%   runner %d%%   dancer %d%%" % [a.skills[0] * 100, a.skills[1] * 100, a.skills[2] * 100]
 
 
 func _fruit(n: Node3D, f: Array) -> void:
-	# An orange, an apple or a banana (Chris, 2026-09-21). Which one is drawn from where it lies, so a fruit
-	# stays the fruit it is while others fall and are eaten around it. All of them are the same food.
-	var kind := int(abs(f[0] * 731.0 + f[1] * 389.0) * 10.0) % 3
+	# An orange, an apple or a banana (Chris, 2026-09-21), as the garden dealt it. All of them are the same food,
+	# and each duck has one it likes best.
+	var kind: int = int(f[2]) if f.size() > 2 else int(abs(f[0] * 731.0 + f[1] * 389.0) * 10.0) % 3  # the garden says which
 	var leaf := Color("2f8f4a")
 	if kind == 0:
 		Ink.part(n, Ink.ball(0.075, 8), Color("f39a2b"), Vector3(0, 0.072, 0), Vector3.ONE, 6.0, -1.0, true).material_override.set_shader_parameter("lift", 0.3)
@@ -316,7 +343,7 @@ func _props(kind: String, items: Array, make: Callable) -> void:
 			nodes.append(n)
 		props[kind] = nodes
 	for i in items.size():
-		nodes[i].position = Vector3(items[i][0], 0, -items[i][1])
+		nodes[i].position = Vector3(items[i][0], nodes[i].position.y, -items[i][1])  # its height is the hand's business
 
 
 func _draw_bars() -> void:
@@ -378,23 +405,62 @@ func _draw_overlay() -> void:
 
 
 func _quack(duck: int, tag: String) -> void:
-	# A quack is a buzz whose pitch falls, shaped by the tag and set by the duck, so five ducks have five
-	# voices and an alarm does not sound like a coo. Synthesised here; the garden ships no audio files.
+	# A quack is a buzz whose pitch moves, shaped by the tag and voiced by the duck. Each duck has its own
+	# voice, made from its number so it is the same every day: how high, how reedy, how much it wobbles and
+	# how fast it speaks. Synthesised here; the garden ships no audio files.
 	var shape: Array = {"alarm": [900.0, 0.5, 0.12, 3], "greet": [520.0, 0.8, 0.16, 2], "inquire": [480.0, 1.3, 0.22, 1],
 		"peck": [700.0, 0.9, 0.05, 2], "chirp": [1100.0, 1.1, 0.07, 2], "coo": [330.0, 0.9, 0.4, 1],
 		"wheee": [600.0, 1.8, 0.45, 1]}.get(tag, [500.0, 0.8, 0.15, 1])
+	var voice_rng := RandomNumberGenerator.new()
+	voice_rng.seed = 9001 + duck * 7919
+	var high: float = [0.62, 0.8, 1.0, 1.22, 1.5][duck % 5] * voice_rng.randf_range(0.94, 1.06)  # spread wide, then jittered
+	var reedy: float = voice_rng.randf_range(0.0, 1.0)  # 0 a soft hum, 1 a buzz
+	var wobble: float = voice_rng.randf_range(0.0, 0.06)
+	var wobble_hz: float = voice_rng.randf_range(9.0, 22.0)
+	var pace: float = voice_rng.randf_range(0.8, 1.3)
 	var playback: AudioStreamGeneratorPlayback = voice.get_stream_playback()
-	var pitch: float = shape[0] * (0.8 + 0.1 * duck)
 	var phase := 0.0
 	for rep in shape[3]:
-		var n := int(shape[2] * 22050.0)
-		for k in n + 900:  # and a gap
+		var n := int(shape[2] * pace * 22050.0)
+		for k in n + int(900 * pace):  # and a gap
 			if playback.get_frames_available() < 1:
 				return
 			var u := float(k) / n
-			phase += pitch * lerp(1.0, float(shape[1]), u) / 22050.0
-			var v := (fmod(phase, 1.0) * 2.0 - 1.0) * sin(min(u, 1.0) * PI) * 0.25 if k < n else 0.0
+			var f: float = shape[0] * high * lerp(1.0, float(shape[1]), u) * (1.0 + wobble * sin(TAU * wobble_hz * k / 22050.0))
+			phase += f / 22050.0
+			var saw := fmod(phase, 1.0) * 2.0 - 1.0
+			var v: float = lerp(sin(TAU * phase), saw, reedy) * sin(min(u, 1.0) * PI) * 0.25 if k < n else 0.0
 			playback.push_frame(Vector2(v, v))
+
+
+func _hand(_dt: float) -> void:
+	# The glove rides over the lawn under the mouse, lower when it is closed. While it is closed the garden is
+	# told where it is, so what it holds goes with it and the ducks can see it coming.
+	if snap.is_empty() or possessing:
+		glove.visible = false
+		return
+	var xy = _ground(get_viewport().get_mouse_position())
+	glove.visible = xy != null
+	if xy == null:
+		return
+	var at: Vector2 = xy.clamp(Vector2.ZERO, Vector2(snap.size, snap.size))
+	glove.position = glove.position.lerp(Vector3(at.x, 0.22 if gripping else 0.4, -at.y), 0.5)
+	glove.rotation.y = orbit.x + PI  # fingers away from the camera
+	var now := Time.get_ticks_msec() / 1000.0
+	trail.append([now, at])
+	while trail.size() > 1 and now - trail[0][0] > 0.12:
+		trail.pop_front()
+	if gripping:
+		_act("garden.hand_at", {"x": at.x, "y": at.y})
+
+
+func _let_go() -> void:
+	var now := Time.get_ticks_msec() / 1000.0
+	var v := Vector2.ZERO
+	if trail.size() > 1 and now - pressed_at > 0.25:
+		v = (trail[-1][1] - trail[0][1]) / max(trail[-1][0] - trail[0][0], 0.02)
+	var at: Vector2 = trail[-1][1] if not trail.is_empty() else Vector2.ZERO
+	_act("garden.release", {"x": at.x, "y": at.y, "vx": v.x, "vy": v.y})
 
 
 func _pond_sound() -> void:
@@ -413,13 +479,15 @@ func _camera(dt: float) -> void:
 	still += dt
 	if possessing and selected >= 0:
 		var d: Node3D = ducks[selected]
-		cam.fov = 100.0  # wide and coarse, to say "not human"
-		get_viewport().scaling_3d_scale = 0.3
+		cam.fov = 100.0  # wide and a little coarse, to say "not human"; the halftone mostly off, since at this size it hid the garden
+		get_viewport().scaling_3d_scale = 0.45
+		RenderingServer.global_shader_parameter_set("screen", 0.25)
 		cam.position = d.position + Vector3(0, 0.3, 0)
 		cam.rotation = Vector3(-0.15, d.rotation.y - PI / 2, 0)  # a duck faces +x and a camera looks down -z
 		return
 	cam.fov = 38.0
 	get_viewport().scaling_3d_scale = 1.0
+	RenderingServer.global_shader_parameter_set("screen", 1.0)
 	var size: float = snap.get("size", 4.0)
 	var sway: float = sin(Time.get_ticks_msec() / 9000.0) * DRIFT * (1.0 if calm == 1.0 else 0.0) * clamp(still - 3.0, 0.0, 1.0)
 	var yaw: float = orbit.x + sway
@@ -434,18 +502,28 @@ func _unhandled_input(e: InputEvent) -> void:
 	if e is InputEventMouseButton:
 		if e.button_index == MOUSE_BUTTON_WHEEL_UP or e.button_index == MOUSE_BUTTON_WHEEL_DOWN:
 			orbit.z = clamp(orbit.z * (0.92 if e.button_index == MOUSE_BUTTON_WHEEL_UP else 1.08), 2.0, 12.0)
-		elif e.button_index == MOUSE_BUTTON_LEFT:
+		elif e.button_index == MOUSE_BUTTON_LEFT:  # the hand: down closes it on whatever is there, up opens it
 			if e.pressed:
-				dragging = true; dragged = 0.0
+				gripping = true
+				pressed_at = Time.get_ticks_msec() / 1000.0
+				dragged = 0.0
+				var xy = _ground(e.position)
+				if xy != null:
+					_act("garden.grab", {"x": xy.x, "y": xy.y})
 			else:
-				dragging = false
-				if dragged < 6.0:
+				gripping = false
+				var quick: bool = Time.get_ticks_msec() / 1000.0 - pressed_at < 0.25 and dragged < 6.0
+				_let_go()
+				if quick:  # a tap and not a carry: select, shake the tree, step the volume
 					_click(e.position)
-	elif e is InputEventMouseMotion and dragging:
+		elif e.button_index == MOUSE_BUTTON_RIGHT or e.button_index == MOUSE_BUTTON_MIDDLE:  # the camera
+			dragging = e.pressed
+	elif e is InputEventMouseMotion:
 		dragged += e.relative.length()
-		orbit.x += e.relative.x * 0.006
-		orbit.y = clamp(orbit.y + e.relative.y * 0.006, PITCH.x, PITCH.y)
-		still = 0.0
+		if dragging:
+			orbit.x += e.relative.x * 0.006
+			orbit.y = clamp(orbit.y + e.relative.y * 0.006, PITCH.x, PITCH.y)
+			still = 0.0
 	elif e is InputEventKey and e.pressed and not e.echo:
 		_key(e.keycode)
 
@@ -496,6 +574,8 @@ func _key(code: int) -> void:
 		var xy = _ground(get_viewport().get_mouse_position())
 		if xy != null:
 			_act("garden.music", {"x": xy.x, "y": xy.y, "on": int(snap.music == null)})
+	elif selected >= 0 and code == KEY_G:  # a fruit held out to this duck: it learns your hand is a good thing
+		_act("garden.give", {"duck": selected})
 	elif selected >= 0 and code == KEY_P:
 		_act("garden.pet", {"duck": selected})
 	elif code == KEY_B:  # a ball for them, where the mouse is

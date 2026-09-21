@@ -43,6 +43,7 @@ FRUIT_BITES = 10
 BALL_R = 0.06  # a ball a duck can push with its chest or kick
 BALL_ROLLS_S = 1.2  # how long a rolling ball takes to lose most of its speed on grass; a third of that in water
 BALL_BOUNCE = 0.6  # of its speed kept off the fence or a rock
+FRUITS = 3  # orange, apple, banana
 MAX_FOOD = 4  # the tree stops dropping while this much food is on the ground
 
 
@@ -65,6 +66,8 @@ class World:
         self.damp = np.zeros((self.grid, self.grid))
         self.food = np.asarray(food_xy, float).reshape(-1, 2)
         self.bites = np.full(len(self.food), bites)
+        self.kind_rng = np.random.default_rng(len(self.food) + 17)
+        self.kinds = self.kind_rng.integers(0, FRUITS, len(self.food))  # which fruit each is: all the same food, not all as well liked
         self.danger = np.asarray(danger_xy, float).reshape(-1, 2)
         self.pond = pond
         self.hand = None  # (x, y) while the player's hand is in the garden (PLAN.md Gate 8)
@@ -112,6 +115,13 @@ class World:
         if self.bites[dish] <= 0:
             self.food = np.delete(self.food, dish, axis=0)
             self.bites = np.delete(self.bites, dish)
+            self.kinds = np.delete(self.kinds, dish)
+
+    def add_food(self, xy, bites: int) -> None:
+        """A fruit put down at xy: an orange, an apple or a banana, as it comes."""
+        self.food = np.vstack([self.food, np.asarray(xy, float).reshape(1, 2)])
+        self.bites = np.append(self.bites, int(bites))
+        self.kinds = np.append(self.kinds, self.kind_rng.integers(0, FRUITS))
 
     def drop_fruit(self, rng: np.random.Generator, n: int = 1) -> int:
         """Fruit falls somewhere under the shade tree's canopy. Returns how many fell."""
@@ -119,8 +129,7 @@ class World:
         while fell < n and len(self.food) < MAX_FOOD:
             a, r = rng.uniform(-np.pi, np.pi), rng.uniform(0.2, self.tree[2] + 0.2)
             xy = np.clip(np.array(self.tree[:2]) + r * np.array([np.cos(a), np.sin(a)]), WALL_CLEAR_M, self.size - WALL_CLEAR_M)
-            self.food = np.vstack([self.food, xy])
-            self.bites = np.append(self.bites, FRUIT_BITES)
+            self.add_food(xy, FRUIT_BITES)
             fell += 1
         return fell
 

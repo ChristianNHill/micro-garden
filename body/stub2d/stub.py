@@ -58,7 +58,8 @@ ANTENNA = np.array([0.06, 0.05])  # forward, lateral offset of each odor sample,
 CONTROL_PARAMS = {"sim.step": {"n": 1}, "sim.state": {}, "garden.shake_tree": {}, "garden.pet": {"duck": 0},
                   "garden.scare": {}, "garden.hand": {"x": 0.0, "y": 0.0, "feed": 0},
                   "garden.music": {"x": 0.0, "y": 0.0, "on": 1}, "garden.hat": {"duck": 0, "on": 1},
-                  "garden.drop_hat": {"x": 0.0, "y": 0.0}, "garden.drop_ball": {"x": 0.0, "y": 0.0}, "garden.volume": {"level": 0.75}}
+                  "garden.drop_hat": {"x": 0.0, "y": 0.0}, "garden.drop_ball": {"x": 0.0, "y": 0.0}, "garden.volume": {"level": 0.75}, "garden.give": {"duck": 0}, "garden.grab": {"x": 0.0, "y": 0.0}, "garden.hand_at": {"x": 0.0, "y": 0.0},
+                  "garden.release": {"x": 0.0, "y": 0.0, "vx": 0.0, "vy": 0.0}}
 SHAKE_FRUIT = 2
 PUSH_M = 0.15
 DOWN_S = 10.0  # a kicked duck goes over, and this is about how long a microduck takes to get back on its feet
@@ -67,6 +68,14 @@ SOUND_TAGS = {"alarm", "greet", "inquire", "peck", "chirp", "coo", "wheee"}  # m
 SIT_AFTER_S = 3.0  # a duck that has not moved for this long is drawn sitting (body/mujoco/adapter.py really sits)
 KICK_REACH_M, KICK_MS = 0.22, 1.6  # how near its feet a ball has to be for a duck to kick it, and how fast it leaves
 BALL_SEEN_M = 1.5  # a ball this far off fills half what it would at a duck's feet
+NEAR_M = 1.0  # another duck nearer than this is the one a duck is with
+EARSHOT_M = 2.0  # how far an alarm, a whoop or a cry carries
+WITNESS_M = 1.5  # how near a duck has to be to a shove, or to a hat being taken, to have seen it
+GRAB_M = 0.3  # how near the hand has to be to a thing to pick it up
+THROW_MS, THROW_MAX_MS, THROW_S = 0.8, 3.0, 0.35  # let go faster than the first and it is thrown; capped; and how long it flies
+HAND_S = 4.0  # how long the player's hand stays in the garden once it has come
+HAND_SEEN_M = 1.5  # a hand this far off is half as plain as one at a duck's beak
+CRY_S = 6.0  # how long a cry lasts
 AUDIENCE_M = 1.5  # how near a duck has to be to a song or a dance to be its audience
 PERFORMANCES = ("sing", "dance", "singdance")
 MAX_BALLS = 3
@@ -111,6 +120,9 @@ EMOTE_ACTS = {
     # and the two at once, which is what a duck mostly does with music it likes
     "singdance": ("chirp", [(0.0, 0.25, 0.2, 0.4, 0.15), (0.35, -0.1, -0.2, 0.0, 0.0), (0.35, 0.25, 0.2, -0.4, -0.15), (0.35, -0.1, -0.2, 0.0, 0.0),
                      (0.35, 0.25, 0.2, 0.4, 0.15), (0.35, -0.1, -0.2, 0.0, 0.0), (0.35, 0.25, 0.2, -0.4, -0.15), (0.35, -0.1, -0.2, 0.0, 0.0)]),
+    # miserable, and saying so: head down and shaking
+    "cry": ("coo", [(0.0, 0.4, 0.5, 0.0, 0.0), (0.4, 0.4, 0.5, 0.2, 0.0), (0.4, 0.4, 0.5, -0.2, 0.0), (0.4, 0.4, 0.5, 0.2, 0.0),
+                    (0.4, 0.4, 0.5, -0.2, 0.0), (0.8, 0.4, 0.5, 0.0, 0.0)]),
 }
 
 
@@ -142,7 +154,17 @@ class Stub:
         self.donned = []  # (t, duck) each time one puts a hat on
         self.kicks = []  # (t, duck) each time one kicks a ball
         self.kicked = np.zeros(n, bool)
-        self.saw_show = np.zeros(n, bool)  # a duck nearby has just begun to sing or dance
+        self.saw_show = np.zeros(n, bool)
+        # who did what to whom this step, for the ducks it happened near (-1 is nobody); sent and then cleared
+        self.events = {name: np.full(n, -1.0) for name in frames.IDS if name != "near_id"}
+        self.heard = {"heard_alarm": np.zeros(n), "heard_joy": np.zeros(n)}
+        self.hand_fed = np.zeros(n, bool)
+        self.crying_until = np.zeros(n)  # garden time until which a duck is crying, for the others to hear
+        self.hand_until = 0.0
+        self.held = None  # what the player's hand is carrying: ("ball" | "hat" | "food" | "music" | "duck", which one)
+        self.thrown = np.zeros(n, bool)
+        self.throws = []  # (t, duck) each time the player throws one
+        self.given = []  # (t, duck) each time the player hands one a fruit  # a duck nearby has just begun to sing or dance
         self.velocity = np.zeros((n, 2))  # metres a second over the ground, for what a duck walks into
         self.hat_rng = np.random.default_rng(seed + 2)
         self.preened = []  # (t, duck) each time one is shaken off
@@ -212,6 +234,9 @@ class Stub:
             if near:
                 self.hats[i], self.hat_style[i] = True, self.hat_items.pop(near[0])[2]
                 self.donned.append((self.t, i))
+                saw = np.linalg.norm(self.pose[:, :2] - self.pose[i, :2], axis=1) < WITNESS_M
+                saw[i] = False
+                self.events["hat_taken_by"][saw] = i
         elif p["skill"] == "preen" and self.hats[i]:
             self.hats[i] = False  # shaken off, and it lands where the duck stands, for whoever wants it next
             self.hat_items.append([float(self.pose[i, 0]), float(self.pose[i, 1]), int(max(self.hat_style[i], 0))])
@@ -221,14 +246,17 @@ class Stub:
     def _emote(self, i: int, feeling: str) -> None:
         """Act a feeling out: say it, and queue the head's poses for step() to play. One at a time, and not
         in its sleep."""
-        if self.acting[i] or self.relaxed[i]:
-            return
+        if self.acting[i] or self.relaxed[i] or self.t < self.down_until[i]:
+            return  # one at a time, not in its sleep, and not from flat on the floor
         tag, poses = EMOTE_ACTS[feeling]
         self.emotes.append((self.t, i, feeling))
+        if feeling == "cry":
+            self.crying_until[i] = self.t + CRY_S
         if feeling in PERFORMANCES:  # and it has an audience: what they make of it is theirs (brain/physiology.py)
             near = np.linalg.norm(self.pose[:, :2] - self.pose[i, :2], axis=1) < AUDIENCE_M
             near[i] = False
             self.saw_show |= near
+            self.events["show_by"][near] = i
         if tag:
             self._sound(i, {"tag": tag})
         at = self.t
@@ -246,6 +274,10 @@ class Stub:
         if p["tag"] not in SOUND_TAGS:
             raise ValueError(f"unknown sound tag {p['tag']!r}; known: {sorted(SOUND_TAGS)}")
         self.sounds.append((self.t, i, p["tag"]))
+        if p["tag"] in ("alarm", "wheee"):  # a fright and a whoop both carry, and both are catching
+            near = np.linalg.norm(self.pose[:, :2] - self.pose[i, :2], axis=1) < EARSHOT_M
+            near[i] = False
+            self.heard["heard_alarm" if p["tag"] == "alarm" else "heard_joy"][near] = 1.0
 
     def _stop(self, i: int, p: dict) -> None:
         self.cmd[i] = 0
@@ -259,6 +291,9 @@ class Stub:
     def _pick(self, i: int) -> None:
         *_, dish = contacts(self.pose[:, :2], self.pose[:, 2], self.world.food)
         if dish[i] >= 0 and self.t - self.last_bite[i] >= BITE_S:
+            self.events["ate_kind"][i] = self.world.kinds[dish[i]]
+            hand = self.world.hand
+            self.hand_fed[i] = hand is not None and np.hypot(hand[0] - self.pose[i, 0], hand[1] - self.pose[i, 1]) < 0.5
             self.world.eat(dish[i])
             self.eaten.append((self.t, i))
             self.last_bite[i], self.ate[i] = self.t, True
@@ -280,6 +315,11 @@ class Stub:
         return ["down" if self.t < until else "sat" if still > SIT_AFTER_S else "up"
                 for until, still in zip(self.down_until, self.still_for)]
 
+    def down_left(self) -> np.ndarray:
+        """Seconds until each duck that is down is on its feet again, 0 for one that is up: a viewer fits the
+        fall and the getting up inside it, so that a duck is standing by the time it walks."""
+        return np.maximum(self.down_until - self.t, 0.0)
+
     def _swimming(self) -> np.ndarray:
         return self.world.pond_distance(self.pose[:, :2]) < -SHORE_M
 
@@ -291,6 +331,10 @@ class Stub:
         for j in np.flatnonzero(hit):
             self.pose[j, :2] = np.clip(self.pose[j, :2] + PUSH_M * fwd, DUCK_R, self.world.size - DUCK_R)
             self.bumped[j] = True
+            self.events["bumped_by"][j] = i
+            seen = np.linalg.norm(self.pose[:, :2] - self.pose[j, :2], axis=1) < WITNESS_M
+            seen[[i, j]] = False
+            self.events["saw_shove_by"][seen], self.events["saw_shove_of"][seen] = i, j
             self.headbutts.append((self.t, i, j))
             self.knock_down(j)
 
@@ -333,11 +377,82 @@ class Stub:
     def _scare(self, p):
         self.scared[:] = True  # a clap: everything in the garden hears it
 
+    def _things(self) -> list:
+        """Everything the hand could pick up, as (kind, which, x, y). Things before ducks, so a fruit beside
+        a duck is the fruit."""
+        w = self.world
+        things = [("ball", k, *b[:2]) for k, b in enumerate(w.balls)] + [("hat", k, h[0], h[1]) for k, h in enumerate(self.hat_items)]
+        things += [("food", k, *xy) for k, xy in enumerate(w.food)] + ([("music", 0, *w.music)] if w.music else [])
+        return things + [("duck", i, *xy) for i, xy in enumerate(self.pose[:, :2]) if self.can_carry_ducks]
+
+    can_carry_ducks = True  # a simulated robot is not something a cursor can lift (body/mujoco/adapter.py)
+
+    def _grab(self, p):
+        """The hand closes on whatever is nearest it, if anything is near enough (Sonic Adventure's gardens)."""
+        at = np.array([float(p["x"]), float(p["y"])])
+        self._hand_at(p)
+        near = [(np.hypot(x - at[0], y - at[1]) + (0.1 if kind == "duck" else 0.0), kind, which) for kind, which, x, y in self._things()]
+        near = [n for n in near if n[0] < GRAB_M + (0.1 if n[1] == "duck" else 0.0)]
+        self.held = min(near)[1:] if near else None
+
+    def _hand_at(self, p):
+        """The hand moves, and what it holds goes with it."""
+        at = (float(np.clip(p["x"], 0.05, self.world.size - 0.05)), float(np.clip(p["y"], 0.05, self.world.size - 0.05)))
+        self.world.hand, self.hand_until = at, self.t + HAND_S
+        self._carry(at)
+
+    def _carry(self, at, velocity=(0.0, 0.0)) -> None:
+        if self.held is None:
+            return
+        kind, which = self.held
+        w = self.world
+        if kind == "ball" and which < len(w.balls):
+            w.balls[which] = [*at, *velocity]
+        elif kind == "hat" and which < len(self.hat_items):
+            self.hat_items[which][:2] = at
+        elif kind == "food" and which < len(w.food):
+            w.food[which] = at
+        elif kind == "music":
+            w.music = tuple(at)
+        elif kind == "duck":
+            self.pose[which, :2] = at
+            self.cmd[which] = 0
+
+    def _release(self, p):
+        """The hand opens. Let go gently, the thing is put down; let go on the move, it is thrown: a ball
+        rolls off, anything else lands a little way on, and a duck lands on its side and thinks less of you."""
+        if self.held is None:
+            return
+        v = np.array([float(p["vx"]), float(p["vy"])])
+        speed = np.linalg.norm(v)
+        v = v * min(1.0, THROW_MAX_MS / max(speed, 1e-9))
+        at = np.array([float(p["x"]), float(p["y"])])
+        kind, which = self.held
+        thrown = speed > THROW_MS
+        if kind == "ball":
+            self._carry(tuple(at), tuple(v) if thrown else (0.0, 0.0))
+        else:
+            land = np.clip(at + (v * THROW_S if thrown else 0.0), 0.1, self.world.size - 0.1)
+            self._carry(tuple(land))
+            if kind == "duck" and thrown:
+                self.thrown[which] = True
+                self.throws.append((self.t, which))
+                self.knock_down(which)
+        self.held = None
+
+    def _give(self, p):
+        """The player holds a fruit out to one duck: the hand comes to it, with a few bites at its beak."""
+        i = int(p["duck"])
+        h = self.pose[i, 2]
+        at = self.pose[i, :2] + 0.12 * np.array([np.cos(h), np.sin(h)])
+        self._hand({"x": at[0], "y": at[1], "feed": 3})
+        self.given.append((self.t, i))
+
     def _hand(self, p):
         self.world.hand = (float(p["x"]), float(p["y"]))
+        self.hand_until = self.t + HAND_S
         if p.get("feed"):
-            self.world.food = np.vstack([self.world.food, self.world.hand])
-            self.world.bites = np.append(self.world.bites, int(p["feed"]))
+            self.world.add_food(self.world.hand, int(p["feed"]))
 
     def _sim_step(self, p):
         for _ in range(int(p["n"])):
@@ -348,7 +463,8 @@ class Stub:
 
     def _control_call(self, method, p):
         handlers = {"garden.pet": self._pet, "garden.music": self._place_music, "garden.hat": self._hat,
-                    "garden.drop_hat": self._drop_hat, "garden.drop_ball": self._drop_ball, "garden.volume": self._volume,
+                    "garden.drop_hat": self._drop_hat, "garden.drop_ball": self._drop_ball, "garden.volume": self._volume, "garden.give": self._give, "garden.grab": self._grab, "garden.hand_at": self._hand_at,
+                    "garden.release": self._release,
                     "garden.scare": self._scare, "garden.hand": self._hand, "sim.step": self._sim_step,
                     "garden.shake_tree": lambda p: {"fell": self.shake_tree()}, "sim.state": lambda p: self.state()}
         return handlers[method](p) or {}
@@ -362,9 +478,14 @@ class Stub:
         y += (vx * np.sin(h) + vy * np.cos(h)) * DT
         self.still_for = np.where(np.hypot(vx, vy) > 0.01, 0.0, self.still_for + DT)
         np.clip(self.pose[:, :2], DUCK_R, self.world.size - DUCK_R, out=self.pose[:, :2])
+        if self.held is not None and self.held[0] == "duck" and self.world.hand is not None:
+            self.pose[self.held[1], :2] = self.world.hand  # its legs may go, and it goes nowhere
         self.world.push_out(self.pose[:, :2], DUCK_R)
         self.velocity = (self.pose[:, :2] - before) / DT
         self.world.roll_balls(DT, self.pose[:, :2], self.velocity)
+        if self.world.hand is not None and self.t > self.hand_until:
+            self.world.hand = None  # the hand goes away again; it used to stay where it was last put for good
+            self.held = None  # and whatever it held is where it was left
         self._act()
         self.pose[:, 2] = (h + np.pi) % (2 * np.pi) - np.pi
         self.world.step(self.t)
@@ -412,6 +533,40 @@ class Stub:
         sense["ball_left"], sense["ball_right"], sense["ball_near"] = seen[0], seen[1], near.astype(float)
         sense["kicked"], sense["show"] = self.kicked.astype(float), self.saw_show.astype(float)
         self.kicked[:] = self.saw_show[:] = False
+        side = lambda rel: (rel * left).sum(1) >= 0  # is it to this duck's left
+        rel = xy[None] - xy[:, None]  # [i, j]: duck j from duck i
+        d = np.linalg.norm(rel, axis=-1) + np.eye(len(xy)) * 1e9
+        nearest = d.argmin(1)
+        with_one = d.min(1) < NEAR_M
+        to_near = xy[nearest] - xy
+        plain = np.where(with_one, 1 - d.min(1) / NEAR_M, 0.0)
+        sense["near_id"] = np.where(with_one, nearest, -1).astype(float)
+        sense["near_left"], sense["near_right"] = plain * side(to_near), plain * ~side(to_near)
+        crying = self.crying_until > self.t
+        cry = np.zeros((2, len(xy)))
+        for j in np.flatnonzero(crying):  # the nearest cry in earshot, and which side it is on
+            loud = np.where((d[:, j] < EARSHOT_M), 1 - d[:, j] / EARSHOT_M, 0.0)
+            on_left = side(xy[j] - xy)
+            cry[0], cry[1] = np.maximum(cry[0], loud * on_left), np.maximum(cry[1], loud * ~on_left)
+        sense["cry_left"], sense["cry_right"] = cry
+        # a duck that comes right up to a crying one has comforted it
+        touch = d < self.touch_m
+        for j in np.flatnonzero(crying & touch.any(0)):
+            self.events["comforted_by"][j] = int(np.flatnonzero(touch[:, j])[0])
+            self.crying_until[j] = 0.0
+        hand = np.zeros((2, len(xy)))
+        if w.hand is not None:
+            to_hand = np.asarray(w.hand) - xy
+            plain_hand = 1 / (1 + np.linalg.norm(to_hand, axis=1) / HAND_SEEN_M)
+            hand = np.array([plain_hand * side(to_hand), plain_hand * ~side(to_hand)])
+        sense["hand_left"], sense["hand_right"], sense["hand_fed"] = hand[0], hand[1], self.hand_fed.astype(float)
+        sense["held"] = np.array([self.held == ("duck", i) for i in range(len(xy))], float)
+        sense["thrown"] = self.thrown.astype(float)
+        self.thrown[:] = False
+        self.hand_fed[:] = False
+        for name, values in {**self.events, **self.heard}.items():
+            sense[name] = values.copy()
+            values[:] = -1.0 if name in frames.IDS else 0.0
         lying = np.array([h[:2] for h in self.hat_items], float).reshape(-1, 2)
         sense["hat_near"] = (np.linalg.norm(xy[:, None] - lying[None], axis=-1) < HAT_REACH_M).any(axis=1).astype(float)
         sense["wind"], sense["wind_from"] = wind_on(h, w.wind)

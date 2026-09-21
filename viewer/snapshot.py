@@ -22,6 +22,7 @@ import numpy as np
 from body.stub2d.retina import HEX_AZ, HEX_EL
 from body.stub2d.stub import WHEEL_VX, WHEEL_VYAW
 from brain.brainview import POINTS
+from brain import social
 from brain.emotes import phrase
 from brain.personality import label_of
 from brain.physiology import pressing
@@ -44,7 +45,19 @@ _b64 = lambda a: base64.b64encode(np.asarray(a).tobytes()).decode()
 # where each of an eye's 721 columns looks, as signed bytes across the eye's field: sent with the view
 HEX = _b64(np.round(np.concatenate([HEX_AZ, HEX_EL]) / np.abs(HEX_AZ).max() * 127).astype(np.int8))
 TOAST_FORMATS = (("eaten", "{who} ate"), ("headbutts", "{who} shoved {other}"), ("pets", "{who} was petted"),
-                 ("emotes", "{who} {other}"), ("kicks", "{who} kicked the ball"), ("donned", "{who} put a hat on"), ("preened", "{who} shook its hat off"))
+                 ("emotes", "{who} {other}"), ("kicks", "{who} kicked the ball"), ("given", "{who} was handed a fruit"), ("throws", "{who} was thrown"), ("donned", "{who} put a hat on"), ("preened", "{who} shook its hat off"))
+
+
+FRUIT_NAMES = ("oranges", "apples", "bananas")
+
+
+def among(body, i: int, names: list[str]) -> dict:
+    """What duck i is to the others and to the player, in words, for its card."""
+    friend, grudge = social.friends(body, i, names)
+    trust = float(body.hand_trust[i])
+    return {"friend": friend, "grudge": grudge, "favourite": FRUIT_NAMES[int(body.favourite[i])],
+            "hand": "trusts your hand" if trust > 0.3 else "is wary of your hand" if trust < -0.2 else "does not know your hand yet",
+            "skills": [round(float(v[i]), 2) for v in (body.swim_skill, body.run_skill, body.dance_skill)]}
 
 
 def readout(body, i: int) -> list:
@@ -99,7 +112,7 @@ class Snapshot:
         last = lambda events: {e[1]: e for e in events[-4 * n:]}  # each duck's latest, from the recent few
         emotes, bites, kicks = last(stub.emotes), last(stub.eaten), last(stub.kicks)
         w = stub.world
-        posture, joints = stub.posture(), stub.articulation()
+        posture, joints, down_left = stub.posture(), stub.articulation(), stub.down_left()
         swimming = stub._swimming()
         ducks = []
         for i in range(n):
@@ -112,7 +125,7 @@ class Snapshot:
                 "x": round(float(stub.pose[i, 0]), 3), "y": round(float(stub.pose[i, 1]), 3),
                 "h": round(float(stub.pose[i, 2]), 3),
                 "asleep": bool(body.asleep[i]) if body else False, "sat": posture[i] == "sat",
-                "down": posture[i] == "down", "swimming": bool(swimming[i]), "hat": bool(stub.hats[i]), "hat_style": int(max(stub.hat_style[i], 0)),
+                "down": posture[i] == "down", "down_left": round(float(down_left[i]), 2), "swimming": bool(swimming[i]), "hat": bool(stub.hats[i]), "hat_style": int(max(stub.hat_style[i], 0)),
                 "head": [round(float(v), 3) for v in stub.head[i]],  # neck_pitch, head_pitch, head_yaw, head_roll, as told
                 "eating": i in bites and stub.t - bites[i][0] < EATING_S,
                 "kicking": i in kicks and stub.t - kicks[i][0] < KICKING_S,
@@ -120,17 +133,20 @@ class Snapshot:
                 "emote": emote[2] if showing else "", "emote_t": round(emote[0], 2) if showing else -1.0,
                 "hunger": level("hunger"), "thirst": level("thirst"), "sleepy": level("sleep_pressure"),
                 "knobs": {k: round(float(body.k[k][i]), 2) for k in SHAPE_KNOBS} if body and not self.blind else {},
-                "readout": readout(body, i) if body and i == self.watched else [],  # the selected duck's only: it is 400 bytes
+                "readout": readout(body, i) if body and i == self.watched else [],
+                "among": among(body, i, [n.replace("duck-", "") for n in stub.names]) if body and i == self.watched and hasattr(body, "bond") else {},
+                "crying": bool(stub.crying_until[i] > stub.t),  # the selected duck's only: it is 400 bytes
                 **joints[i],
             })
         return {"t": round(stub.t, 2), "size": w.size, "light": round(float(daylight(stub.t)), 3),
                 "day": round(stub.t % DAY_S / DAY_S, 4), "ducks": ducks,
-                "food": [[round(float(x), 3), round(float(y), 3)] for x, y in w.food],
+                "food": [[round(float(x), 3), round(float(y), 3), int(k)] for (x, y), k in zip(w.food, w.kinds)],  # and which fruit
                 "danger": [[float(x), float(y)] for x, y in w.danger],
                 "pond": None if w.pond is None else [float(v) for v in w.pond], "tree": list(w.tree), "rocks": w.rocks.round(3).tolist(),
                 "wind": None if w.wind is None else [round(float(v), 3) for v in w.wind],  # where the air is going, m/s
                 "hats": [[round(x, 3), round(y, 3), k] for x, y, k in stub.hat_items],
                 "balls": [[round(float(x), 3), round(float(y), 3)] for x, y in w.balls[:, :2]],
+                "held": list(stub.held) if stub.held else None,  # what the hand is carrying: [kind, which]
                 "music": None if w.music is None else list(w.music), "music_volume": round(float(w.music_volume), 2),
                 "hand": None if w.hand is None else [float(v) for v in w.hand], "toasts": self.toasts,
                 "sounds": [[round(t, 2), int(i), tag] for t, i, tag in stub.sounds[-2 * n:] if stub.t - t < HEARD_S]}
@@ -196,11 +212,11 @@ if __name__ == "__main__":
         time.sleep(0.05)  # the loopback delivers when it likes: read at once, the two calls were sometimes not there yet
         snap.step(stub)
         got = json.loads(rx.recv(65535))
-        world_fields = {"t", "size", "light", "day", "ducks", "food", "danger", "pond", "tree", "rocks", "wind", "hats", "balls", "music", "music_volume", "hand",
+        world_fields = {"t", "size", "light", "day", "ducks", "food", "danger", "pond", "tree", "rocks", "wind", "hats", "balls", "held", "music", "music_volume", "hand",
                         "toasts", "sounds"}
         assert world_fields <= set(got), f"the snapshot lost {world_fields - set(got)}: Godot reads every one of these"
         duck_fields = {"name", "label", "x", "y", "h", "asleep", "sat", "down", "swimming", "hat", "hat_style", "head", "eating", "kicking",
-                       "mood", "strength", "emote", "emote_t", "knobs", "readout"}
+                       "mood", "strength", "emote", "emote_t", "knobs", "readout", "among", "crying"}
         assert duck_fields <= set(got["ducks"][0]), f"a duck lost {duck_fields - set(got['ducks'][0])}"
         assert len(got["ducks"]) == 3 and got["ducks"][1]["emote"] == "happy" and got["ducks"][0]["emote"] == ""
         assert got["toasts"] == ["b looks happy"], got["toasts"]

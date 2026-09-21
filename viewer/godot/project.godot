@@ -23,3 +23,7 @@ daylight={
 "type": "float",
 "value": 1.0
 }
+screen={
+"type": "float",
+"value": 1.0
+}

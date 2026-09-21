@@ -13,7 +13,7 @@ const CELL := 5.0  # a finer screen than the ground's: at 9 px a duck this small
 const LOOK := 1.9  # drawn a little larger than life, so a duck reads from across the garden
 const EMOTE_S := 2.8
 const RIBBONS := [Ink.CORAL, Ink.TEAL, Ink.MUSTARD, Color("7d6bd0"), Color("e58ac0")]
-const DOES := {"dance": "dances", "singdance": "sings and dances", "stomp": "stomps", "yawn": "yawns", "splash": "splashes", "sing": "sings", "cower": "cowers"}  # a signature is what it does
+const DOES := {"cry": "cries", "dance": "dances", "singdance": "sings and dances", "stomp": "stomps", "yawn": "yawns", "splash": "splashes", "sing": "sings", "cower": "cowers"}  # a signature is what it does
 const MOOD_SHAPES := {"joy": "ball", "fear": "spike", "anger": "block", "sorrow": "drop"}
 
 var model := Node3D.new()  # everything that waddles, sits and falls over; the shadow and the signs do not
@@ -28,6 +28,7 @@ var shadow: MeshInstance3D
 var mood := Node3D.new()
 var mood_shapes := {}
 var sign := Label3D.new()
+var tears: Array[MeshInstance3D] = []  # two, falling from a crying duck
 var zs: Array[Label3D] = []  # a sleeper's z's, streaming up from its head: zzZZ
 var ring: MeshInstance3D
 
@@ -40,6 +41,7 @@ var emote_age := 99.0
 var emote_seen := -1.0
 var calm := 1.0  # 0.5 under reduced motion
 var sway := 0.0  # a lean an emote asks for, which the next frame's posture takes up (set, never added to the tilt)
+var lifted := false  # the player's hand has it: up off the grass, legs dangling
 var heading_was := 0.0
 var clip := "stand"  # which recorded motion is playing, and how far into it
 var clip_t := 0.0
@@ -130,6 +132,10 @@ func build(index: int, knobs: Dictionary) -> void:
 	sign.outline_size = 10
 	sign.position = mood.position + Vector3(0, 0.12, 0)
 	add_child(sign)
+	for _tear in 2:
+		var tear := Ink.part(self, Ink.ball(0.012, 6), Color("4f9fe0"), Vector3.ZERO, Vector3(1.0, 1.5, 1.0), CELL, 0.9)
+		tear.visible = false
+		tears.append(tear)
 	for _z in 4:
 		var z := Label3D.new()
 		z.billboard = BaseMaterial3D.BILLBOARD_ENABLED
@@ -150,6 +156,15 @@ func _play(want: String, dt: float) -> Array:
 	var frames_now: Array = clips.clips[clip].frames
 	var length: float = (frames_now.size() - 1) / hz
 	var finishing: bool = ONCE.has(clip) and clip_t < length and want != "go_limp"
+	if want == "go_limp":
+		# Down for a set time in the 2D body: it falls, lies, and is getting up over the last of it, so that it
+		# stands as it is freed. Getting up is placed by the time left, not played forward.
+		var rise: float = (clips.clips["get_up"].frames.size() - 1) / hz / ONCE["get_up"]
+		var left: float = state.get("down_left", 0.0)
+		if left < rise:
+			clip = "get_up"
+			clip_t = max(((clips.clips["get_up"].frames.size() - 1) / hz) - left * ONCE["get_up"], 0.0)
+			return _pose_at(clip, clip_t)
 	if not finishing:
 		var sat: bool = clip in ["sitting", "sit_down"]
 		var next := want
@@ -158,7 +173,7 @@ func _play(want: String, dt: float) -> Array:
 		elif sat and not (want in ["sitting", "go_limp"]):
 			next = "stand_up"
 		elif clip == "go_limp" and want != "go_limp":
-			next = "get_up"
+			next = "get_up"  # freed early, which the robot body can be: it still has to get up
 		if next != clip:
 			clip = next
 			clip_t = 0.0
@@ -170,7 +185,12 @@ func _play(want: String, dt: float) -> Array:
 		clip_t = fmod(clip_t, length)
 	else:
 		clip_t = min(clip_t, length)  # and held there: a duck that is down stays as it fell
-	var at: float = clip_t * hz
+	return _pose_at(clip, clip_t)
+
+
+func _pose_at(which: String, seconds: float) -> Array:
+	var frames_now: Array = clips.clips[which].frames
+	var at: float = clamp(seconds * float(clips.hz), 0.0, frames_now.size() - 1.0)
 	var a: Array = frames_now[int(at)]
 	var b: Array = frames_now[min(int(at) + 1, frames_now.size() - 1)]
 	var u: float = at - int(at)
@@ -261,7 +281,7 @@ func _process(dt: float) -> void:
 			for side in ["left", "right"]:
 				angle[side + "_hip_pitch"] = angle.get(side + "_hip_pitch", 0.0) + step
 				angle[side + "_ankle"] = angle.get(side + "_ankle", 0.0) - step
-		var afloat := -0.05 * model.scale.y if swimming else 0.0  # the pond comes up to its trunk
+		var afloat := -0.05 * model.scale.y if swimming else (0.32 if lifted else 0.0)  # the pond comes up to its trunk; a hand lifts it clear
 		model.position.y = lerp(model.position.y, afloat + hop * LOOK * calm, min(1.0, 14.0 * dt))
 		model.rotation.x = lerp(model.rotation.x, (sin(t * 1.7) * 0.05 * calm if swimming else 0.0) + sway * calm, min(1.0, 8.0 * dt))
 	heading_was = rotation.y
@@ -334,6 +354,10 @@ func _process(dt: float) -> void:
 	mood.rotation.y += dt * (4.0 if shape == "block" else 1.0) * calm
 	mood.position.x = sin(t * 40.0) * 0.006 * calm if shape == "spike" else 0.0
 	sign.text = "" if state.asleep else (DOES.get(emote, emote) if emote_age < EMOTE_S + 0.6 else "")
+	for k in tears.size():  # a tear from each side of the head, again and again
+		tears[k].visible = state.get("crying", false)
+		var fall := fmod(t * 1.4 + 0.5 * k, 1.0)
+		tears[k].position = Vector3(0.05 * LOOK, (0.26 - 0.22 * fall) * LOOK, (0.06 if k == 0 else -0.06) * LOOK)
 	for k in zs.size():  # each z rises from the head, drifts, grows from z to Z, and fades: a stream of them
 		var z := zs[k]
 		z.visible = state.asleep

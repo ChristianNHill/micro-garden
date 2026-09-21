@@ -18,7 +18,7 @@ import torch
 
 from body import frames
 from body.contract import Client
-from brain import emotes
+from brain import emotes, social
 from brain.brainview import BrainView
 from brain.data import load_connectome, named_sets, shuffled
 from brain.decoder import Decoder
@@ -150,6 +150,7 @@ class BrainServer:
         self.possessed = np.zeros(self.n, bool)
         self.zooming = np.zeros(self.n, bool)
         self.emote_rng = np.random.default_rng(seed + 7)  # its own, so emotes leave the senses' noise as it was
+        social.init(self.body, seed)  # bonds, trust in the hand, skills: on the body, so a saved garden keeps them
         self.brainview = BrainView(ann, self.sets, self.brain.dev)  # for a viewer; idle until a duck is watched
         self.hat_was_near = np.zeros(self.n, bool)
         self.kick_at = np.zeros(self.n)
@@ -169,6 +170,8 @@ class BrainServer:
         body = self.body
         self.t += BODY_DT_MS / 1000
         falls_asleep, wakes = body.step(BODY_DT_MS / 1000, f, self.escaped, self.last_vx)
+        social.update(body, f, BODY_DT_MS / 1000, self.last_vx)
+        among = social.steering(body, f)
 
         levels = self._levels(f)
         # Music is in the garden all day now, so it is a like that gives way to a need as the others do:
@@ -186,7 +189,8 @@ class BrainServer:
         # decoder turns it towards the eye the ball is in. Explicit, as music is, and for the same reason.
         self.playing = body.play() * at_ease
         ball = self.playing * np.maximum(f["ball_left"], f["ball_right"])
-        self.decoder.body = {**body.motor(wants=np.maximum(tune, ball), damp=(f["humidity_left"] + f["humidity_right"]) / 2),
+        wants = np.maximum.reduce([tune, ball, among.pop("social_want") * at_ease])
+        self.decoder.body = {**body.motor(wants=wants, damp=(f["humidity_left"] + f["humidity_right"]) / 2), **among,
                              "play": self.playing, "ball_left": f["ball_left"], "ball_right": f["ball_right"],
                              "surge": self.following, "swimming": f["swimming"] > 0, "at_shore": f["water"] > 0,
                              "thirst": body.thirst, "hatted": f["hat"] > 0, "fear": body.fear,
@@ -292,7 +296,7 @@ class BrainServer:
         # dances now and then while the music and its mood last, with a rest after each.
         if self.t >= self.dance_at[i] and not self.body.asleep[i]:
             self.dance_at[i] = self.t + DANCE_EVERY_S
-            if self.emote_rng.random() < self.performing[i]:
+            if self.emote_rng.random() < self.performing[i] * (0.6 + 0.8 * self.body.dance_skill[i]):  # a practised duck performs more
                 # a song, a dance, or mostly both: a chatty duck sings, a playful one or one that likes the
                 # music dances, and each is decided by itself, so it is not always the same one
                 k = self.body.k
@@ -300,6 +304,7 @@ class BrainServer:
                 dances = self.emote_rng.random() < 0.3 + 0.6 * max(k["playfulness"][i], self.dancing[i]) or not sings
                 send("robot.do", skill="emote_" + ("singdance" if sings and dances else "sing" if sings else "dance"))
                 self.body.amuse(i)
+                social.performed(self.body, i)
                 self.dance_at[i] += self.emote_rng.uniform(*DANCE_REST_S)  # and then it has had its turn for a while
         near = f["hat_near"] > 0
         if near and not self.hat_was_near[i] and f["hat"] == 0 and not self.body.asleep[i] and self.t >= self.hat_shy_until[i]:

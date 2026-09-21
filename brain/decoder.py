@@ -62,6 +62,8 @@ COMPANIONSHIP_VYAW = 1.5
 # a duck keeps its fear and its temper and they no longer steer it by the others, which is the control to
 # measure them against.
 FLEE, CHASE = 1.0, 1.0
+SWIM_GROWS, RUN_GROWS = 0.6, 0.25  # how much faster a fully practised duck is, in water and on land
+BOND_VYAW, HAND_VYAW, COMFORT_VYAW = 1.5, 1.5, 2.0  # rad/s at full bond, full trust, and full kindness at a cry beside it
 PLAY_VYAW = 2.0  # rad/s towards the eye a ball is in, for a duck that wants to play as much as a duck can
 PURSUE_VX = 0.2  # m/s an angry duck closes on another at: brisk, and short of the run that overshot
 MUSIC_VYAW = 1.5  # rad/s toward the louder ear at full music affinity, and away from it at none
@@ -158,7 +160,8 @@ class Decoder:
         # touch, so two sociable ducks leaning on each other each set the other's feeding intent, which
         # stopped them both where they stood, in a corner, starving (Gate 9b, 2026-09-19).
         feeding = ((r[FEED] > FEED_HZ) & ~self.wades & ~swimming & ~asleep & b("tasting", True)
-                   & (b("fear", 0.0) < FEAR_STOPS_FEEDING))
+                   & (b("fear", 0.0) < FEAR_STOPS_FEEDING)
+                   & ~b("sharing", False))  # a kind duck that is not starving leaves the food to one crying for it
         attack = ((r[TOUCH_L] + r[TOUCH_R] > TOUCH_HZ) & (self.rng.random(n) < ATTACK_P * aggression)
                   & ~swimming & ~asleep)
         zoomies = b("zoomies", False)
@@ -196,6 +199,8 @@ class Decoder:
         apart = ~(r[TOUCH_L] + r[TOUCH_R] > TOUCH_HZ)
         vx = vx + (PURSUE_VX - np.minimum(np.maximum(vx, 0), PURSUE_VX)) * chased * ducks_near * apart * (vx >= 0)
         vx = np.where(attack, RUN_VX, vx)
+        # practice shows: a duck that has swum a lot is quicker in the water, one that has run a lot quicker on land
+        vx = vx * np.where(swimming, 1 + SWIM_GROWS * b("swim_skill", 0.0), 1 + RUN_GROWS * b("run_skill", 0.0))
         vx = np.where(asleep, 0.0, vx)
 
         share = self.touch_share
@@ -211,7 +216,7 @@ class Decoder:
         taste = 2 * b("music_affinity", 0.5) - 1
         # sociability is where a duck starts; fondness is what life has done to that, and a lesson fully
         # learned is worth the whole of the dial
-        liking = np.clip(2 * b("sociability", 0.5) - 1 + b("fondness", 0.0), -1, 1) * b("at_ease", 1.0)
+        liking = np.clip(2 * b("sociability", 0.5) - 1 + b("fondness", 0.0) + b("sleepy_together", 0.0), -1, 1) * b("at_ease", 1.0)
         # Which way it turns for the other ducks is company when nothing else is going on; fear turns it
         # away from them and a fight turns it after them, whatever it otherwise thinks of company.
         liking = np.clip(liking + chased - 2 * fled, -1, 1)
@@ -226,7 +231,13 @@ class Decoder:
                 + STINK_VYAW_PER_HZ * (r[STINK_L] - r[STINK_R]) * (like - avoid)
                 + MUSIC_VYAW * taste * (b("music_left", 0.0) - b("music_right", 0.0))
                 + COMPANIONSHIP_VYAW * liking * (b("duck_left", 0.0) - b("duck_right", 0.0))
-                + PLAY_VYAW * b("play", 0.0) * (b("ball_left", 0.0) - b("ball_right", 0.0)))
+                + PLAY_VYAW * b("play", 0.0) * (b("ball_left", 0.0) - b("ball_right", 0.0))
+                # and among the others (brain/social.py): towards the duck beside it if that is a friend and away
+                # if it is a grudge, towards a hand it trusts and away from one it does not, and, for a kind
+                # duck, towards one that is crying. All as far as nothing is pressing, like the other likes.
+                + b("at_ease", 1.0) * (BOND_VYAW * b("bond_near", 0.0) * (b("near_left", 0.0) - b("near_right", 0.0))
+                                       + HAND_VYAW * b("hand_trust", 0.0) * (b("hand_left", 0.0) - b("hand_right", 0.0))
+                                       + COMFORT_VYAW * b("comfort", 0.0) * (b("cry_left", 0.0) - b("cry_right", 0.0))))
         vyaw = np.where(asleep, 0.0, vyaw)
         return [
             {"vx": float(vx[b]), "vy": 0.0, "vyaw": float(vyaw[b]), "escape": bool(onset[b]),

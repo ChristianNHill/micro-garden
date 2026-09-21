@@ -144,6 +144,8 @@ class Truth:
 
 
 class MujocoBody(Stub):
+    can_carry_ducks = False  # a cursor cannot lift a robot that physics is holding up; the things in the garden it can
+
     def __init__(self, n: int, seed: int, sock_dir: str, sim_state: str = SIM_STATE, truth_port: int = TRUTH_PORT,
                  origin=None, cameras=(), **garden):
         """cameras: which ducks see through their simulated head camera (the ones duck-sim was given in
@@ -337,6 +339,9 @@ class MujocoBody(Stub):
 
     def articulation(self) -> list[dict]:
         return [t.articulation() for t in self.truth]
+
+    def down_left(self) -> np.ndarray:
+        return np.zeros(len(self.names))  # the robot gets itself up, and Godot is shown its real joints
 
     def posture(self) -> list[str]:
         return ["down" if limp else "sat" if sat else "up" for limp, sat in zip(self.limp, self.sat)]

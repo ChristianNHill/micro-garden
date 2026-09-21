@@ -27,6 +27,15 @@ FRAME = np.dtype([
     # A ball, to a duck's eyes: how much of each eye's view it fills (nearer is more, behind is none), whether
     # it is at the duck's feet to be kicked, and 1 on the step the duck kicked it.
     ("ball_left", "<f4"), ("ball_right", "<f4"), ("ball_near", "<f4"), ("kicked", "<f4"),
+    # What the ducks nearby are up to, which is most of a duck's day (brain/social.py). An id is the other
+    # duck's number in this garden, or -1 for nobody. `near_*` is the nearest duck within NEAR_M and which side
+    # it is on; a cry is a duck close by that is miserable, and which side; the hand is the player's, and which side.
+    ("near_id", "<f4"), ("near_left", "<f4"), ("near_right", "<f4"),
+    ("bumped_by", "<f4"), ("saw_shove_by", "<f4"), ("saw_shove_of", "<f4"),
+    ("heard_alarm", "<f4"), ("heard_joy", "<f4"), ("show_by", "<f4"), ("hat_taken_by", "<f4"),
+    ("cry_left", "<f4"), ("cry_right", "<f4"), ("comforted_by", "<f4"),
+    ("hand_left", "<f4"), ("hand_right", "<f4"), ("hand_fed", "<f4"), ("ate_kind", "<f4"),
+    ("held", "<f4"), ("thrown", "<f4"),  # 1 while the player's hand carries this duck, and 1 on the step it was thrown
     ("show", "<f4"),  # 1 on the step a duck within earshot began to sing or dance
     ("hat_near", "<f4"),  # 1 while a hat lies on the ground within this duck's reach
     # The wind on the antennae: how hard it blows, 0 to 1, and where it comes from, in radians off the
@@ -47,11 +56,18 @@ def blank() -> np.void:
     read as pitch darkness in both eyes, the largest transient the visual system can be given."""
     rec = np.zeros((), FRAME)
     rec["lum"] = 0.5  # body.stub2d.retina.BACKGROUND; named here to keep frames free of world imports
+    for name in IDS:
+        rec[name] = -1
     return rec
+
+
+IDS = ("near_id", "bumped_by", "saw_shove_by", "saw_shove_of", "show_by", "hat_taken_by", "comforted_by", "ate_kind")
 
 
 def pack(**fields) -> bytes:
     rec = np.zeros((), FRAME)
+    for name in IDS:
+        rec[name] = -1  # nobody, and nothing eaten: 0 is a duck, and an orange
     for k, v in fields.items():
         rec[k] = v
     return rec.tobytes()
@@ -93,13 +109,39 @@ def receiver(port: int) -> socket.socket:
     return s
 
 
+# Fields that are true for one step only. A brain slower than its body skips frames, and one that is quicker
+# sees the same frame twice, so these are gathered over every frame drained and wiped from a frame seen before:
+# a bite, a shove or a song then counts once, however the two clocks fall.
+ONCE = ("bumped", "petted", "scared", "ate", "drank", "kicked", "show", "hand_fed", "heard_alarm", "heard_joy", "thrown")
+ONCE_IDS = tuple(name for name in IDS if name != "near_id")
+
+
 def latest(sock: socket.socket, last=None):
-    """Drain the socket and return the newest frame, or last if nothing arrived."""
+    """Drain the socket and return the newest frame, or last if nothing arrived, with the one-step fields
+    (ONCE, ONCE_IDS) gathered over all that was drained and cleared if nothing was."""
+    newest, seen = None, []
     while True:
         try:
-            last = unpack(sock.recv(MAX_BYTES))
+            newest = unpack(sock.recv(MAX_BYTES))
+            seen.append(newest)
         except BlockingIOError:
-            return last
+            break
+    if newest is None:
+        if last is None:
+            return None
+        newest = last.copy()
+        for name in ONCE:
+            newest[name] = 0
+        for name in ONCE_IDS:
+            newest[name] = -1
+        return newest
+    if len(seen) > 1:
+        newest = newest.copy()
+        for name in ONCE:
+            newest[name] = max(f[name] for f in seen)
+        for name in ONCE_IDS:
+            newest[name] = next((f[name] for f in reversed(seen) if f[name] >= 0), -1)
+    return newest
 
 
 def newer(sock: socket.socket, last=None, timeout: float = 2.0):
@@ -113,4 +155,5 @@ def newer(sock: socket.socket, last=None, timeout: float = 2.0):
                 f = unpack(sock.recv(MAX_BYTES))
         finally:
             sock.setblocking(False)
-    return latest(sock, f)
+    rest = latest(sock)  # anything that came in behind it; with nothing behind it, the frame as it is, events and all
+    return f if rest is None else rest

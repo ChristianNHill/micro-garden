@@ -50,9 +50,11 @@ Godot only draws. The garden publishes its world over UDP, and what you do goes 
 
 - Click a duck to select it. The camera follows it, a panel shows its needs, moods and wants as bars, and another shows its fly brain: 12,000 of its 139,000 neurons where FlyWire has them, each flaring as it fires.
 - `Tab` rides the selected duck. W, A, S and D steer it, and you see its two hex retinas and what its descending neurons ask of its legs.
-- `F` shakes fruit down from the tree, and so does a click on it. `H` drops a hat at the mouse, `B` drops a ball, `M` puts the music box down or picks it up, `C` claps, and `P` pets the selected duck.
+- The cursor is a hand. Hold the left button to pick up fruit, a hat, a ball, the music box or a duck, carry it, and let go to put it down. Let go on the move and you throw it. A duck that trusts your hand likes being carried, and a thrown duck trusts you less. Right-drag turns the camera.
+- `F` shakes fruit down from the tree, and so does a tap on it. `H` drops a hat at the mouse, `B` drops a ball, `M` puts the music box down or picks it up, `C` claps, and `P` pets the selected duck.
 - A duck that likes the music dances to it while the box is down and nothing presses on it.
 - The music box plays your own music. Put mp3s in `~/.cache/micro-garden/music/` and it shuffles them while it is down in the garden. Click the box to step its volume. No music ships with the project.
+- The ducks have each other. A shove makes a grudge and time together makes a friend, duck by duck. A kind duck goes to one that is crying, an alarm is catching, and a song pleases a sociable duck and annoys a solitary one. They also come to know your hand: pet a duck or hand it a fruit with `G` and it learns to come to you, and each has a fruit it likes best.
 - Hats are for the ducks. A duck that finds one decides whether to wear it, and a vain duck usually does. A duck that shakes one off leaves it on the lawn for the next.
 
 The ducks emote every so often, like a Chao or a Sim. Each acts out its strongest feeling with its head and its voice, a chatty duck more often. Strong characters have a trick of their own: an aggressive duck stomps, a sleepy one yawns, a water lover splashes, a chatty one sings, and a timid one cowers. A flag on the near cliff shows the breeze, which is what the ducks find food by.

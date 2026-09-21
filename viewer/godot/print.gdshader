@@ -9,6 +9,7 @@ render_mode unshaded;
 
 global uniform vec3 sun_dir;
 global uniform float daylight;
+global uniform float screen;  // how much of the halftone shows: 1 in the garden, less from a duck's back, where it got in the way
 uniform vec3 base : source_color = vec3(0.96, 0.92, 0.84);
 uniform vec3 ink : source_color = vec3(0.11, 0.16, 0.30);
 uniform float cell = 7.0;  // pixels between dots; ducks are screened more coarsely than the ground
@@ -29,5 +30,5 @@ void fragment() {
 	float dotted = 1.0 - smoothstep(radius - 0.05, radius + 0.05, length(g));
 	// Night is a wash of blue over the same picture. It used to be more ink, and at 0.3 of the tone the whole
 	// garden went under a grey screen of dots that nothing could be seen through (Chris, 2026-09-21).
-	ALBEDO = mix(mix(base, ink, dotted * 0.85), vec3(0.03, 0.05, 0.16), 0.5 * (1.0 - daylight));
+	ALBEDO = mix(mix(base, ink, dotted * 0.85 * screen), vec3(0.03, 0.05, 0.16), 0.5 * (1.0 - daylight));
 }
