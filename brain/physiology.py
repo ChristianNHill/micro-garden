@@ -103,7 +103,7 @@ class Physiology:
         self.fatigue = np.clip(self.fatigue + tire - rest, 0, 1)
         # Night is what makes a duck sleepy; daylight is what wears the sleepiness off. Without this a
         # duck simply ran down like a clock and slept whenever its 10 minutes were up (PLAN.md Gate 3).
-        light = np.asarray(f["light"], float) if "light" in f.dtype.names else np.ones_like(self.hunger)
+        light = np.asarray(f["light"], float)
         dark = 1.0 - light
         build = dt / AWAKE_S * (0.5 + k["sleepiness"]) * (1 + NIGHT_SLEEPINESS * dark)
         self.sleep_pressure = np.clip(

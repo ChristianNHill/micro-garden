@@ -37,7 +37,7 @@ def scene(world, duck_xy: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     rows = [(x, y, DISH_R, DISH_I) for x, y in world.food]
     rows += [(x, y, DUCK_R, DUCK_I) for x, y in duck_xy]
     rows.append((TREE[0], TREE[1], TREE[2], TREE_I))
-    if getattr(world, "hand", None) is not None:
+    if world.hand is not None:
         rows.append((world.hand[0], world.hand[1], HAND_R, HAND_I))
     owner = np.concatenate([np.full(len(world.food), -1), np.arange(len(duck_xy)),
                             np.full(len(rows) - len(world.food) - len(duck_xy), -1)])
@@ -66,7 +66,7 @@ def luminance(duck_xy: np.ndarray, heading: np.ndarray, world, light: float = 1.
         lum[hit] = intensity
         nearest = np.where(hit, d, nearest)
 
-    if getattr(world, "pond", None) is not None:
+    if world.pond is not None:
         # Water lies flat, so it has no silhouette to loom: a column below the horizon meets the ground
         # at EYE_H / tan(depression), and the pond is whatever of those points fall inside it. That is
         # a ground-plane raycast, which also gives the near shore its proper perspective for free.

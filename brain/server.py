@@ -14,13 +14,12 @@ import string
 import time
 
 import numpy as np
+import torch
 
 from body import frames
 from body.contract import Client
 from brain.data import load_connectome, named_sets, shuffled
 from brain.decoder import Decoder
-import torch
-
 from brain.encoder import graded as graded_senses
 from brain.lif import DT_MS, LIF
 from brain.plasticity import Plasticity, sparsen, strip
@@ -53,6 +52,9 @@ PET_LEVEL = 0.6  # a hand on the head is felt on every bristle, harder than a du
 VOICE_COOLDOWN_S = 3.0
 NO_SPIKES = np.empty(0, np.int64)  # every sense is graded now; nothing is injected as spikes
 SCARE_LEVEL = 0.8  # a clap, straight onto the looming detectors
+# ... for as long as a clap lasts. The body reports it on one step, 20 ms, and driven for only that the giant
+# fiber gave 2 or 3 spikes, so two claps in three startled nobody; over 200 ms it gives 7 to 9 (bench, 2026-09-20).
+CLAP_S = 0.2
 SIDED = ["orn_food", "orn_danger", "moist_air", "dry_air", "heat", "cold", "bristle", "orn_pheromone",
          "jo_push", "jo_pull"]
 ANTENNA_OUT = np.pi / 4  # each antenna points about 45 degrees out from the nose
@@ -133,6 +135,7 @@ class BrainServer:
         self.last_vx = np.zeros(self.n)
         self.escaped = np.zeros(self.n, bool)
         self.quiet_until = np.zeros(self.n)
+        self.clap_left = np.zeros(self.n)  # seconds of the last clap still ringing
         self.t = 0.0
 
     def step(self, lockstep: bool) -> list[dict]:
@@ -191,6 +194,8 @@ class BrainServer:
         """Encoder levels for this step's frames, shaped by the body."""
         body = self.body
         levels = sense_levels(f)
+        self.clap_left = np.where(f["scared"] > 0, CLAP_S, np.maximum(self.clap_left - BODY_DT_MS / 1000, 0))
+        levels["LPLC2"] = SCARE_LEVEL * (self.clap_left > 0)
         wet = f["swimming"] > 0  # flies do not swim: wet reads as saturated humidity and touch all over
         for s in ("left", "right"):
             levels[f"moist_air_{s}"] = np.where(wet, 1.0, levels[f"moist_air_{s}"])

@@ -170,36 +170,38 @@ class Stub:
         """Callers hold self.lock (control calls do; the viewer takes it)."""
         return self.world.drop_fruit(self.fruit_rng, SHAKE_FRUIT)
 
+    def _pet(self, p):
+        i = int(p["duck"])
+        self.petted[i] = True
+        self.pets.append((self.t, i))
+
+    def _place_music(self, p):
+        self.world.music = (float(p["x"]), float(p["y"])) if int(p["on"]) else None
+
+    def _hat(self, p):
+        self.hats[int(p["duck"])] = bool(int(p["on"]))
+
+    def _scare(self, p):
+        self.scared[:] = True  # a clap: everything in the garden hears it
+
+    def _hand(self, p):
+        self.world.hand = (float(p["x"]), float(p["y"]))
+        if p.get("feed"):
+            self.world.food = np.vstack([self.world.food, self.world.hand])
+            self.world.bites = np.append(self.world.bites, int(p["feed"]))
+
+    def _sim_step(self, p):
+        for _ in range(int(p["n"])):
+            self.step()
+        if int(p["n"]) == 0:
+            self.send_frames()  # lets a lockstep client read the starting state
+        return {"t": self.t, "eaten": len(self.eaten)}
+
     def _control_call(self, method, p):
-        if method == "garden.pet":
-            i = int(p["duck"])
-            self.petted[i] = True
-            self.pets.append((self.t, i))
-            return {}
-        if method == "garden.music":
-            self.world.music = (float(p["x"]), float(p["y"])) if int(p["on"]) else None
-            return {}
-        if method == "garden.hat":
-            self.hats[int(p["duck"])] = bool(int(p["on"]))
-            return {}
-        if method == "garden.scare":
-            self.scared[:] = True  # a clap: everything in the garden hears it
-            return {}
-        if method == "garden.hand":
-            self.world.hand = (float(p["x"]), float(p["y"]))
-            if p.get("feed"):
-                self.world.food = np.vstack([self.world.food, self.world.hand])
-                self.world.bites = np.append(self.world.bites, int(p["feed"]))
-            return {}
-        if method == "garden.shake_tree":
-            return {"fell": self.shake_tree()}
-        if method == "sim.step":
-            for _ in range(int(p["n"])):
-                self.step()
-            if int(p["n"]) == 0:
-                self.send_frames()  # lets a lockstep client read the starting state
-            return {"t": self.t, "eaten": len(self.eaten)}
-        return self.state()
+        handlers = {"garden.pet": self._pet, "garden.music": self._place_music, "garden.hat": self._hat,
+                    "garden.scare": self._scare, "garden.hand": self._hand, "sim.step": self._sim_step,
+                    "garden.shake_tree": lambda p: {"fell": self.shake_tree()}, "sim.state": lambda p: self.state()}
+        return handlers[method](p) or {}
 
     def step(self) -> None:
         x, y, h = self.pose.T

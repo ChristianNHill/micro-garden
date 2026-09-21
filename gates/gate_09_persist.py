@@ -21,7 +21,11 @@ ducks in 10 minutes). Two of those woke a sleeper. So sleep is asserted on the d
 escape while asleep or in the minute before dropping off, which is the stretch catch-up claims to describe;
 LIVED_DUCKS of them live it so that enough are left, and the disturbed ones are printed. The false startles
 themselves are left alone here: the escape threshold sits at the giant fiber's refractory limit, so moving
-it is a decision about the model rather than a fix to this gate. Ducks run blind here
+it is a decision about the model rather than a fix to this gate.
+
+Later the same day the detector was reset from measurement (5 spikes in 300 ms, brain/decoder.py) and false
+startles fell from about 57 an hour to 3. The undisturbed-duck check stays: a startle in the night is rare
+now, not impossible. Ducks run blind here
 too, since none of this is about vision and it halves the wall time.
 
 Measured 2026-09-18 over the full ten minutes, which is one whole day at DAY_S: hunger and thirst come
@@ -66,32 +70,17 @@ SETTLE_S = 60.0  # an escape this soon before dropping off delays it (fear has t
 def lived(W, ann, sets, minutes, n):
     """Drives after really living through the stretch, in an empty garden."""
     poses = [[[2.0, 2.0, 0.0]]] * n  # one duck to a garden
-    kept = {}
+    kept = {"asleep": np.zeros(n, bool), "disturbed": np.zeros(n, bool), "last_startle": np.full(n, -np.inf)}
 
-    def remember(stubs):
-        return False
+    def watch(server, stubs):
+        body, startled = server.body, np.asarray(server.escaped, bool)
+        dropped_off = body.asleep & ~kept["asleep"]
+        kept["disturbed"] |= (startled & kept["asleep"]) | (dropped_off & (server.t - kept["last_startle"] < SETTLE_S))
+        kept["last_startle"][startled] = server.t
+        kept["asleep"], kept["body"] = body.asleep.copy(), body
 
-    import brain.server as server
-    original = server.BrainServer.step
-
-    def step(self, lockstep):
-        was_asleep = self.body.asleep.copy()
-        out = original(self, lockstep)
-        startled = np.asarray(self.escaped, bool)
-        last = kept.setdefault("last_startle", np.full(len(startled), -np.inf))
-        dropped_off = self.body.asleep & ~was_asleep
-        kept["disturbed"] = (kept.get("disturbed", np.zeros(len(startled), bool)) | (startled & was_asleep)
-                             | (dropped_off & (self.t - last < SETTLE_S)))
-        last[startled] = self.t
-        kept["body"] = self.body
-        return out
-
-    server.BrainServer.step = step
-    try:
-        run(W, ann, sets, [dict(food_xy=[], pose=p) for p in poses], minutes * 60, seed=0,
-            until=remember, eyes=False, hunger=0.2, thirst=0.2, body_temp=24.0)
-    finally:
-        server.BrainServer.step = original
+    run(W, ann, sets, [dict(food_xy=[], pose=p) for p in poses], minutes * 60, seed=0, watch=watch,
+        eyes=False, hunger=0.2, thirst=0.2, body_temp=24.0)
     return {d: np.asarray(getattr(kept["body"], d), float).copy() for d in DRIVES}, kept["disturbed"]
 
 

@@ -3,7 +3,7 @@
 - DNp09 drives forward, moonwalker (MDN) backward.
 - DNa02, the odor-steering DNs and DNp12/DNp44 (humidity) turn toward their own side. DNg48 fires
   opposite a touch, so read the same way a touched duck turns away.
-- ESCAPE_SPIKES giant fiber spikes within 100 ms start an escape (single spikes happen during odor).
+- ESCAPE_SPIKES giant fiber spikes within ESCAPE_WINDOW ticks start an escape (the giant fiber idles, so it takes a burst).
 - Proboscis motor neurons mean feeding.
 - DNp32 fires for stink, more on the stink's side. A stink-averse duck bolts: it runs, other turning is
   suppressed, and it turns gently away from the busier DNp32 (strong turning made ducks circle in the
@@ -37,14 +37,14 @@ BASE_VX, RUN_VX = 0.08, 0.3  # m/s
 VX_PER_HZ = 0.02  # m/s per Hz of forward minus backward drive
 VYAW_PER_HZ = 1.0  # rad/s per Hz of left minus right steering DNs, positive = turn left
 ESCAPE_TICKS = 50  # 0.5 s of running backward
-# giant fiber spikes within 10 ticks (100 ms). Sun and dry air alone reach 2 in 5% of windows and 3 in
-# none; looming reaches 3 in about 20% (Gate 4b).
-# Measured over lone ducks, 2026-09-20: three spikes land in a window by chance 0.44 times a duck-minute
-# blind and 1.19 with its eyes open (its own turning sweeps the garden across the retina), while a hand
-# swooping in from 1.6 m trips it 18% of the time. So most startles are at nothing. Chris, 2026-09-20: keep
-# them; a duck that jumps at shadows is a duck. Four spikes would all but end the false ones (0.06) and the
-# real ones with them (1%).
-ESCAPE_SPIKES, ESCAPE_WINDOW = 3, 10
+# An escape is this many giant fiber spikes inside this many ticks: 5 in 300 ms. The giant fiber idles at about
+# 2 spikes a second in any brain that is sensing anything at all (it is part of the hum: with no input the
+# whole brain is silent, and dry air alone wakes 7,000 spikes a second of it), so a threshold of 3 in 100 ms
+# was met by chance 57 times an hour with nothing there, and a startled duck runs backward, takes fright and
+# calls the alarm. Measured on lone ducks with their eyes open (2026-09-20): 3 in 100 ms, 57 false an hour and
+# a swooping hand caught 24% of the time; 4 in 200 ms, 18 and 24%; 5 in 300 ms, none in 20 duck-minutes and
+# 17%. A clap that lasts as long as a clap (brain/server.py CLAP_S) puts 7 to 9 spikes in that window.
+ESCAPE_SPIKES, ESCAPE_WINDOW = 5, 30
 WANDER_VYAW, WANDER_TICKS = 0.5, 50  # spontaneous turn rate, redrawn every 0.5 s
 FEED_HZ = 1.0  # proboscis MN rate that means "eat"
 # DNp32 is one neuron per side: a stray spike adds 0.5 Hz to its 2 s average, stink holds it near 1 Hz.

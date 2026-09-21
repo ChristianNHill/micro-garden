@@ -53,18 +53,22 @@ def run_gate(name: str, extra: list[str]) -> tuple[str, str, float]:
     return verdict, line, took
 
 
+def choose(which: list[str], fast: bool) -> list[str]:
+    """The gates to run: all of them, the fast ones, or the numbers asked for (6, 06 and 4b all work)."""
+    chosen = [g for g in GATES if g in FAST] if fast else GATES
+    if not which:
+        return chosen
+    want = {w.lstrip("0") or "0" for w in which}
+    return [g for g in chosen if (g.split("_")[0].lstrip("0") or "0") in want or g.split("_")[0] in want]
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("which", nargs="*", help="gate numbers, e.g. 6 7 9; default is all of them")
     ap.add_argument("--fast", action="store_true", help="only the gates that finish in about a minute")
     args, extra = ap.parse_known_args()
 
-    chosen = GATES
-    if args.fast:
-        chosen = [g for g in GATES if g in FAST]
-    if args.which:
-        want = {w.lstrip("0") or "0" for w in args.which}
-        chosen = [g for g in chosen if (g.split("_")[0].lstrip("0") or "0") in want or g.split("_")[0] in want]
+    chosen = choose(args.which, args.fast)
     if not chosen:
         print("no gates matched")
         return 2

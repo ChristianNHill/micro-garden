@@ -35,6 +35,7 @@ class Viewer:
         self.font = pygame.font.SysFont("Menlo", 13)
         self.big = pygame.font.SysFont("Menlo", 15, bold=True)
         self.selected = 0
+        self.click = None
         self.seen = {"eaten": 0, "headbutts": 0, "pets": 0, "sounds": 0}
         self.toasts = []
 
@@ -74,7 +75,7 @@ class Viewer:
         """One line per new thing that happened, newest last."""
         for key, fmt in (("eaten", "{who} ate"), ("headbutts", "{who} shoved {other}"),
                          ("pets", "{who} was petted"), ("sounds", "{who}: {other}")):
-            events = getattr(stub, key, [])
+            events = getattr(stub, key)
             for e in events[self.seen[key]:]:
                 who = stub.names[e[1]].replace("duck-", "")
                 other = e[2] if len(e) > 2 else ""
@@ -99,14 +100,14 @@ class Viewer:
             pygame.draw.circle(self.screen, (120, 80, 40), self._px(d), int(DISH_R * PX))
         for f in stub.world.food:
             pygame.draw.circle(self.screen, (250, 250, 250), self._px(f), int(DISH_R * PX))
-        if getattr(stub.world, "music", None) is not None:  # the music, and how far it carries
+        if stub.world.music is not None:  # the music, and how far it carries
             at = self._px(stub.world.music)
             for ring, alpha in ((0.25, 140), (0.6, 70), (1.2, 35)):
                 halo = pygame.Surface((int(2 * ring * PX) + 4,) * 2, pygame.SRCALPHA)
                 pygame.draw.circle(halo, (200, 120, 230, alpha), (int(ring * PX) + 2,) * 2, int(ring * PX), 2)
                 self.screen.blit(halo, halo.get_rect(center=at))
             pygame.draw.circle(self.screen, (200, 120, 230), at, int(0.07 * PX))
-        if getattr(stub.world, "hand", None) is not None:
+        if stub.world.hand is not None:
             pygame.draw.circle(self.screen, (245, 225, 210), self._px(stub.world.hand), int(0.12 * PX))
 
     def _duck(self, i, pose, body) -> None:
@@ -144,7 +145,7 @@ class Viewer:
         self.screen.blit(self.big.render(head, True, COLORS[i % len(COLORS)]), (left + 12, 10))
 
         y = 40
-        body = getattr(server, "body", None) if server else None
+        body = server.body if server else None
         if body is not None:
             for d in DRIVES:
                 self._bar(left + 12, y, 120, float(np.atleast_1d(getattr(body, d))[i]), (200, 150, 70), d)
@@ -159,7 +160,7 @@ class Viewer:
             self.screen.blit(self.font.render("no brain attached (--brain)", True, (150, 150, 160)), (left + 12, y))
             y += 22
 
-        rates = getattr(getattr(server, "decoder", None), "rates", None)
+        rates = server.decoder.rates if server else None
         if rates is not None:
             y += 8
             self.screen.blit(self.font.render("descending neurons, Hz", True, (215, 220, 230)), (left + 12, y))
@@ -180,12 +181,12 @@ class Viewer:
 
     def draw(self, stub, server=None) -> None:
         light = daylight(stub.t)
-        if getattr(self, "click", None) is not None:
+        if self.click is not None:
             self.pick(self.click, stub.pose)
             self.click = None
         self._gather_toasts(stub)
         self._garden(stub, light)
-        body = getattr(server, "body", None) if server else None
+        body = server.body if server else None
         for i, pose in enumerate(stub.pose):
             self._duck(i, pose, body)
         self._panel(stub, server, light)

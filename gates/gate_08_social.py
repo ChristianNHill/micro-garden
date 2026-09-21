@@ -29,6 +29,8 @@ beside another duck, 0.00 untouched), and it adds to sociability. The pair clapp
 and the yoked pair nobody clapped at 0.88 m, from 0.49 m: +0.43 m that is learning, against a control, where
 +0.14 m is asked. One smell stands for every other duck, so this is wariness of ducks, not a grudge against
 one; a grudge needs each duck to smell of itself.
+With claps that last as long as a clap and an escape detector set outside the giant fiber's idle noise
+(brain/server.py CLAP_S, brain/decoder.py), every clap registers: 1.57 m against 0.91 m.
 
 DECIDED 2026-09-20 (Chris): a Bully that costs itself food is emergent behaviour and stays. The dish
 contest is printed, not asserted; what it shows is who a Bully is, not a fault to fix.
@@ -88,7 +90,6 @@ DISH = (2.0, 2.0)
 BULLY_S = 60.0
 STARTLE_S, STARTLES = 90.0, 8
 HAND_S, HAND_FEEDS = 90.0, 6
-NEAR_DISH_M = 0.25
 
 
 def bully_and_scaredy(W, ann, sets, n, seed):

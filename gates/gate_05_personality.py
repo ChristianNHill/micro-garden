@@ -2,7 +2,12 @@
 
 Run: uv run python -m gates.gate_05_personality [--minutes 10]
 Knobs and labels: brain/personality.py, ARCHITECTURE.md §2.4. Drives and emotions: brain/physiology.py.
-Blind test (manual, Chris): watch the 2D view for 5 minutes with labels hidden and guess. Score: not yet run.
+Blind test (manual, Chris): watch the 2D view for 5 minutes with labels hidden and guess.
+Run 2026-09-20 with `stub --view --brain --blind`, on the tree with wind seeking, meals, the content ramp,
+companionship, fondness, music in the garden and the startle fix. Not scored, on purpose. Chris: "it looks
+great", and "it matters less what every duck actually is, but they felt dynamic." So what this project is
+after is a garden that feels alive to someone watching, more than five labels a viewer can name, and the
+labels check below measures the second of those.
 
 2026-09-20 record: the labels check FAILS, 3.37 for the same label across runs against 4.09 for different
 labels (1.21, bar 1.5; it was 2.29 on 09-18), in the demo garden as it now is (breeze, day-scale hunger,
@@ -135,19 +140,8 @@ def relaxed_log():
 
 def drinking(W, ann, sets):
     thirst = []
-    import brain.server as server
-    orig = server.BrainServer.step
-
-    def step(self, lockstep):
-        out = orig(self, lockstep)
-        thirst.append(self.body.thirst.copy())
-        return out
-    server.BrainServer.step = step
-    try:
-        run(W, ann, sets, [dict(food_xy=[], pond=POND, pose=p) for p in shore_poses(N)], 30.0, seed=0,
-            thirst=1.0, water_love=0.0)
-    finally:
-        server.BrainServer.step = orig
+    run(W, ann, sets, [dict(food_xy=[], pond=POND, pose=p) for p in shore_poses(N)], 30.0, seed=0,
+        watch=lambda server, stubs: thirst.append(server.body.thirst.copy()), thirst=1.0, water_love=0.0)
     return thirst[0].mean(), thirst[-1].mean()
 
 
