@@ -24,6 +24,10 @@ FRAME = np.dtype([
     ("light", "<f4"),  # how light the garden is, 0 at night and 1 in the day
     ("music_left", "<f4"), ("music_right", "<f4"),  # how loud the music is at each ear (Gate 8b)
     ("hat", "<f4"),  # 1 while this duck is wearing a hat
+    # A ball, to a duck's eyes: how much of each eye's view it fills (nearer is more, behind is none), whether
+    # it is at the duck's feet to be kicked, and 1 on the step the duck kicked it.
+    ("ball_left", "<f4"), ("ball_right", "<f4"), ("ball_near", "<f4"), ("kicked", "<f4"),
+    ("show", "<f4"),  # 1 on the step a duck within earshot began to sing or dance
     ("hat_near", "<f4"),  # 1 while a hat lies on the ground within this duck's reach
     # The wind on the antennae: how hard it blows, 0 to 1, and where it comes from, in radians off the
     # nose and positive to the left. A still garden sends zeros.

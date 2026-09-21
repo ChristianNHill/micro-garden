@@ -153,7 +153,7 @@ class MujocoBody(Stub):
         names = [f"duck-{c}" for c in "abcdefghij"[:n]]
         self.robot_paths = [os.path.join(sim_state, f"{name}.sock") for name in names]
         self.robots = [Client(path) for path in self.robot_paths]
-        self.kicks = np.zeros(n, bool)  # which foot kicked last
+        self.kick_foot = np.zeros(n, bool)  # which foot kicked last
         self.truth = [Truth(truth_port + i) for i in range(n)]
         # where MuJoCo's (0, 0) sits in the garden: by default, so that the row of ducks straddles the middle
         size = garden.get("size", SIZE_M)  # the world is not made until Stub's __init__, below
@@ -328,9 +328,9 @@ class MujocoBody(Stub):
         if self.sat[i]:
             return
         skill = p["skill"]
-        if skill == "headbutt":
-            self.kicks[i] = not self.kicks[i]
-            skill = "kick_left" if self.kicks[i] else "kick_right"
+        if skill in ("headbutt", "kick"):  # a shove and a kick at a ball are both a foot
+            self.kick_foot[i] = not self.kick_foot[i]
+            skill = "kick_left" if self.kick_foot[i] else "kick_right"
         skill = {"zoomies": "roulade"}.get(skill, skill)
         if skill in ROBOT_SKILLS:
             self.robots[i].notify("robot.do", skill=skill)
@@ -348,7 +348,7 @@ class MujocoBody(Stub):
             return
         if feeling == "playful" and not (self.sat[i] or self.marching[i] or self.acting[i] or self.relaxed[i]):
             self.emotes.append((self.t, i, feeling))
-            self._sound(i, {"tag": EMOTE_ACTS[feeling][0]})
+            self._sound(i, {"tag": EMOTE_ACTS[feeling][0]})  # playful always has a voice
             self.robots[i].notify("robot.do", skill="roulade")
             return
         super()._emote(i, feeling)

@@ -53,6 +53,8 @@ CONTENT_BELOW, PRESSING_AT = 0.4, 0.8
 # as briskly as a hungry one, boredom sits near full for most of a quiet day, and so every duck was on the
 # march half its waking life (the simulated robots, 2026-09-21: march 0.44 to 0.54 of the time).
 BORED_WANDER = 0.4
+AMUSED = 0.3  # how much boredom a song or a dance takes off
+PLAY_BORED, PLAY_TIRED = 0.25, 0.7  # boredom at which play starts to appeal, and fatigue at which it has stopped
 REST_BELOW = 0.15  # a duck whose hunger, thirst and boredom are all under this has no reason to move
 NIGHT_SLEEPINESS = 2.0  # sleep pressure builds this many times faster once the sun is down
 DAY_WAKING = 1.0  # daylight cancels an ordinary duck's build entirely, so it stays up all day; a sleepy one still naps
@@ -118,21 +120,32 @@ class Physiology:
         target = np.where(swimming, WATER_C, ambient)
         self.body_temp += (target - self.body_temp) * dt / BODY_TEMP_TAU_S
 
-        eventful = ate | drank | bumped | escaped | touching
+        # A song or a dance nearby (Chris, 2026-09-21, after the Chao gardens): company for a sociable duck, which
+        # is entertained; an imposition on one that keeps to itself; and to an aggressive duck, whatever it
+        # thinks of company, a provocation.
+        show = f["show"] > 0
+        fan = np.clip(2 * k["sociability"] - 1, 0, 1)
+        put_off = np.clip(1 - 2 * k["sociability"], 0, 1)
+        cross = np.clip((k["aggressiveness"] - 0.6) / 0.4, 0, 1)
+        self.boredom = np.clip(self.boredom - 0.7 * AMUSED * fan * (1 - cross) * show, 0, 1)
+        kicked = f["kicked"] > 0  # a ball kicked is something happening, and to a playful duck a happy thing
+        eventful = ate | drank | bumped | escaped | touching | kicked
         self.boredom = np.clip(np.where(eventful, self.boredom - 0.2, self.boredom + dt / BORED_S * (0.5 + k["boredom_rate"])), 0, 1)
         self.alone_s = np.where(touching, 0.0, self.alone_s + dt)
 
         # emotions jump on events and fade on personality clocks (Chao: aggressiveness speeds Fear's fade and
         # slows Anger's; curiosity speeds Sorrow's)
         fade = lambda x, tau: x * np.exp(-dt / tau)
-        self.joy = np.clip(fade(self.joy, 10.0) + 0.3 * (ate | drank), 0, 1)
+        self.joy = np.clip(fade(self.joy, 10.0) + 0.3 * (ate | drank) + 0.3 * k["playfulness"] * kicked
+                           + 0.2 * fan * (1 - cross) * show, 0, 1)
         # Being shoved frightens a timid duck and angers an aggressive one. It used to anger every duck
         # alike, so a Scaredy walked straight back to the dish it had just been driven off and a Bully
         # displaced nobody (Gate 8, 2026-09-18).
         self.fear = np.clip(fade(self.fear, 3 + 15 * k["timidity"] + 5 * (1 - k["aggressiveness"]))
                             + 0.8 * escaped + bumped * k["timidity"], 0, 1)
         self.anger = np.clip(np.where(bumped, self.anger + k["aggressiveness"],
-                                      fade(self.anger, 3 + 15 * k["aggressiveness"])), 0, 1)
+                                      fade(self.anger, 3 + 15 * k["aggressiveness"]))
+                             + 0.25 * np.maximum(cross, 0.5 * put_off) * show, 0, 1)
         lonely = (self.alone_s > LONELY_S) & (k["sociability"] > 0.5)
         mope = dt / 30.0 * lonely * (k["sociability"] - 0.5) * 2 + 0.3 * bumped * k["timidity"]
         self.sorrow = np.clip(fade(self.sorrow, 5 + 20 * (1 - k["curiosity"])) + mope, 0, 1)
@@ -146,6 +159,18 @@ class Physiology:
         """How close to water the air says it is, 0 to 1: past half saturated the pond is a step or two
         away and the humidity neurons' own left and right do the rest (Gate 4b)."""
         return np.clip((humidity - 0.5) / 0.5, 0, 1)
+
+    def amuse(self, i: int) -> None:
+        """Duck i has just sung, danced or played: that is something happening, which is what boredom wants."""
+        self.boredom[i] = max(self.boredom[i] - AMUSED, 0.0)
+        self.joy[i] = min(self.joy[i] + 0.1, 1.0)
+
+    def play(self) -> np.ndarray:
+        """How much a duck wants to play, 0 to 1: a playful duck, bored, and not worn out. It is a like, so
+        it gives way as a need presses, as music and company do (brain/server.py `at_ease`)."""
+        bored = np.clip((self.boredom - PLAY_BORED) / (1 - PLAY_BORED), 0, 1)
+        rested = np.clip(1 - self.fatigue / PLAY_TIRED, 0, 1)
+        return self.k["playfulness"] * bored * rested * ~self.asleep
 
     def discomfort(self):
         """(too hot, too cold) in 0-1, with a comfort band widened by heat tolerance on the hot side."""

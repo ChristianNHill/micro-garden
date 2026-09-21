@@ -122,6 +122,8 @@ class Viewer:
                                             (int(self.size * self.px), int(self.size * self.px)))
         self.screen.blit(surf, (0, 0))
         pygame.draw.circle(self.screen, (20, 40, 30), self._px(stub.world.tree[:2]), int(stub.world.tree[2] * self.px), 2)
+        for x, y in stub.world.balls[:, :2]:
+            pygame.draw.circle(self.screen, (240, 120, 160), self._px((x, y)), max(3, int(0.06 * self.px)))
         for x, y, r in stub.world.rocks:
             pygame.draw.circle(self.screen, (110, 105, 100), self._px((x, y)), int(r * self.px))
         if stub.world.pond is not None:

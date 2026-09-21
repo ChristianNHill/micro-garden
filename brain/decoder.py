@@ -62,6 +62,7 @@ COMPANIONSHIP_VYAW = 1.5
 # a duck keeps its fear and its temper and they no longer steer it by the others, which is the control to
 # measure them against.
 FLEE, CHASE = 1.0, 1.0
+PLAY_VYAW = 2.0  # rad/s towards the eye a ball is in, for a duck that wants to play as much as a duck can
 PURSUE_VX = 0.2  # m/s an angry duck closes on another at: brisk, and short of the run that overshot
 MUSIC_VYAW = 1.5  # rad/s toward the louder ear at full music affinity, and away from it at none
 GROOM_HZ = 0.4  # grooming DN rate at which a duck is fussing with its head enough to shed a hat
@@ -224,7 +225,8 @@ class Decoder:
         vyaw = ((wander + VYAW_PER_HZ * (steer + r[WIND_L] - r[WIND_R]))
                 + STINK_VYAW_PER_HZ * (r[STINK_L] - r[STINK_R]) * (like - avoid)
                 + MUSIC_VYAW * taste * (b("music_left", 0.0) - b("music_right", 0.0))
-                + COMPANIONSHIP_VYAW * liking * (b("duck_left", 0.0) - b("duck_right", 0.0)))
+                + COMPANIONSHIP_VYAW * liking * (b("duck_left", 0.0) - b("duck_right", 0.0))
+                + PLAY_VYAW * b("play", 0.0) * (b("ball_left", 0.0) - b("ball_right", 0.0)))
         vyaw = np.where(asleep, 0.0, vyaw)
         return [
             {"vx": float(vx[b]), "vy": 0.0, "vyaw": float(vyaw[b]), "escape": bool(onset[b]),

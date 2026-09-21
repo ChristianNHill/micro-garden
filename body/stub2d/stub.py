@@ -58,13 +58,18 @@ ANTENNA = np.array([0.06, 0.05])  # forward, lateral offset of each odor sample,
 CONTROL_PARAMS = {"sim.step": {"n": 1}, "sim.state": {}, "garden.shake_tree": {}, "garden.pet": {"duck": 0},
                   "garden.scare": {}, "garden.hand": {"x": 0.0, "y": 0.0, "feed": 0},
                   "garden.music": {"x": 0.0, "y": 0.0, "on": 1}, "garden.hat": {"duck": 0, "on": 1},
-                  "garden.drop_hat": {"x": 0.0, "y": 0.0}}
+                  "garden.drop_hat": {"x": 0.0, "y": 0.0}, "garden.drop_ball": {"x": 0.0, "y": 0.0}, "garden.volume": {"level": 0.75}}
 SHAKE_FRUIT = 2
 PUSH_M = 0.15
 DOWN_S = 10.0  # a kicked duck goes over, and this is about how long a microduck takes to get back on its feet
 SWIM_SPEED = 0.5  # fraction of commanded speed while swimming
 SOUND_TAGS = {"alarm", "greet", "inquire", "peck", "chirp", "coo", "wheee"}  # microduck's voice bank
 SIT_AFTER_S = 3.0  # a duck that has not moved for this long is drawn sitting (body/mujoco/adapter.py really sits)
+KICK_REACH_M, KICK_MS = 0.22, 1.6  # how near its feet a ball has to be for a duck to kick it, and how fast it leaves
+BALL_SEEN_M = 1.5  # a ball this far off fills half what it would at a duck's feet
+AUDIENCE_M = 1.5  # how near a duck has to be to a song or a dance to be its audience
+PERFORMANCES = ("sing", "dance", "singdance")
+MAX_BALLS = 3
 HAT_REACH_M = 0.25  # a hat on the ground nearer than this is one a duck could put on
 BITE_S = 0.5  # ground_pick takes this long, so at most one bite per BITE_S
 # "headbutt", "drink", "preen" and "zoomies" are our names for what a duck does; this body acts the first three
@@ -100,17 +105,25 @@ EMOTE_ACTS = {
                        (0.35, -0.25, -0.4, -0.35, 0.0)]),
     "cower": ("inquire", [(0.0, 0.45, 0.5, 0.0, 0.0), (0.3, 0.45, 0.5, 0.15, 0.0), (0.15, 0.45, 0.5, -0.15, 0.0),
                           (0.15, 0.45, 0.5, 0.15, 0.0), (0.15, 0.45, 0.5, -0.15, 0.0), (0.8, 0.45, 0.5, 0.0, 0.0)]),
+    # to music it likes: the head nods on the beat and swings side to side, four beats, and it says nothing
+    "dance": (None, [(0.0, 0.25, 0.2, 0.4, 0.15), (0.35, -0.1, -0.2, 0.0, 0.0), (0.35, 0.25, 0.2, -0.4, -0.15), (0.35, -0.1, -0.2, 0.0, 0.0),
+                     (0.35, 0.25, 0.2, 0.4, 0.15), (0.35, -0.1, -0.2, 0.0, 0.0), (0.35, 0.25, 0.2, -0.4, -0.15), (0.35, -0.1, -0.2, 0.0, 0.0)]),
+    # and the two at once, which is what a duck mostly does with music it likes
+    "singdance": ("chirp", [(0.0, 0.25, 0.2, 0.4, 0.15), (0.35, -0.1, -0.2, 0.0, 0.0), (0.35, 0.25, 0.2, -0.4, -0.15), (0.35, -0.1, -0.2, 0.0, 0.0),
+                     (0.35, 0.25, 0.2, 0.4, 0.15), (0.35, -0.1, -0.2, 0.0, 0.0), (0.35, 0.25, 0.2, -0.4, -0.15), (0.35, -0.1, -0.2, 0.0, 0.0)]),
 }
 
 
 class Stub:
     def __init__(self, n: int, seed: int, sock_dir: str, food_xy=((3.0, 3.0), (1.0, 1.0)), danger_xy=(),
                  pond=None, bites=1, fruit_every_s=None, frame_port: int = frames.FRAME_PORT, pose=None,
-                 wind=None, wind_turns_s=None, music=None, size=SIZE_M, tree=TREE, rocks=()):
+                 wind=None, wind_turns_s=None, music=None, size=SIZE_M, tree=TREE, rocks=(), balls=()):
         rng = np.random.default_rng(seed)
         self.fruit_rng = np.random.default_rng(seed + 1)
         self.fruit_every_s = fruit_every_s
         self.world = World(food_xy, danger_xy, pond, bites, wind, wind_turns_s, music, size, tree, rocks)
+        for x, y in balls:  # toys put down before anyone is watching, for a gate
+            self.world.balls = np.vstack([self.world.balls, [x, y, 0.0, 0.0]])
         self.pose = np.column_stack([rng.uniform(0.5, size - 0.5, (n, 2)), rng.uniform(-np.pi, np.pi, n)])
         if pose is not None:
             self.pose = np.array(pose, float).reshape(n, 3)
@@ -127,6 +140,10 @@ class Stub:
         self.hat_style = np.full(n, -1)  # which hat each wears: a number a viewer makes a hat from; -1 for none
         self.hat_items = []  # hats lying in the garden, as [x, y, style], for a duck to put on if it likes
         self.donned = []  # (t, duck) each time one puts a hat on
+        self.kicks = []  # (t, duck) each time one kicks a ball
+        self.kicked = np.zeros(n, bool)
+        self.saw_show = np.zeros(n, bool)  # a duck nearby has just begun to sing or dance
+        self.velocity = np.zeros((n, 2))  # metres a second over the ground, for what a duck walks into
         self.hat_rng = np.random.default_rng(seed + 2)
         self.preened = []  # (t, duck) each time one is shaken off
         self.pets = []  # (t, duck)
@@ -181,6 +198,15 @@ class Stub:
             self._drink(i)
         elif p["skill"].startswith("emote_"):
             self._emote(i, p["skill"][len("emote_"):])
+        elif p["skill"] == "kick":
+            fwd = np.array([np.cos(self.pose[i, 2]), np.sin(self.pose[i, 2])])
+            for ball in self.world.balls:
+                rel = ball[:2] - self.pose[i, :2]
+                if np.linalg.norm(rel) < KICK_REACH_M and rel @ fwd > 0:
+                    ball[2:] += KICK_MS * fwd
+                    self.kicks.append((self.t, i))
+                    self.kicked[i] = True
+                    break
         elif p["skill"] == "wear" and not self.hats[i]:
             near = [k for k, (x, y, _) in enumerate(self.hat_items) if np.hypot(x - self.pose[i, 0], y - self.pose[i, 1]) < HAT_REACH_M]
             if near:
@@ -199,7 +225,12 @@ class Stub:
             return
         tag, poses = EMOTE_ACTS[feeling]
         self.emotes.append((self.t, i, feeling))
-        self._sound(i, {"tag": tag})
+        if feeling in PERFORMANCES:  # and it has an audience: what they make of it is theirs (brain/physiology.py)
+            near = np.linalg.norm(self.pose[:, :2] - self.pose[i, :2], axis=1) < AUDIENCE_M
+            near[i] = False
+            self.saw_show |= near
+        if tag:
+            self._sound(i, {"tag": tag})
         at = self.t
         for after, *pose in poses + [(0.5, *LEVEL)]:
             at += after
@@ -287,6 +318,14 @@ class Stub:
         self.hats[i] = bool(int(p["on"]))
         self.hat_style[i] = int(self.hat_rng.integers(1_000_000)) if self.hats[i] else -1
 
+    def _volume(self, p):
+        """How loud the music box plays, 0 to 1. Off is off for the ducks too."""
+        self.world.music_volume = float(np.clip(p["level"], 0, 1))
+
+    def _drop_ball(self, p):
+        """A ball for the ducks, put down where the player says. A few is plenty."""
+        self.world.balls = np.vstack([self.world.balls, [float(p["x"]), float(p["y"]), 0.0, 0.0]])[-MAX_BALLS:]
+
     def _drop_hat(self, p):
         """A hat left in the garden, no two alike. Whether anyone wears it is up to the ducks."""
         self.hat_items.append([float(p["x"]), float(p["y"]), int(self.hat_rng.integers(1_000_000))])
@@ -309,12 +348,13 @@ class Stub:
 
     def _control_call(self, method, p):
         handlers = {"garden.pet": self._pet, "garden.music": self._place_music, "garden.hat": self._hat,
-                    "garden.drop_hat": self._drop_hat,
+                    "garden.drop_hat": self._drop_hat, "garden.drop_ball": self._drop_ball, "garden.volume": self._volume,
                     "garden.scare": self._scare, "garden.hand": self._hand, "sim.step": self._sim_step,
                     "garden.shake_tree": lambda p: {"fell": self.shake_tree()}, "sim.state": lambda p: self.state()}
         return handlers[method](p) or {}
 
     def step(self) -> None:
+        before = self.pose[:, :2].copy()
         x, y, h = self.pose.T
         vx, vy, vyaw = (self.cmd * np.where(self._swimming(), SWIM_SPEED, 1.0)[:, None]).T
         h += vyaw * DT
@@ -323,6 +363,8 @@ class Stub:
         self.still_for = np.where(np.hypot(vx, vy) > 0.01, 0.0, self.still_for + DT)
         np.clip(self.pose[:, :2], DUCK_R, self.world.size - DUCK_R, out=self.pose[:, :2])
         self.world.push_out(self.pose[:, :2], DUCK_R)
+        self.velocity = (self.pose[:, :2] - before) / DT
+        self.world.roll_balls(DT, self.pose[:, :2], self.velocity)
         self._act()
         self.pose[:, 2] = (h + np.pi) % (2 * np.pi) - np.pi
         self.world.step(self.t)
@@ -345,7 +387,7 @@ class Stub:
             sense[f"humidity_{side}"] = w.humidity_at(p)
             sense[f"temp_{side}"] = temperature_at(p, light, self.world.tree)
             sense[f"duck_{side}"] = np.array([duck_odor_at(p[i], xy, i) for i in range(len(xy))])
-            sense[f"music_{side}"] = music_at(p, w.music)
+            sense[f"music_{side}"] = music_at(p, w.music) * w.music_volume
         sense["touch_left"], sense["touch_right"], dish = contacts(xy, h, w.food, self.touch_m)
         sense["sugar"] = (dish >= 0).astype(float)
         edge = w.pond_distance(xy)
@@ -357,6 +399,19 @@ class Stub:
         self.bumped[:] = self.ate[:] = self.drank[:] = self.petted[:] = self.scared[:] = False
         sense["light"] = np.full(len(xy), light)
         sense["hat"] = self.hats.astype(float)
+        seen = np.zeros((2, len(xy)))  # the nearest ball, to the left eye and to the right
+        near = np.zeros(len(xy), bool)
+        for ball in w.balls:
+            rel = ball[:2] - xy
+            d = np.linalg.norm(rel, axis=1)
+            ahead, to_left = (rel * fwd).sum(1), (rel * left).sum(1)
+            size = np.where(ahead > -0.3 * d, 1 / (1 + d / BALL_SEEN_M), 0.0)  # nothing of it from behind
+            seen[0] = np.maximum(seen[0], size * (to_left >= 0))
+            seen[1] = np.maximum(seen[1], size * (to_left < 0))
+            near |= (d < KICK_REACH_M) & (ahead > 0)
+        sense["ball_left"], sense["ball_right"], sense["ball_near"] = seen[0], seen[1], near.astype(float)
+        sense["kicked"], sense["show"] = self.kicked.astype(float), self.saw_show.astype(float)
+        self.kicked[:] = self.saw_show[:] = False
         lying = np.array([h[:2] for h in self.hat_items], float).reshape(-1, 2)
         sense["hat_near"] = (np.linalg.norm(xy[:, None] - lying[None], axis=-1) < HAT_REACH_M).any(axis=1).astype(float)
         sense["wind"], sense["wind_from"] = wind_on(h, w.wind)

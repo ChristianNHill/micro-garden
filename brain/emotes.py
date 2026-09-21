@@ -16,7 +16,7 @@ CHANCE = 0.35  # of doing so each time, for the most expressive duck whose feeli
 FELT_AT = 0.4  # below this a feeling is not worth showing
 
 EMOTES = ("happy", "playful", "scared", "angry", "sad", "lonely", "bored", "hungry", "thirsty", "sleepy",
-          "curious", "proud", "stomp", "yawn", "splash", "sing", "cower")
+          "curious", "proud", "stomp", "yawn", "splash", "sing", "cower", "dance", "singdance")
 # The last five are signatures: what a duck of a strong character does that the others hardly do, the way each
 # Chao had its own trick. They are scaled by the knob and not switched by the label, so a Bully stomps because
 # it is aggressive and any aggressive duck stomps a little: stomp for aggressiveness, yawn for sleepiness, splash
@@ -26,7 +26,10 @@ EMOTES = ("happy", "playful", "scared", "angry", "sad", "lonely", "bored", "hung
 SIGNATURE = 0.6
 
 
-DOES = {"stomp": "stomps", "yawn": "yawns", "splash": "splashes", "sing": "sings", "cower": "cowers"}
+DOES = {"dance": "dances", "singdance": "sings and dances", "stomp": "stomps", "yawn": "yawns", "splash": "splashes", "sing": "sings", "cower": "cowers"}
+
+
+AMUSING = ("sing", "dance", "singdance", "playful")  # doing one of these takes the edge off boredom
 
 
 def phrase(emote: str) -> str:
@@ -58,6 +61,7 @@ def feelings(body, i: int) -> dict[str, float]:
         "splash": trait("water_love") * float(body.swimming[i]),
         "sing": trait("chattiness") * (1 - max(v("hunger"), v("thirst"))) * (1 - v("fear")),
         "cower": trait("timidity") * v("fear") * 1.5,
+        "dance": 0.0, "singdance": 0.0,  # never a mood's: a performance, which the server starts (brain/server.py)
     }
 
 

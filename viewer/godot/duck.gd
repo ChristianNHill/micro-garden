@@ -1,7 +1,7 @@
 # One duck: the real microduck, simplified (build_robot.py writes robot.json from Pollen Robotics' meshes) and
 # built as the robot is, every body on its own hinge under its parent. So it is posed by joint angles: the
-# simulated robot's own, when the garden sends them (its real walk, its real falls), and otherwise a standing
-# pose with a walk made by rule. It faces +x and stands on y = 0. Personality shows in its proportions, as far
+# simulated robot's own, live, when the garden sends them, and otherwise the robot's own motions as recorded
+# from the simulator (clips.json: its sit, its walk, its kick, its roll, its fall and its getting up). It faces +x and stands on y = 0. Personality shows in its proportions, as far
 # as a robot's can: a big appetite is a wide one, a timid duck is small, a vain one has a big head, and the grey
 # plastic takes the duck's own colour.
 # It is told where it is and how it feels (`show_state`), and everything else here is how that looks.
@@ -11,9 +11,9 @@ const Ink := preload("res://ink.gd")
 const Hats := preload("res://hats.gd")
 const CELL := 5.0  # a finer screen than the ground's: at 9 px a duck this small came out spotted like a dalmatian
 const LOOK := 1.9  # drawn a little larger than life, so a duck reads from across the garden
-const EMOTE_S := 2.4
+const EMOTE_S := 2.8
 const RIBBONS := [Ink.CORAL, Ink.TEAL, Ink.MUSTARD, Color("7d6bd0"), Color("e58ac0")]
-const DOES := {"stomp": "stomps", "yawn": "yawns", "splash": "splashes", "sing": "sings", "cower": "cowers"}  # a signature is what it does
+const DOES := {"dance": "dances", "singdance": "sings and dances", "stomp": "stomps", "yawn": "yawns", "splash": "splashes", "sing": "sings", "cower": "cowers"}  # a signature is what it does
 const MOOD_SHAPES := {"joy": "ball", "fear": "spike", "anger": "block", "sorrow": "drop"}
 
 var model := Node3D.new()  # everything that waddles, sits and falls over; the shadow and the signs do not
@@ -39,8 +39,17 @@ var emote := ""
 var emote_age := 99.0
 var emote_seen := -1.0
 var calm := 1.0  # 0.5 under reduced motion
+var sway := 0.0  # a lean an emote asks for, which the next frame's posture takes up (set, never added to the tilt)
+var heading_was := 0.0
+var clip := "stand"  # which recorded motion is playing, and how far into it
+var clip_t := 0.0
+var hop := 0.0  # and a lift, the same way: added to the height each frame, a hop became a hover
 const WIRE := ["left_hip_yaw", "left_hip_roll", "left_hip_pitch", "left_knee", "left_ankle", "neck_pitch", "head_pitch",
 	"head_yaw", "head_roll", "mouth", "right_hip_yaw", "right_hip_roll", "right_hip_pitch", "right_knee", "right_ankle"]  # robotd's joint order
+# Motions played once through at this rate, and finished before the next begins (a knock-down interrupts any).
+# The 2D body gets a duck up, sat or walking the moment it says so, where a robot takes seconds, so these hurry.
+const ONCE := {"sit_down": 2.0, "stand_up": 3.0, "kick": 2.0, "roll": 1.3, "get_up": 2.5, "go_limp": 1.0}
+static var clips := {}  # clips.json: the robot's own motions, recorded
 static var robot := {}  # robot.json with its meshes made, built once and shared by every duck
 
 
@@ -133,6 +142,47 @@ func build(index: int, knobs: Dictionary) -> void:
 		zs.append(z)
 
 
+func _play(want: String, dt: float) -> Array:
+	# Advance the playing clip towards what the duck is doing and return its pose now, [joints, height, lean].
+	if clips.is_empty():
+		clips = JSON.parse_string(FileAccess.get_file_as_string("res://clips.json"))
+	var hz: float = clips.hz
+	var frames_now: Array = clips.clips[clip].frames
+	var length: float = (frames_now.size() - 1) / hz
+	var finishing: bool = ONCE.has(clip) and clip_t < length and want != "go_limp"
+	if not finishing:
+		var sat: bool = clip in ["sitting", "sit_down"]
+		var next := want
+		if want == "sitting" and not sat:
+			next = "sit_down"
+		elif sat and not (want in ["sitting", "go_limp"]):
+			next = "stand_up"
+		elif clip == "go_limp" and want != "go_limp":
+			next = "get_up"
+		if next != clip:
+			clip = next
+			clip_t = 0.0
+			frames_now = clips.clips[clip].frames
+			length = (frames_now.size() - 1) / hz
+	var rate: float = ONCE.get(clip, clamp(speed / 0.12, 0.6, 2.5) if clip == "walk" else 1.0)
+	clip_t += dt * rate * (0.5 + 0.5 * calm)
+	if clips.clips[clip].loop:
+		clip_t = fmod(clip_t, length)
+	else:
+		clip_t = min(clip_t, length)  # and held there: a duck that is down stays as it fell
+	var at: float = clip_t * hz
+	var a: Array = frames_now[int(at)]
+	var b: Array = frames_now[min(int(at) + 1, frames_now.size() - 1)]
+	var u: float = at - int(at)
+	var joints := []
+	for k in a[0].size():
+		joints.append(lerp(float(a[0][k]), float(b[0][k]), u))
+	var qa := Quaternion(a[2][1], a[2][2], a[2][3], a[2][0]).normalized()  # written to three places, so not quite unit
+	var qb := Quaternion(b[2][1], b[2][2], b[2][3], b[2][0]).normalized()
+	var q := qa.slerp(qb, u)
+	return [joints, lerp(float(a[1]), float(b[1]), u), [q.w, q.x, q.y, q.z]]
+
+
 func _torus(inner: float, outer: float) -> TorusMesh:
 	var m := TorusMesh.new()
 	m.inner_radius = inner
@@ -167,7 +217,8 @@ func _process(dt: float) -> void:
 
 	# posture: standing, sitting, asleep, afloat, or flat on its side
 	var swimming: bool = state.swimming
-	var low: bool = state.sat or state.asleep
+	var moved_to_act: bool = emote_age < EMOTE_S and emote in ["dance", "singdance", "happy", "playful", "stomp"]  # on its feet for these
+	var low: bool = (state.sat and not moved_to_act) or state.asleep
 	var walk: float = clamp(speed / 0.08, 0.0, 1.0) * calm
 	var data := robot_data()
 	var real: bool = state.has("joints")  # the simulated robot's own joints: then nothing here is by rule
@@ -177,23 +228,45 @@ func _process(dt: float) -> void:
 	if real:
 		for k in WIRE.size():
 			angle[WIRE[k]] = float(state.joints[k])
-		trunk.quaternion = trunk.quaternion.slerp(Quaternion(state.tilt[1], state.tilt[2], state.tilt[3], state.tilt[0]), min(1.0, 12.0 * dt))
+		trunk.quaternion = trunk.quaternion.slerp(Quaternion(state.tilt[1], state.tilt[2], state.tilt[3], state.tilt[0]).normalized(), min(1.0, 12.0 * dt))
 		rig.position.y = lerp(rig.position.y, float(state.z), min(1.0, 12.0 * dt))
 		model.rotation.x = 0.0
 		model.position.y = 0.0
 	else:
-		# a walk by rule: the hips swing against each other (the right leg's hinges are the left's mirrored,
-		# so the same number added to both does that) and each ankle gives it back, to keep the foot flat
-		var swing := sin(stride) * 0.35 * walk
-		for side in ["left", "right"]:
-			angle[side + "_hip_pitch"] = angle.get(side + "_hip_pitch", 0.0) + swing
-			angle[side + "_ankle"] = angle.get(side + "_ankle", 0.0) - swing
-		var want_y := -(float(data.stand_z) - 0.045) * model.scale.y if (swimming or low) else 0.0  # folded, or afloat to the trunk
-		var want_roll := 1.45 if state.down else sin(stride) * 0.12 * walk + (sin(t * 1.7) * 0.05 * calm if swimming else 0.0)
-		model.position.y = lerp(model.position.y, want_y + abs(sin(stride)) * 0.006 * walk, min(1.0, 8.0 * dt))
-		model.rotation.x = lerp(model.rotation.x, want_roll, min(1.0, 8.0 * dt))
-	for leg in ["yaw2roll", "bearing_roll"]:  # where each leg joins the trunk
-		frames[leg].visible = real or not (swimming or low)
+		# The robot's own motions, recorded from the simulator (record_clips.py) and played for whatever this
+		# duck is doing: it sits as a microduck sits, walks its walk, and gets up the way one gets up.
+		var want := "stand"
+		var yaw_rate: float = angle_difference(heading_was, rotation.y) / max(dt, 1e-4)
+		if state.down:
+			want = "go_limp"
+		elif low or swimming:
+			want = "sitting"
+		elif state.get("kicking", false):
+			want = "kick"
+		elif state.eating:
+			want = "peck"
+		elif emote == "playful" and emote_age < 0.4:
+			want = "roll"
+		elif speed > 0.015:
+			want = "walk"
+		elif abs(yaw_rate) > 0.4:
+			want = "turn_left" if yaw_rate > 0.0 else "turn_right"
+		var pose := _play(want, dt)
+		for k in WIRE.size():
+			angle[WIRE[k]] = float(pose[0][k])
+		rig.position.y = lerp(rig.position.y, float(pose[1]), min(1.0, 14.0 * dt))
+		trunk.quaternion = trunk.quaternion.slerp(Quaternion(pose[2][1], pose[2][2], pose[2][3], pose[2][0]).normalized(), min(1.0, 14.0 * dt))
+		if emote in ["dance", "singdance"] and emote_age < EMOTE_S:  # no robot has a dance: steps in place, by rule
+			var step := sin(emote_age * TAU / 0.7) * 0.3
+			for side in ["left", "right"]:
+				angle[side + "_hip_pitch"] = angle.get(side + "_hip_pitch", 0.0) + step
+				angle[side + "_ankle"] = angle.get(side + "_ankle", 0.0) - step
+		var afloat := -0.05 * model.scale.y if swimming else 0.0  # the pond comes up to its trunk
+		model.position.y = lerp(model.position.y, afloat + hop * LOOK * calm, min(1.0, 14.0 * dt))
+		model.rotation.x = lerp(model.rotation.x, (sin(t * 1.7) * 0.05 * calm if swimming else 0.0) + sway * calm, min(1.0, 8.0 * dt))
+	heading_was = rotation.y
+	for leg in ["yaw2roll", "bearing_roll"]:  # where each leg joins the trunk: under water they are not seen
+		frames[leg].visible = real or not swimming
 	shadow.visible = not swimming
 	var wearing: int = state.hat_style if state.hat else -1
 	if wearing != hat_style:
@@ -205,7 +278,7 @@ func _process(dt: float) -> void:
 			var seat: Dictionary = data.hat  # the crown of the head shell, and which way is up there, in the head's frame
 			var up := Vector3(seat.up[0], seat.up[1], seat.up[2])
 			var forward := Vector3(seat.forward[0], seat.forward[1], seat.forward[2])
-			hat.transform = Transform3D(Basis(forward, up, forward.cross(up)).scaled(Vector3.ONE * 1.25), Vector3(seat.at[0], seat.at[1], seat.at[2]) - up * 0.012)
+			hat.transform = Transform3D(Basis(forward, up, forward.cross(up)).scaled(Vector3.ONE * 1.25), Vector3(seat.at[0], seat.at[1], seat.at[2]))
 			head.add_child(hat)
 		hat_style = wearing
 
@@ -227,8 +300,9 @@ func _process(dt: float) -> void:
 		var node: Node3D = hinge[0]
 		node.quaternion = node.quaternion.slerp(Quaternion(hinge[1], angle.get(name, 0.0)), min(1.0, (20.0 if real else 9.0) * dt))
 	# the rest of the body joins in a little, for the feelings that would move more than a head
-	var hop := 0.0
 	var squash := 0.0
+	sway = 0.0
+	hop = 0.0
 	if emote_age < EMOTE_S and not state.asleep:
 		var beat := sin(emote_age / EMOTE_S * TAU * 3.0)
 		match emote:
@@ -239,11 +313,16 @@ func _process(dt: float) -> void:
 			"stomp": hop = max(beat, 0.0) * 0.025; squash = max(-beat, 0.0) * 0.1
 			"yawn": squash = -0.07 * sin(emote_age / EMOTE_S * PI)
 			"splash": hop = abs(beat) * 0.03; squash = -abs(beat) * 0.06
-			"sing": model.rotation.x += beat * 0.08
+			"sing": sway = beat * 0.08
 			"cower": squash = 0.24
-	if emote_age >= EMOTE_S or emote != "playful":
+			"dance", "singdance":  # on the beat: down and up, a sway, a twist from side to side
+				var bar := sin(emote_age * TAU / 0.7)
+				hop = abs(bar) * 0.02
+				squash = max(-bar, 0.0) * 0.1
+				sway = sin(emote_age * TAU / 1.4) * 0.12
+				model.rotation.y = sin(emote_age * TAU / 1.4) * 0.5
+	if emote_age >= EMOTE_S or not (emote in ["playful", "dance", "singdance"]):
 		model.rotation.y = lerp_angle(model.rotation.y, 0.0, min(1.0, 8.0 * dt))
-	model.position.y += hop * LOOK * calm
 	var s := model.scale.x
 	model.scale = model.scale.lerp(Vector3(s, s * (1.0 - squash * calm), model.scale.z), min(1.0, 12.0 * dt))
 

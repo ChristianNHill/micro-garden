@@ -6,6 +6,7 @@
 #   --orbit=yaw,pitch,distance  where the camera starts       --ride=N   start on duck N's back, --select=N beside it
 #   --reduced-motion            a still camera, half the animation       --mute     no sound
 #   --light=0.1                 draw that daylight whatever the hour, to look at the night; --asleep=N draws duck N asleep
+#   --music=DIR                 the folder of mp3s the music box plays (default ~/.cache/micro-garden/music)
 #   --port=N                    listen there, for a garden started with MICRO_GARDEN_PORT=N
 #   --shot=file.png             save the window after --shot-after=S seconds (6 by default)
 #   --feed-at=x,y               drop food there once snapshots arrive, and --quit-after=S: both for Gate 13
@@ -16,7 +17,22 @@ const Duck := preload("res://duck.gd")
 const Scenery := preload("res://scenery.gd")
 const Hats := preload("res://hats.gd")
 const BrainView := preload("res://brainview.gd")
+const MusicBox := preload("res://musicbox.gd")
 const SNAPSHOT_PORT := 7650  # actions go back on the next one up; --port moves the pair
+const HELP := """click a duck          select it, and see its needs and its brain
+click the tree, or F  shake fruit down
+H                     drop a hat at the mouse, for whoever wants it
+B                     drop a ball at the mouse
+M                     put the music box down at the mouse, or pick it up
+click the music box   step its volume
+C                     clap
+drag                  turn the camera        scroll   zoom
+/                     hide this"""
+const HELP_SELECTED := """Tab                   ride this duck
+P                     pet it
+click the grass       let it go
+"""
+const HELP_RIDING := "W A S D  steer      O  hide its eyes      Tab  get off"
 const PITCH := Vector2(0.35, 1.25)  # radians above the horizon the camera may sit
 const DRIFT := 0.12  # radians the idle camera sways either way
 
@@ -45,12 +61,17 @@ var water := AudioStreamPlayer.new()  # the pond: soft brown noise that swells a
 var water_level := 0.0
 var water_t := 0.0
 
+var music := Node.new()  # the box's own music, from the player's folder
+var said := ""  # a line from this window, shown with the garden's toasts for a moment
+var said_until := 0.0
 var bars := Control.new()  # the selected duck's needs, moods and wants, as bars under its card
 var brain := Control.new()  # the selected duck's brain, firing
 var watching := -2  # whose brain the garden was last asked for
 var asked := 0.0
 var overlay := Control.new()  # the ride view's retinas and descending-neuron bars; O hides it
-var card := Label.new()
+var card := Label.new()  # who the selected duck is
+var help := Label.new()  # what the player can do, bottom right; / hides it
+var help_on := true
 var toasts := Label.new()
 var args := {}
 
@@ -70,7 +91,7 @@ func _ready() -> void:
 	add_child(cam)
 	var ui := CanvasLayer.new()
 	add_child(ui)
-	for label in [card, toasts]:
+	for label in [card, toasts, help]:
 		label.add_theme_color_override("font_color", Ink.NAVY)
 		label.add_theme_font_size_override("font_size", 18)
 		var paper := StyleBoxFlat.new()  # text stays legible over a tree or a duck
@@ -89,8 +110,18 @@ func _ready() -> void:
 	overlay.draw.connect(_draw_overlay)
 	ui.add_child(overlay)
 	card.position = Vector2(24, 20)
+	help.add_theme_font_size_override("font_size", 14)
+	var mono := SystemFont.new()
+	mono.font_names = PackedStringArray(["Menlo", "Monaco", "Courier New", "monospace"])
+	help.add_theme_font_override("font", mono)  # the two columns line up
+	help.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT, Control.PRESET_MODE_MINSIZE, 24)
+	help.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	help.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	toasts.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT, Control.PRESET_MODE_MINSIZE, 24)
 	toasts.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	music.set_script(MusicBox)
+	add_child(music)
+	music.setup(args.get("music", OS.get_environment("HOME").path_join(".cache/micro-garden/music")))
 	var gen := AudioStreamGenerator.new()
 	gen.mix_rate = 22050.0
 	gen.buffer_length = 1.0
@@ -153,7 +184,7 @@ func _build() -> void:
 	var pole := Ink.part(self, Ink.cone(0.035, 1.5, 0.028, 5), Scenery.WOOD, summit + Vector3(0, 0.7, 0), Vector3.ONE, 7.0)
 	flag.position = summit + Vector3(0, 1.22, 0)
 	add_child(flag)
-	Ink.part(flag, BoxMesh.new(), Color.WHITE, Vector3(0.42, 0, 0), Vector3(0.84, 0.46, 0.02), 7.0, -1.0, true).material_override.set_shader_parameter("lift", 0.4)
+	Ink.part(flag, BoxMesh.new(), Color.WHITE, Vector3(0.42, 0, 0), Vector3(0.84, 0.46, 0.02), 7.0, 1.0, true)  # no screen on it: a white flag is white
 	for i in snap.ducks.size():
 		var d := Node3D.new()
 		d.set_script(Duck)
@@ -184,6 +215,16 @@ func _show(first: bool) -> void:
 		var lying := Hats.make(int(h[2]))
 		lying.scale = Vector3.ONE * 1.9  # the size it is on a duck's head, which is drawn that much over life
 		n.add_child(lying))
+	_props("balls", snap.get("balls", []), func(n: Node3D, b: Array) -> void:
+		var ball := Ink.part(n, Ink.ball(0.06 * 1.9, 8), Color("f6f1e6"), Vector3(0, 0.06 * 1.9, 0), Vector3.ONE, 5.0, -1.0, true)
+		ball.material_override.set_shader_parameter("lift", 0.3)
+		Ink.part(ball, Ink.ball(0.06 * 1.9 * 1.01, 8), Color("e2483d"), Vector3.ZERO, Vector3(1.0, 0.34, 1.0), 5.0).material_override.set_shader_parameter("lift", 0.3))
+	for n in props.get("balls", []):  # it rolls: turned by how far it has come
+		var ball: Node3D = n.get_child(0)
+		var moved: Vector3 = n.position - n.get_meta("was", n.position)
+		n.set_meta("was", n.position)
+		if moved.length() > 1e-5:
+			ball.rotate(Vector3(moved.z, 0, -moved.x).normalized(), moved.length() / (0.06 * 1.9))
 	_props("danger", snap.danger, func(n: Node3D, f: Array) -> void:
 		Ink.part(n, Ink.cone(0.22, 0.002, 0.22, 10), Ink.MUSTARD, Vector3(0, 0.003, 0), Vector3.ONE, 5.0, 0.3))
 	_props("music", [snap.music] if snap.music != null else [], func(n: Node3D, f: Array) -> void:
@@ -212,8 +253,15 @@ func _show(first: bool) -> void:
 		brain.position = Vector2(get_viewport().get_visible_rect().size.x - brain.size.x - 20.0, 20.0)
 	bars.position = card.position + Vector2(0, card.size.y + 8.0)
 	bars.queue_redraw()
-	toasts.text = "\n".join(snap.toasts)
-	toasts.visible = not snap.toasts.is_empty()
+	music.set_on(snap.music != null)
+	music.follow(snap.get("music_volume", 0.75))
+	var lines: Array = snap.toasts.duplicate()
+	if Time.get_ticks_msec() / 1000.0 < said_until:
+		lines.append(said)
+	elif snap.music != null and music.title != "" and music.gain > 0.0:
+		lines.append("♪ " + music.title)
+	toasts.text = "\n".join(lines)
+	toasts.visible = not lines.is_empty()
 	overlay.queue_redraw()
 	for q in snap.get("sounds", []):  # [t, duck, tag], oldest first
 		if q[0] > heard:
@@ -224,11 +272,12 @@ func _show(first: bool) -> void:
 	if possessing:
 		_act("garden.wheel", {"duck": selected, "fwd": int(Input.is_key_pressed(KEY_W)) - int(Input.is_key_pressed(KEY_S)),
 			"turn": int(Input.is_key_pressed(KEY_A)) - int(Input.is_key_pressed(KEY_D))})
-	card.text = "click a duck, or the tree to shake it\nF  food      H  a hat      M  the music box, down or up  (all at the mouse)      C  clap"
+	card.visible = selected >= 0
+	help.visible = help_on
+	help.text = HELP_RIDING if possessing else (HELP_SELECTED + HELP if selected >= 0 else HELP)
 	if selected >= 0:
 		var d: Dictionary = snap.ducks[selected]
-		card.text = "%s  %s\n%s\n\nTab  ride it: W A S D steer, O hides its eyes\nP  pet\nF  food      H  a hat      M  the music box, down or up  (all at the mouse)      C  clap" % [
-			d.name, d.label, ("asleep" if d.asleep else d.mood)]
+		card.text = "%s   %s\n%s" % [d.name, d.label, ("asleep" if d.asleep else d.mood)]
 
 
 func _fruit(n: Node3D, f: Array) -> void:
@@ -418,6 +467,12 @@ func _click(screen: Vector2) -> void:
 		if xy.distance_to(Vector2(snap.ducks[i].x, snap.ducks[i].y)) < 0.25:
 			selected = i
 			return
+	if snap.music != null and xy.distance_to(Vector2(snap.music[0], snap.music[1])) < 0.4:  # the box: its volume, a step a click
+		var volume: float = music.step_volume()
+		_act("garden.volume", {"level": volume})
+		said = "music off" if volume == 0.0 else "music volume %d%%" % int(volume * 100)
+		said_until = Time.get_ticks_msec() / 1000.0 + 2.5
+		return
 	if xy.distance_to(Vector2(snap.tree[0], snap.tree[1])) < 0.3:
 		_act("garden.shake_tree", {})
 	else:
@@ -429,20 +484,24 @@ func _key(code: int) -> void:
 		possessing = not possessing
 		if not possessing:
 			_act("garden.wheel", {"duck": -1, "fwd": 0, "turn": 0})
+	elif code == KEY_SLASH:
+		help_on = not help_on
 	elif code == KEY_O:
 		overlay.visible = not overlay.visible
 	elif code == KEY_C:
 		_act("garden.scare", {})
-	elif code == KEY_F:
-		var at = _ground(get_viewport().get_mouse_position())
-		if at != null and at.x > 0 and at.y > 0 and at.x < snap.size and at.y < snap.size:
-			_act("garden.hand", {"x": at.x, "y": at.y, "feed": 3})
+	elif code == KEY_F:  # fruit falls from the tree, as it does by itself: an orange, an apple or a banana, under the canopy
+		_act("garden.shake_tree", {})
 	elif code == KEY_M:
 		var xy = _ground(get_viewport().get_mouse_position())
 		if xy != null:
 			_act("garden.music", {"x": xy.x, "y": xy.y, "on": int(snap.music == null)})
 	elif selected >= 0 and code == KEY_P:
 		_act("garden.pet", {"duck": selected})
+	elif code == KEY_B:  # a ball for them, where the mouse is
+		var where = _ground(get_viewport().get_mouse_position())
+		if where != null and where.x > 0 and where.y > 0 and where.x < snap.size and where.y < snap.size:
+			_act("garden.drop_ball", {"x": where.x, "y": where.y})
 	elif code == KEY_H:  # a hat, no two alike, left where the mouse is; the ducks decide who wears it
 		var spot = _ground(get_viewport().get_mouse_position())
 		if spot != null:

@@ -35,6 +35,7 @@ MOODS = ("fear", "anger", "joy", "sorrow")
 SHAPE_KNOBS = ("appetite", "aggressiveness", "timidity", "vanity", "chattiness", "energy", "sleepiness")
 EMOTE_S = 3.0  # how long an emote stays in the snapshot
 EATING_S = 1.0
+KICKING_S = 0.4  # how long a kick shows
 HEARD_S = 1.0  # quacks this recent go along, for a viewer with a voice
 WHEEL_S = 0.5  # a wheel nobody has touched for this long is let go
 TOASTS = 6
@@ -43,7 +44,7 @@ _b64 = lambda a: base64.b64encode(np.asarray(a).tobytes()).decode()
 # where each of an eye's 721 columns looks, as signed bytes across the eye's field: sent with the view
 HEX = _b64(np.round(np.concatenate([HEX_AZ, HEX_EL]) / np.abs(HEX_AZ).max() * 127).astype(np.int8))
 TOAST_FORMATS = (("eaten", "{who} ate"), ("headbutts", "{who} shoved {other}"), ("pets", "{who} was petted"),
-                 ("emotes", "{who} {other}"), ("donned", "{who} put a hat on"), ("preened", "{who} shook its hat off"))
+                 ("emotes", "{who} {other}"), ("kicks", "{who} kicked the ball"), ("donned", "{who} put a hat on"), ("preened", "{who} shook its hat off"))
 
 
 def readout(body, i: int) -> list:
@@ -69,6 +70,7 @@ class Snapshot:
         self.blind = blind
         self.seen = {key: 0 for key, _ in TOAST_FORMATS}
         self.toasts = []
+        self.riding = -1  # the duck whose motor output this has muted, to give it back
         self.watched = -1  # the duck the viewer has selected, whose readout and brain go along
         self.wheel = (-1, 0.0, 0.0, -np.inf)  # duck, forward, turn, and the garden time it was last asked for
 
@@ -81,6 +83,8 @@ class Snapshot:
         for key, fmt in TOAST_FORMATS:
             events = getattr(stub, key)
             for e in events[self.seen[key]:]:
+                if key == "emotes" and e[2] in ("dance", "singdance"):
+                    continue  # a dance is seen, and five ducks at it would be all the news there is
                 other = phrase(e[2]) if key == "emotes" else short(e[2]) if len(e) > 2 else ""
                 line = fmt.format(who=short(e[1]), other=other)
                 if line not in self.toasts[-3:]:  # two ducks at a dish are two pieces of news, not twenty
@@ -93,7 +97,7 @@ class Snapshot:
         self._gather_toasts(stub)
         n = len(stub.names)
         last = lambda events: {e[1]: e for e in events[-4 * n:]}  # each duck's latest, from the recent few
-        emotes, bites = last(stub.emotes), last(stub.eaten)
+        emotes, bites, kicks = last(stub.emotes), last(stub.eaten), last(stub.kicks)
         w = stub.world
         posture, joints = stub.posture(), stub.articulation()
         swimming = stub._swimming()
@@ -111,6 +115,7 @@ class Snapshot:
                 "down": posture[i] == "down", "swimming": bool(swimming[i]), "hat": bool(stub.hats[i]), "hat_style": int(max(stub.hat_style[i], 0)),
                 "head": [round(float(v), 3) for v in stub.head[i]],  # neck_pitch, head_pitch, head_yaw, head_roll, as told
                 "eating": i in bites and stub.t - bites[i][0] < EATING_S,
+                "kicking": i in kicks and stub.t - kicks[i][0] < KICKING_S,
                 "mood": mood, "strength": round(strength, 2),
                 "emote": emote[2] if showing else "", "emote_t": round(emote[0], 2) if showing else -1.0,
                 "hunger": level("hunger"), "thirst": level("thirst"), "sleepy": level("sleep_pressure"),
@@ -125,7 +130,8 @@ class Snapshot:
                 "pond": None if w.pond is None else [float(v) for v in w.pond], "tree": list(w.tree), "rocks": w.rocks.round(3).tolist(),
                 "wind": None if w.wind is None else [round(float(v), 3) for v in w.wind],  # where the air is going, m/s
                 "hats": [[round(x, 3), round(y, 3), k] for x, y, k in stub.hat_items],
-                "music": None if w.music is None else list(w.music),
+                "balls": [[round(float(x), 3), round(float(y), 3)] for x, y in w.balls[:, :2]],
+                "music": None if w.music is None else list(w.music), "music_volume": round(float(w.music_volume), 2),
                 "hand": None if w.hand is None else [float(v) for v in w.hand], "toasts": self.toasts,
                 "sounds": [[round(t, 2), int(i), tag] for t, i, tag in stub.sounds[-2 * n:] if stub.t - t < HEARD_S]}
 
@@ -160,10 +166,13 @@ class Snapshot:
             elif method.startswith("garden."):  # the player's calls, and nothing else
                 stub._control_call(method, p)
         duck, fwd, turn, asked = self.wheel
-        if server is not None and 0 <= duck < len(stub.names):
-            held = stub.t - asked < WHEEL_S
-            server.possessed[duck] = held
+        if server is not None:
+            held = 0 <= duck < len(stub.names) and stub.t - asked < WHEEL_S
+            if self.riding >= 0 and (not held or duck != self.riding):
+                server.possessed[self.riding] = False  # its legs are its brain's again: getting off used to leave it muted for good
+            self.riding = duck if held else -1
             if held:
+                server.possessed[duck] = True
                 stub._move(duck, {"vx": WHEEL_VX * fwd, "vy": 0.0, "vyaw": WHEEL_VYAW * turn})
             else:
                 self.wheel = (-1, 0.0, 0.0, -np.inf)
@@ -171,6 +180,7 @@ class Snapshot:
 
 if __name__ == "__main__":
     import tempfile
+    import time
     from body.stub2d.stub import DEMO_GARDEN, Stub
     with tempfile.TemporaryDirectory() as d:
         stub, snap = Stub(3, 0, d, **DEMO_GARDEN), Snapshot()
@@ -183,12 +193,13 @@ if __name__ == "__main__":
         tx.sendto(json.dumps({"method": "garden.hand", "params": {"x": 2.0, "y": 2.0, "feed": 3}}).encode(), ("127.0.0.1", ACTION_PORT))
         tx.sendto(json.dumps({"method": "sim.step", "params": {"n": 100}}).encode(), ("127.0.0.1", ACTION_PORT))
         dishes, t = len(stub.world.food), stub.t
+        time.sleep(0.05)  # the loopback delivers when it likes: read at once, the two calls were sometimes not there yet
         snap.step(stub)
         got = json.loads(rx.recv(65535))
-        world_fields = {"t", "size", "light", "day", "ducks", "food", "danger", "pond", "tree", "rocks", "wind", "hats", "music", "hand",
+        world_fields = {"t", "size", "light", "day", "ducks", "food", "danger", "pond", "tree", "rocks", "wind", "hats", "balls", "music", "music_volume", "hand",
                         "toasts", "sounds"}
         assert world_fields <= set(got), f"the snapshot lost {world_fields - set(got)}: Godot reads every one of these"
-        duck_fields = {"name", "label", "x", "y", "h", "asleep", "sat", "down", "swimming", "hat", "hat_style", "head", "eating",
+        duck_fields = {"name", "label", "x", "y", "h", "asleep", "sat", "down", "swimming", "hat", "hat_style", "head", "eating", "kicking",
                        "mood", "strength", "emote", "emote_t", "knobs", "readout"}
         assert duck_fields <= set(got["ducks"][0]), f"a duck lost {duck_fields - set(got['ducks'][0])}"
         assert len(got["ducks"]) == 3 and got["ducks"][1]["emote"] == "happy" and got["ducks"][0]["emote"] == ""
@@ -203,6 +214,11 @@ if __name__ == "__main__":
         stub.t += 2 * WHEEL_S
         snap.step(stub, server)
         assert not server.possessed.any(), "a wheel nobody holds is let go"
+        tx.sendto(json.dumps({"method": "garden.wheel", "params": {"duck": 1, "fwd": 1, "turn": 0}}).encode(), ("127.0.0.1", ACTION_PORT))
+        time.sleep(0.05); snap.step(stub, server)
+        tx.sendto(json.dumps({"method": "garden.wheel", "params": {"duck": -1, "fwd": 0, "turn": 0}}).encode(), ("127.0.0.1", ACTION_PORT))
+        time.sleep(0.05); snap.step(stub, server)
+        assert not server.possessed.any(), "getting off gives the duck its legs back at once"
         print(f"ok  {len(json.dumps(got))} bytes a snapshot; the player fed the garden; sim.step was refused")
         for s in (rx, tx):
             s.close()

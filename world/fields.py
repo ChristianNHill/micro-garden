@@ -40,6 +40,9 @@ WALL_CLEAR_M = 0.6  # fruit does not land nearer a wall than this: a duck cannot
 # through what a duck does with its free time looked alike (Gate 5; Chris, 2026-09-20: personality should
 # show as much as possible).
 FRUIT_BITES = 10
+BALL_R = 0.06  # a ball a duck can push with its chest or kick
+BALL_ROLLS_S = 1.2  # how long a rolling ball takes to lose most of its speed on grass; a third of that in water
+BALL_BOUNCE = 0.6  # of its speed kept off the fence or a rock
 MAX_FOOD = 4  # the tree stops dropping while this much food is on the ground
 
 
@@ -54,6 +57,7 @@ class World:
         (x, y), something that plays where it has been put, a part of the garden like the pond and the
         stink patch (Chris, 2026-09-20); the player can pick it up and put it down somewhere else."""
         self.size, self.tree = float(size), tuple(tree)  # metres along a side, and the tree's (x, y, shade radius)
+        self.balls = np.zeros((0, 4))  # x, y, vx, vy each: toys, which roll (PLAN.md Gate 8b)
         self.rocks = np.asarray(rocks, float).reshape(-1, 3)  # (x, y, radius) each: round, solid, and in the way
         self.grid = round(self.size / CELL_M)
         self.wind0 = self.wind = None if wind is None else np.asarray(wind, float)
@@ -65,6 +69,7 @@ class World:
         self.pond = pond
         self.hand = None  # (x, y) while the player's hand is in the garden (PLAN.md Gate 8)
         self.music = None if music is None else (float(music[0]), float(music[1]))
+        self.music_volume = 0.75  # 0 to 1: how loud the box plays, to the ducks as to the player
         self.odor = np.zeros((self.grid, self.grid))
         self.danger_odor = np.zeros((self.grid, self.grid))
         self.diffuse(2000)  # start near steady state
@@ -118,6 +123,32 @@ class World:
             self.bites = np.append(self.bites, FRUIT_BITES)
             fell += 1
         return fell
+
+    def roll_balls(self, dt: float, duck_xy: np.ndarray, duck_v: np.ndarray) -> None:
+        """One step of every ball: it rolls and slows, comes back off the fence and the rocks, and a duck
+        that walks into it pushes it ahead at the duck's own pace and a little over."""
+        for ball in self.balls:
+            pos, v = ball[:2], ball[2:]
+            wet = self.pond is not None and self.pond_distance(pos) < 0
+            v *= np.exp(-dt / (BALL_ROLLS_S / 3 if wet else BALL_ROLLS_S))
+            pos += v * dt
+            for axis in range(2):
+                if not BALL_R <= pos[axis] <= self.size - BALL_R:
+                    pos[axis] = np.clip(pos[axis], BALL_R, self.size - BALL_R)
+                    v[axis] *= -BALL_BOUNCE
+            for things, reach, bounce in ((self.rocks, None, True), (duck_xy, DUCK_R, False)):
+                for k, thing in enumerate(things):
+                    r = (thing[2] if reach is None else reach) + BALL_R
+                    away = pos - thing[:2]
+                    d = np.linalg.norm(away)
+                    if d < r:
+                        n = away / max(d, 1e-9)
+                        pos[:] = thing[:2] + n * r
+                        into = v @ n
+                        if bounce:
+                            v -= (1 + BALL_BOUNCE) * min(into, 0.0) * n
+                        else:
+                            v += max(duck_v[k] @ n + 0.1 - into, 0.0) * n
 
     def push_out(self, xy: np.ndarray, clearance: float) -> None:
         """Move any of these (n, 2) points that are inside a rock back to its edge, in place: a rock is a

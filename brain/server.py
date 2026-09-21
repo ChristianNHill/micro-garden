@@ -58,6 +58,11 @@ SCARE_LEVEL = 0.8  # a clap, straight onto the looming detectors
 # fiber gave 2 or 3 spikes, so two claps in three startled nobody; over 200 ms it gives 7 to 9 (bench, 2026-09-20).
 WEAR_P = (0.1, 0.95)  # chance a duck puts on a hat it comes upon, at no vanity and at full
 HAT_SHY_S = 30.0
+DANCE_EVERY_S = 3.0  # a dance lasts about this long, so a duck that goes on wanting to goes on dancing
+DANCE_REST_S = (10.0, 25.0)  # between one dance and the next: back to back, five ducks danced without a pause (Chris)
+PERFORM_BORED = 0.5  # boredom past which a duck starts to entertain itself
+DANCE_LOUD = 0.1  # the Johnston's organ level at which the music is loud enough to dance to at full
+KICK_EVERY_S = 1.0  # how often a duck with a ball at its feet decides whether to kick it
 CLAP_S = 0.2
 SIDED = ["orn_food", "orn_danger", "moist_air", "dry_air", "heat", "cold", "bristle", "orn_pheromone",
          "jo_push", "jo_pull"]
@@ -147,6 +152,11 @@ class BrainServer:
         self.emote_rng = np.random.default_rng(seed + 7)  # its own, so emotes leave the senses' noise as it was
         self.brainview = BrainView(ann, self.sets, self.brain.dev)  # for a viewer; idle until a duck is watched
         self.hat_was_near = np.zeros(self.n, bool)
+        self.kick_at = np.zeros(self.n)
+        self.dance_at = np.zeros(self.n)
+        self.dancing = np.zeros(self.n)
+        self.performing = np.zeros(self.n)
+        self.playing = np.zeros(self.n)
         self.hat_shy_until = np.zeros(self.n)  # a duck that has just shaken a hat off leaves hats alone a while
         self.emote_at = self.emote_rng.uniform(0, emotes.EVERY_S, self.n)  # staggered, so five ducks do not emote as one
         self.t = 0.0
@@ -165,7 +175,19 @@ class BrainServer:
         # a duck that loved it and could always hear it would otherwise sit by it and starve.
         at_ease = 1 - pressing(np.maximum(body.hunger, body.thirst))
         tune = np.abs(2 * body.k["music_affinity"] - 1) * levels["johnstons_organ"] * at_ease  # strong taste, loud music
-        self.decoder.body = {**body.motor(wants=tune, damp=(f["humidity_left"] + f["humidity_right"]) / 2),
+        # How much a duck feels like dancing: it likes music (past the middle of the dial), it can hear some,
+        # and nothing is pressing. A duck that dislikes music never dances to it.
+        self.dancing = np.clip(2 * body.k["music_affinity"] - 1, 0, 1) * np.clip(levels["johnstons_organ"] / DANCE_LOUD, 0, 1) * at_ease
+        # And a duck with no music makes its own when it is bored (Chris, 2026-09-21): a song or a dance is
+        # something to do, the more so for a chatty or a playful duck, and doing it takes the edge off.
+        bored = np.clip((body.boredom - PERFORM_BORED) / (1 - PERFORM_BORED), 0, 1) * at_ease
+        self.performing = np.maximum(self.dancing, 0.6 * bored * np.maximum(body.k["chattiness"], body.k["playfulness"]))
+        # A ball is wanted as far as the duck wants to play and can see one: that gets it walking, and the
+        # decoder turns it towards the eye the ball is in. Explicit, as music is, and for the same reason.
+        self.playing = body.play() * at_ease
+        ball = self.playing * np.maximum(f["ball_left"], f["ball_right"])
+        self.decoder.body = {**body.motor(wants=np.maximum(tune, ball), damp=(f["humidity_left"] + f["humidity_right"]) / 2),
+                             "play": self.playing, "ball_left": f["ball_left"], "ball_right": f["ball_right"],
                              "surge": self.following, "swimming": f["swimming"] > 0, "at_shore": f["water"] > 0,
                              "thirst": body.thirst, "hatted": f["hat"] > 0, "fear": body.fear,
                              "hunger": pressing(body.hunger),  # how far hunger outranks a smell it likes
@@ -261,6 +283,24 @@ class BrainServer:
             self.hat_shy_until[i] = self.t + HAT_SHY_S
         # A hat lying in the garden is the duck's to put on or walk past (Chris, 2026-09-21). It decides once,
         # as it comes upon one, and vanity is the chance: explicit, like shedding one, and a scale like it.
+        # A ball at its feet is kicked, by a duck that wants to play: decided about once a second, not per tick.
+        if f["ball_near"] > 0 and self.t >= self.kick_at[i] and not self.body.asleep[i]:
+            self.kick_at[i] = self.t + KICK_EVERY_S
+            if self.emote_rng.random() < self.playing[i]:
+                send("robot.do", skill="kick")
+        # A duck that likes what it hears dances (Chris, 2026-09-21): asked again every DANCE_EVERY_S, so it
+        # dances now and then while the music and its mood last, with a rest after each.
+        if self.t >= self.dance_at[i] and not self.body.asleep[i]:
+            self.dance_at[i] = self.t + DANCE_EVERY_S
+            if self.emote_rng.random() < self.performing[i]:
+                # a song, a dance, or mostly both: a chatty duck sings, a playful one or one that likes the
+                # music dances, and each is decided by itself, so it is not always the same one
+                k = self.body.k
+                sings = self.emote_rng.random() < 0.3 + 0.6 * k["chattiness"][i]
+                dances = self.emote_rng.random() < 0.3 + 0.6 * max(k["playfulness"][i], self.dancing[i]) or not sings
+                send("robot.do", skill="emote_" + ("singdance" if sings and dances else "sing" if sings else "dance"))
+                self.body.amuse(i)
+                self.dance_at[i] += self.emote_rng.uniform(*DANCE_REST_S)  # and then it has had its turn for a while
         near = f["hat_near"] > 0
         if near and not self.hat_was_near[i] and f["hat"] == 0 and not self.body.asleep[i] and self.t >= self.hat_shy_until[i]:
             if self.emote_rng.random() < WEAR_P[0] + (WEAR_P[1] - WEAR_P[0]) * float(self.body.k["vanity"][i]):
@@ -274,6 +314,8 @@ class BrainServer:
             emote = emotes.pick(self.body, i, self.emote_rng)
             if emote:
                 send("robot.do", skill=f"emote_{emote}")
+                if emote in emotes.AMUSING:
+                    self.body.amuse(i)
         tag = self._voice(i, f, falls_asleep, wakes)
         if tag:
             send("robot.sound", tag=tag)

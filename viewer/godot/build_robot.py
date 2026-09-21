@@ -85,11 +85,14 @@ def main() -> int:
                        "pos": m.body_pos[body].round(5).tolist(), "quat": m.body_quat[body].round(6).tolist(),
                        "joint": None if not joints else {"name": m.joint(joints[0]).name, "axis": m.jnt_axis[joints[0]].round(6).tolist()},
                        "parts": parts})
-    # where a hat sits: the top of the head shell, and which way is up and forward there, in the head's own frame
+    # where a hat sits: over the middle of the head shell, and which way is up and forward there, in the head's own frame
     head = m.body("jaw_soft").id
     crown_verts = np.concatenate([np.concatenate(vs) for (owner, ink), (vs, _, _) in soup.items() if owner == head and ink == "cream"])
     to_world = d.xmat[head].reshape(3, 3)
-    top = crown_verts[np.argmax((crown_verts @ to_world.T)[:, 2])]
+    shell = crown_verts @ to_world.T  # the head shell as it stands, to find its middle and its top
+    seat = np.array([(shell[:, 0].min() + shell[:, 0].max()) / 2, (shell[:, 1].min() + shell[:, 1].max()) / 2,
+                     shell[:, 2].max() + 0.012])  # over the middle of the head, floating a little (Chris, 2026-09-21)
+    top = seat @ to_world  # back into the head's own frame
     hat = {"body": "jaw_soft", "at": top.round(4).tolist(), "up": to_world.T[:, 2].round(5).tolist(),
            "forward": to_world.T[:, 0].round(5).tolist()}
     # Everything is in MuJoCo's own frame (z up), and Godot turns the whole rig once. `stand` is the pose a

@@ -21,7 +21,8 @@ BUDGET_KB = 300
 
 def main() -> int:
     sizes = {os.path.relpath(os.path.join(d, f), PROJECT): os.path.getsize(os.path.join(d, f))
-             for d, _, files in os.walk(PROJECT) if ".godot" not in d.split(os.sep) for f in files}
+             for d, _, files in os.walk(PROJECT) if ".godot" not in d.split(os.sep) for f in files
+             if not f.endswith(".py")}  # the two Python scripts make the assets; Godot never loads them
     total = sum(sizes.values()) / 1024
     for name, size in sorted(sizes.items(), key=lambda x: -x[1])[:5]:
         print(f"  {size / 1024:6.1f} KB  {name}")
