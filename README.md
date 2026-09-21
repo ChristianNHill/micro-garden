@@ -2,7 +2,7 @@
 
 Micro Garden is five small ducks in a garden, and each duck runs on its own live copy of a real fruit fly brain. It asks whether a wiring diagram, a body with needs, and a place to live are enough to get behaviour nobody scripted. The brain is the FlyWire connectome, about 139,000 neurons and 2.7 million connections, simulated as spiking neurons. Each duck smells, sees, hears, gets hungry, thirsty and sleepy, learns, and has a personality.
 
-The ducks are modelled on the [microduck](https://github.com/pollen-robotics/microduck), a real open-source robot, and the brain talks to the body through that robot's own command protocol. There are two bodies today. One is a 2D stub in Python. The other is the microduck's own MuJoCo simulation, where the real robot daemon runs the real walking policy and five simulated ducks live a garden day on five fly brains. A low-poly garden comes next, then real ducks on a floor.
+The ducks are modelled on the [microduck](https://github.com/pollen-robotics/microduck), a real open-source robot, and the brain talks to the body through that robot's own command protocol. There are two bodies today. One is a 2D stub in Python. The other is the microduck's own MuJoCo simulation, where the real robot daemon runs the real walking policy and five simulated ducks live a garden day on five fly brains. A low-poly garden in Godot draws either body. The project is simulation only, so nobody plans real ducks on a floor.
 
 ## What the brain does and what is explicit
 
@@ -37,6 +37,17 @@ uv run python -m body.mujoco.adapter --ducks 5 --view --brain
 
 `PLAN.md` under Gate 10 has the setup, which runs natively on a Mac. The walking policy upstream ships does not yet track a velocity, so these ducks march and pivot. Tab takes the wheel of the selected duck in either body, and W, A, S and D drive it while its brain keeps watching.
 
+## The Godot garden
+
+`viewer/godot/` is the garden as a print: low-poly ducks under a halftone screen of navy ink, on cream paper. It needs [Godot 4](https://godotengine.org). Start either body with `--godot`, and then open the project:
+
+```
+uv run python -m body.stub2d.stub --brain --godot
+/Applications/Godot.app/Contents/MacOS/Godot --path viewer/godot
+```
+
+Godot only draws. The garden publishes its world over UDP, and clicks go back as the same control calls the 2D window uses. Click a duck to select it, click the ground to feed, and click the tree to shake it. `P`, `H`, `C` and `M` work as above. Drag to orbit and scroll to zoom. A duck's outline comes from its personality dials, so a big eater is wide and a timid duck is small with a long neck. Ducks also emote every so often, like a Chao or a Sim. Each one acts out its strongest feeling, and a chatty duck does it more often.
+
 ## How it is checked
 
 The build goes in gates. One gate is one runnable check that exits non-zero when it fails. `PLAN.md` records what each one found, including the times a gate showed that an earlier pass was luck.
@@ -54,7 +65,7 @@ Most gates pass. Two results stand as they are because they are true. The five d
 - `brain/` loads the connectome and holds the spiking model, the sensory encoder, the motor decoder, learning, bodily needs, and the personality presets.
 - `body/` holds the robot command contract, the sensory frame, and the 2D stub body with its retina.
 - `world/` holds the garden: smells that drift on the wind, the pond, temperature, day and night, music.
-- `viewer/` is the debug window.
+- `viewer/` holds the debug window, the world snapshot, and the Godot garden.
 - `gates/` holds one check per gate.
 
 `RESEARCH.md` has the goal and the reading behind it. `ARCHITECTURE.md` has the design and the decisions. `PLAN.md` is the build log. `ATTRIBUTION.md` lists the data, the papers to cite, and the projects this leans on.

@@ -76,15 +76,15 @@ def main() -> int:
         checks["the pose in a frame is where MuJoCo says the duck is"] = off < 0.01 and abs(f["heading"] - h) < 0.05
 
         # what the brain asks for reaches robotd, snapped to what this policy obeys
-        ours.notify("robot.move", vx=0.1, vy=0.0, vyaw=0.0)
-        time.sleep(0.3)
+        # held for a second: the duck walks in bursts, and banks what it is asked for before it sets off
+        run_for(body, 1.0, each=lambda: ours.notify("robot.move", vx=0.3, vy=0.0, vyaw=0.0))
         asked = robot_state(robotd)["move"]["requested"]
-        print(f"asked for vx 0.1: robotd has {asked}")
+        print(f"asked for vx 0.3 for a second: robotd has {asked}")
         checks["a move the brain asks for reaches the robot"] = bool(np.allclose(asked[:1] + asked[2:], FORWARD))
 
         # and the duck walks
         x0, y0, _ = body.truth[0].pose()
-        run_for(body, WALK_S, each=lambda: ours.notify("robot.move", vx=0.1, vy=0.0, vyaw=0.0))
+        run_for(body, WALK_S, each=lambda: ours.notify("robot.move", vx=0.3, vy=0.0, vyaw=0.0))
         x1, y1, _ = body.truth[0].pose()
         went = float(np.hypot(x1 - x0, y1 - y0))
         ours.notify("robot.move", vx=0.0, vy=0.0, vyaw=0.0)

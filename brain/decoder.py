@@ -18,6 +18,8 @@
   place, the more so the stronger its urge, and one that did not walks back out.
 - DNge091 fires on the side the wind comes from and turns the duck into it; the body only lets it hear
   the wind while it smells food it wants, which is how a fly finds food (Gate 9b).
+- A frightened duck turns away from the other ducks and runs; an aggressive one (aIPg) turns after them and
+  follows. Both ride the same explicit turn toward other ducks' smell that companionship uses.
 - aIPg is aggression (its mood input is set in physiology). While it is active the touch turn flips
   toward the other duck, and a touching duck attacks (runs at it and headbutts) with a chance per tick
   that scales with aggression.
@@ -56,6 +58,10 @@ STINK_VYAW_PER_HZ = 0.5  # rad/s per Hz of left minus right DNp32
 # 1.5 Hz of steering noise (PLAN.md Gate 9b screens), so sociability never showed. It turns a duck as hard as
 # a tune does.
 COMPANIONSHIP_VYAW = 1.5
+# How far fear counts towards running from the other ducks, and aggression towards turning after them. At 0
+# a duck keeps its fear and its temper and they no longer steer it by the others, which is the control to
+# measure them against.
+FLEE, CHASE = 1.0, 1.0
 MUSIC_VYAW = 1.5  # rad/s toward the louder ear at full music affinity, and away from it at none
 GROOM_HZ = 0.4  # grooming DN rate at which a duck is fussing with its head enough to shed a hat
 PREEN_REROLL_TICKS = 500  # a hatted duck reconsiders the thing on its head every 5 s, as it does wading
@@ -175,6 +181,14 @@ class Decoder:
         vx = vx + (RUN_VX - np.maximum(vx, 0)) * b("surge", 0.0) * (vx > 0)
         vx = vx * (1 - (1 - STINK_LINGER) * like)
         vx = np.where(feeding, 0.0, vx)  # stop to eat
+        # A frightened duck runs from the other ducks (Chris, 2026-09-21), as far as it can smell any: fear
+        # picks a duck's feet up, the way a stink does. An angry one turns after them (below) and does not
+        # run: running, it overshot the duck it was after, and at the top of the aggressiveness dial landed 2
+        # blows in 10 meetings where it lands 6 without, and lost the dish it was fighting over (Gate 4c).
+        # It already runs when it strikes.
+        ducks_near = np.clip((b("duck_left", 0.0) + b("duck_right", 0.0)) / 2, 0, 1)
+        fled, chased = FLEE * np.clip(b("fear", 0.0), 0, 1), CHASE * aggression
+        vx = vx + (RUN_VX - np.maximum(vx, 0)) * fled * ducks_near * (vx >= 0)
         vx = np.where(attack, RUN_VX, vx)
         vx = np.where(asleep, 0.0, vx)
 
@@ -191,7 +205,10 @@ class Decoder:
         taste = 2 * b("music_affinity", 0.5) - 1
         # sociability is where a duck starts; fondness is what life has done to that, and a lesson fully
         # learned is worth the whole of the dial
-        liking = np.clip(2 * b("sociability", 0.5) - 1 + b("fondness", 0.0), -1, 1)
+        liking = np.clip(2 * b("sociability", 0.5) - 1 + b("fondness", 0.0), -1, 1) * b("at_ease", 1.0)
+        # Which way it turns for the other ducks is company when nothing else is going on; fear turns it
+        # away from them and a fight turns it after them, whatever it otherwise thinks of company.
+        liking = np.clip(liking + chased - 2 * fled, -1, 1)
         # Fleeing a stink adds a turn away from it; it does not stop a duck steering by everything
         # else. The (1 - avoid) factor here used to scale down all the rest, so a hungry duck within
         # smell of the demo garden's stink patch lost a third of its steering toward the dish, ran past

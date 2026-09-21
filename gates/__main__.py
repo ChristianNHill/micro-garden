@@ -16,11 +16,11 @@ import time
 from pathlib import Path
 
 GATES = ["00_data", "01_tick", "02_sugar", "03_stub", "04_seek", "04b_senses", "04c_temperament",
-         "05_personality", "06_vision", "07_learn", "08_social", "08b_toys", "09_persist", "09b_soak"]
+         "05_personality", "06_vision", "07_learn", "08_social", "08b_toys", "09_persist", "09b_soak", "14_look"]
 # Gates that need something outside this repo running, so they are run by number and never by default:
-# 10 wants the microduck simulator up and 11 wants it up with a camera on (PLAN.md Gates 10 and 11).
-ON_REQUEST = ["10_sim_one", "11_sim_vision", "12_sim_five"]
-FAST = {"00_data", "01_tick", "02_sugar", "03_stub", "06_vision", "07_learn", "09_persist"}
+# 10 wants the microduck simulator up and 11 wants it up with a camera on (PLAN.md Gates 10 and 11); 13 wants Godot.
+ON_REQUEST = ["10_sim_one", "11_sim_vision", "12_sim_five", "13_godot"]
+FAST = {"00_data", "01_tick", "02_sugar", "03_stub", "06_vision", "07_learn", "09_persist", "14_look"}
 # The line worth putting in the table, per gate. First capture group wins; nothing means no number.
 HEADLINE = {
     "00_data": r"(\d[\d,]* neurons[^\n]*)",
@@ -42,6 +42,9 @@ HEADLINE = {
 }
 
 
+LOGS = Path.home() / ".cache" / "micro-garden" / "gate-logs"  # each gate's last full output
+
+
 def run_gate(name: str, extra: list[str]) -> tuple[str, str, float]:
     """Returns (verdict, headline, seconds)."""
     t0 = time.perf_counter()
@@ -49,6 +52,10 @@ def run_gate(name: str, extra: list[str]) -> tuple[str, str, float]:
                          capture_output=True, text=True, cwd=Path(__file__).resolve().parent.parent)
     took = time.perf_counter() - t0
     text = out.stdout
+    # Kept whole, because the table has room for one line and a failure needs the rest: twice a gate
+    # failed after 50 minutes and which check it was had gone (2026-09-21).
+    LOGS.mkdir(parents=True, exist_ok=True)
+    (LOGS / f"gate_{name}.log").write_text(text + out.stderr)
     verdict = "PASS" if re.search(r"^PASS$", text, re.M) else "FAIL" if re.search(r"^FAIL$", text, re.M) else "ERROR"
     line = ""
     if pattern := HEADLINE.get(name):

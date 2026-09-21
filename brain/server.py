@@ -18,6 +18,7 @@ import torch
 
 from body import frames
 from body.contract import Client
+from brain import emotes
 from brain.data import load_connectome, named_sets, shuffled
 from brain.decoder import Decoder
 from brain.encoder import graded as graded_senses
@@ -140,6 +141,8 @@ class BrainServer:
         # and learning, and what it would have done is still returned; it just is not sent to the legs.
         self.possessed = np.zeros(self.n, bool)
         self.zooming = np.zeros(self.n, bool)
+        self.emote_rng = np.random.default_rng(seed + 7)  # its own, so emotes leave the senses' noise as it was
+        self.emote_at = self.emote_rng.uniform(0, emotes.EVERY_S, self.n)  # staggered, so five ducks do not emote as one
         self.t = 0.0
 
     def step(self, lockstep: bool) -> list[dict]:
@@ -166,8 +169,10 @@ class BrainServer:
                              # music never steered a duck (Gate 8b's old pass was two paths diverging)
                              **dict(zip(("music_left", "music_right"),
                                         (at_ease * m for m in bilateral(f["music_left"], f["music_right"], MUSIC_HALF)))),
-                             **dict(zip(("duck_left", "duck_right"),
-                                        (at_ease * m for m in bilateral(f["duck_left"], f["duck_right"], DUCK_HALF)))),
+                             # where the other ducks are, by smell, for company, flight and pursuit; company
+                             # gives way to a pressing need (`at_ease`), fear and a fight do not
+                             **dict(zip(("duck_left", "duck_right"), bilateral(f["duck_left"], f["duck_right"], DUCK_HALF))),
+                             "at_ease": at_ease,
                              "sociability": body.k["sociability"],
                              "fondness": self.plastic.fondness() if self.plastic is not None else 0.0,
                              "music_affinity": body.k["music_affinity"], "vanity": body.k["vanity"]}
@@ -249,6 +254,11 @@ class BrainServer:
         if it["zoomies"] and not self.zooming[i]:  # once, as they start; a body shows them how it likes
             send("robot.do", skill="zoomies")
         self.zooming[i] = it["zoomies"]
+        if self.t >= self.emote_at[i]:
+            self.emote_at[i] = self.t + emotes.EVERY_S
+            emote = emotes.pick(self.body, i, self.emote_rng)
+            if emote:
+                send("robot.do", skill=f"emote_{emote}")
         tag = self._voice(i, f, falls_asleep, wakes)
         if tag:
             send("robot.sound", tag=tag)

@@ -61,9 +61,18 @@ def stack(ducks: list[dict[str, float]]) -> dict[str, np.ndarray]:
     return {name: np.array([d[name] for d in ducks]) for name in KNOBS}
 
 
+def label_of(k: dict[str, np.ndarray], i: int) -> str:
+    """The label duck i's knobs sit nearest to. A saved garden keeps its knobs and not its labels, so this
+    is how a viewer names a duck that hatched in an earlier run."""
+    return min(LABELS, key=lambda label: sum((k[name][i] - LABELS[label].get(name, KNOB_DEFAULT)) ** 2 for name in KNOBS))
+
+
 if __name__ == "__main__":
     for label in LABELS:
         preset(label)
+    jittered = stack([preset(label, np.random.default_rng(1)) for label in LABELS])
+    named = [label_of(jittered, i) for i in range(len(LABELS))]
+    assert sum(a == b for a, b in zip(named, LABELS)) >= len(LABELS) - 2, "jitter rarely moves a duck to another label"
     rng = np.random.default_rng(0)
     a, b = preset("Bully", rng), preset("Bully", rng)
     assert a != b and all(0 <= v <= 1 for v in a.values())

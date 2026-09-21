@@ -3,7 +3,7 @@
 One Unix socket per duck (duck-a.sock ...), like duck-sim, plus control.sock with stub-only
 sim.step {n} and sim.state. Every body step sends each duck's sensory frame over UDP to
 frame_port + duck. robot.do ground_pick on a dish eats it; robot.do headbutt pushes a touching duck
-in front of the attacker back by PUSH_M. robot.do drink at the pond's shore band takes a sip; past the
+in front of the attacker back by PUSH_M and knocks it over for DOWN_S. robot.do drink at the pond's shore band takes a sip; past the
 shore a duck swims at SWIM_SPEED. robot.sound is logged. With fruit_every_s set, the shade tree drops fruit on that
 period; garden.shake_tree on control.sock (a player action) drops SHAKE_FRUIT at once. In the viewer,
 click the tree; Tab takes the wheel of the selected duck (W A S D drive it, Tab gives it back); P pets it, C claps, F feeds by hand at the mouse, M starts or stops
@@ -53,11 +53,12 @@ CONTROL_PARAMS = {"sim.step": {"n": 1}, "sim.state": {}, "garden.shake_tree": {}
                   "garden.music": {"x": 0.0, "y": 0.0, "on": 1}, "garden.hat": {"duck": 0, "on": 1}}
 SHAKE_FRUIT = 2
 PUSH_M = 0.15
+DOWN_S = 10.0  # a kicked duck goes over, and this is about how long a microduck takes to get back on its feet
 SWIM_SPEED = 0.5  # fraction of commanded speed while swimming
 SOUND_TAGS = {"alarm", "greet", "inquire", "peck", "chirp", "coo", "wheee"}  # microduck's voice bank
 BITE_S = 0.5  # ground_pick takes this long, so at most one bite per BITE_S
 # "headbutt", "drink", "preen" and "zoomies" are our names for what a duck does; this body acts the first three
-# out in the garden and ignores the last. body/mujoco/adapter.py maps them onto the robot's own skills.
+# out in the garden and ignores the last. "emote_<feeling>" (brain/emotes.py) it writes down for the viewer to show. body/mujoco/adapter.py maps them onto the robot's own skills.
 
 
 class Stub:
@@ -74,6 +75,7 @@ class Stub:
         self.frame_port = frame_port
         self.eaten = []  # (t, duck)
         self.headbutts = []  # (t, attacker, victim)
+        self.emotes = []  # (t, duck, feeling)
         self.bumped = np.zeros(n, bool)
         self.petted = np.zeros(n, bool)
         self.scared = np.zeros(n, bool)
@@ -89,6 +91,7 @@ class Stub:
         self.relaxed = np.zeros(n, bool)
         self.seen = None
         self.touch_m = 2 * DUCK_R  # how near two ducks' centres are when they touch
+        self.down_until = np.zeros(n)  # garden time until which a kicked duck is on the floor
         self.t = 0.0
         self.lock = threading.Lock()
         self.udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -111,7 +114,9 @@ class Stub:
         return call
 
     def _move(self, i: int, p: dict) -> None:
-        if not self.relaxed[i]:
+        if self.t < self.down_until[i]:
+            self.cmd[i] = 0  # on the floor: whatever its brain wants, its legs are not under it
+        elif not self.relaxed[i]:
             self.cmd[i] = np.clip([float(p["vx"]), float(p["vy"]), float(p["vyaw"])],
                                   [-MAX_V, -MAX_VY, -MAX_VYAW], [MAX_V, MAX_VY, MAX_VYAW])
 
@@ -126,6 +131,8 @@ class Stub:
             self._headbutt(i)
         elif p["skill"] == "drink":
             self._drink(i)
+        elif p["skill"].startswith("emote_"):
+            self.emotes.append((self.t, i, p["skill"][len("emote_"):]))
         elif p["skill"] == "preen" and self.hats[i]:
             self.hats[i] = False  # shaken off
             self.preened.append((self.t, i))
@@ -156,6 +163,10 @@ class Stub:
         if shore and self.t - self.last_bite[i] >= BITE_S:
             self.last_bite[i], self.drank[i] = self.t, True
 
+    def posture(self) -> list[str]:
+        """Per duck, "up", "sat" or "down", for a viewer to draw. This body has no sitting."""
+        return ["down" if self.t < until else "up" for until in self.down_until]
+
     def _swimming(self) -> np.ndarray:
         return self.world.pond_distance(self.pose[:, :2]) < -SHORE_M
 
@@ -168,6 +179,13 @@ class Stub:
             self.pose[j, :2] = np.clip(self.pose[j, :2] + PUSH_M * fwd, DUCK_R, SIZE_M - DUCK_R)
             self.bumped[j] = True
             self.headbutts.append((self.t, i, j))
+            self.knock_down(j)
+
+    def knock_down(self, j: int) -> None:
+        """A kick that lands puts a duck on the floor (Chris, 2026-09-21). Here that is a duck that cannot
+        move until it is up again; a body with legs falls over for real."""
+        self.down_until[j] = self.t + DOWN_S
+        self.cmd[j] = 0
 
     def shake_tree(self) -> int:
         """Callers hold self.lock (control calls do; the viewer takes it)."""
@@ -272,6 +290,7 @@ def main() -> None:
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--sock-dir", default=os.path.expanduser("~/.cache/micro-garden"))
     ap.add_argument("--view", action="store_true")
+    ap.add_argument("--godot", action="store_true", help="publish the world for the Godot garden (viewer/godot/)")
     ap.add_argument("--wander", action="store_true", help="random walk every 0.5 s, for watching the stub alone")
     ap.add_argument("--brain", action="store_true",
                     help="drive the ducks from here with the real brain, so the viewer has drives to show")
@@ -338,8 +357,12 @@ def main() -> None:
             elif name == "h":
                 stub._control_call("garden.hat", {"duck": duck, "on": int(not stub.hats[duck])})
 
+    world_out = None
+    if args.godot:
+        from viewer.snapshot import Snapshot
+        world_out = Snapshot(args.blind)
     try:
-        run_loop(args, stub, view, server, rng, click, key)
+        run_loop(args, stub, view, server, rng, click, key, world_out)
     except KeyboardInterrupt:
         pass
     finally:
@@ -368,7 +391,7 @@ def take_the_wheel(stub, server, view) -> None:
             stub._move(i, {"vx": WHEEL_VX * fwd, "vy": 0.0, "vyaw": WHEEL_VYAW * turn})
 
 
-def run_loop(args, stub, view, server, rng, click, key) -> None:
+def run_loop(args, stub, view, server, rng, click, key, world_out=None) -> None:
     next_t, ticks = time.monotonic(), 0
     while view is None or view.alive(on_click=click, on_key=key):
         with stub.lock:
@@ -383,6 +406,8 @@ def run_loop(args, stub, view, server, rng, click, key) -> None:
         with stub.lock:
             if view:
                 view.draw(stub, server)
+            if world_out:
+                world_out.step(stub, server)
         next_t += DT
         time.sleep(max(0.0, next_t - time.monotonic()))
 

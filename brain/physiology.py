@@ -49,6 +49,10 @@ SEARCH_TURN, SEARCH_SLOW = 3.0, 0.5  # at a smell fully lost: wander this many t
 # dawdles in a smell it likes, and its personality has most of the day to show in. It used to give way in
 # proportion to hunger from zero: at hunger 0.4 a water lover's love of water was already down a third.
 CONTENT_BELOW, PRESSING_AT = 0.4, 0.8
+# How much of a walk boredom alone is worth, against a need or a want at 1. A bored duck ambles; at 1 it strolled
+# as briskly as a hungry one, boredom sits near full for most of a quiet day, and so every duck was on the
+# march half its waking life (the simulated robots, 2026-09-21: march 0.44 to 0.54 of the time).
+BORED_WANDER = 0.4
 REST_BELOW = 0.15  # a duck whose hunger, thirst and boredom are all under this has no reason to move
 NIGHT_SLEEPINESS = 2.0  # sleep pressure builds this many times faster once the sun is down
 DAY_WAKING = 1.0  # daylight cancels an ordinary duck's build entirely, so it stays up all day; a sleepy one still naps
@@ -232,10 +236,13 @@ class Physiology:
             # listened from across the garden, liking the tune or not (Gate 8b, 2026-09-20).
             # A swim is a want too, for a duck that likes water and can tell there is some about (`damp`
             # is how humid the air is): a fed, watered water lover stood on the shore until it got bored.
-            "restlessness": np.clip((np.maximum.reduce([self.hunger, self.thirst, self.boredom,
-                                                        np.broadcast_to(wants, self.hunger.shape),
-                                                        swim_urge * damp])
-                                     - REST_BELOW) / 0.5, 0, 1),
+            # Hunger and thirst get a duck moving once they press (`pressing`), not from the first pang: a duck
+            # that is merely peckish stands about, or sits, and it is boredom that sets it wandering. At the old
+            # ramp a half-hungry duck walked 70% of the time and never stood still (Chris, 2026-09-21).
+            "restlessness": np.maximum(
+                pressing(np.maximum(self.hunger, self.thirst)),
+                np.clip((np.maximum.reduce([BORED_WANDER * self.boredom, np.broadcast_to(wants, self.hunger.shape),
+                                            swim_urge * damp]) - REST_BELOW) / 0.5, 0, 1)),
         }
 
 

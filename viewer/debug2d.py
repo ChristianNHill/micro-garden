@@ -24,6 +24,7 @@ DRIVES = ("hunger", "thirst", "fatigue", "sleep_pressure", "boredom")
 MOODS = (("fear", (140, 180, 255)), ("anger", (240, 90, 70)), ("joy", (255, 220, 90)),
          ("sorrow", (130, 140, 170)))
 TOASTS = 9
+BUBBLE_S = 3.0  # how long the word for an emote hangs over the duck
 RETINA_DEG = 75.0  # half-width of one eye's view, matching body/stub2d/retina.py
 EYE_DEG = 55.0
 
@@ -38,7 +39,8 @@ class Viewer:
         self.selected = 0
         self.click = None
         self.possessing = False  # the player has the selected duck's wheel
-        self.seen = {"eaten": 0, "headbutts": 0, "pets": 0, "sounds": 0}
+        self.seen = {"eaten": 0, "headbutts": 0, "pets": 0, "sounds": 0, "emotes": 0}
+        self.bubbles = {}  # duck: (until, feeling), the word over an emoting duck
         self.toasts = []
 
     def alive(self, on_click=None, on_key=None) -> bool:
@@ -94,7 +96,8 @@ class Viewer:
     def _gather_toasts(self, stub) -> None:
         """One line per new thing that happened, newest last."""
         for key, fmt in (("eaten", "{who} ate"), ("headbutts", "{who} shoved {other}"),
-                         ("pets", "{who} was petted"), ("sounds", "{who}: {other}")):
+                         ("pets", "{who} was petted"), ("sounds", "{who}: {other}"),
+                         ("emotes", "{who} looks {other}")):
             events = getattr(stub, key)
             for e in events[self.seen[key]:]:
                 who = stub.names[e[1]].replace("duck-", "")
@@ -103,6 +106,8 @@ class Viewer:
                 self.toasts.append((e[0], fmt.format(who=who, other=other)))
             self.seen[key] = len(events)
         self.toasts = self.toasts[-TOASTS:]
+        self.bubbles.update({i: (t + BUBBLE_S, feeling) for t, i, feeling in stub.emotes[-len(stub.names):]})
+        self.bubbles = {i: b for i, b in self.bubbles.items() if b[0] > stub.t}
 
     def _garden(self, stub, light) -> None:
         odor = stub.world.odor
@@ -150,6 +155,9 @@ class Viewer:
             pygame.draw.circle(self.screen, (255, 255, 255), self._px((x, y)), int(DUCK_R * PX) + 3, 2)
         tip = (x + 2 * DUCK_R * np.cos(h), y + 2 * DUCK_R * np.sin(h))
         pygame.draw.line(self.screen, (0, 0, 0), self._px((x, y)), self._px(tip), 2)
+        if i in self.bubbles:
+            word = self.font.render(self.bubbles[i][1], True, (255, 245, 200))
+            self.screen.blit(word, word.get_rect(midbottom=self._px((x, y + 3 * DUCK_R))))
 
     def _bar(self, x, y, w, frac, colour, label) -> None:
         pygame.draw.rect(self.screen, (55, 60, 70), (x, y, w, 11))
