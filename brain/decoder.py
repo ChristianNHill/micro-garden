@@ -206,6 +206,7 @@ class Decoder:
         vyaw = np.where(asleep, 0.0, vyaw)
         return [
             {"vx": float(vx[b]), "vy": 0.0, "vyaw": float(vyaw[b]), "escape": bool(onset[b]),
-             "feed": bool(feeding[b]), "attack": bool(attack[b]), "preen": bool(preen[b])}
+             "feed": bool(feeding[b]), "attack": bool(attack[b]), "preen": bool(preen[b]),
+             "zoomies": bool(zoomies[b])}
             for b in range(len(self.rates))
         ]

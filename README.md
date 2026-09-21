@@ -2,7 +2,7 @@
 
 Micro Garden is five small ducks in a garden, and each duck runs on its own live copy of a real fruit fly brain. It asks whether a wiring diagram, a body with needs, and a place to live are enough to get behaviour nobody scripted. The brain is the FlyWire connectome, about 139,000 neurons and 2.7 million connections, simulated as spiking neurons. Each duck smells, sees, hears, gets hungry, thirsty and sleepy, learns, and has a personality.
 
-The ducks are modelled on the [microduck](https://github.com/pollen-robotics/microduck), a real open-source robot, and the brain talks to the body through that robot's own command protocol. Today the body is a 2D stub in Python. The plan is the microduck's MuJoCo simulation next, then a low-poly garden, then real ducks on a floor.
+The ducks are modelled on the [microduck](https://github.com/pollen-robotics/microduck), a real open-source robot, and the brain talks to the body through that robot's own command protocol. There are two bodies today. One is a 2D stub in Python. The other is the microduck's own MuJoCo simulation, where the real robot daemon runs the real walking policy and five simulated ducks live a garden day on five fly brains. A low-poly garden comes next, then real ducks on a floor.
 
 ## What the brain does and what is explicit
 
@@ -28,6 +28,14 @@ uv run python -m body.stub2d.stub --view --brain
 ```
 
 Click a duck to follow it and click the tree to shake fruit down. `P` pets the selected duck, `C` claps, `F` drops food at the mouse, `M` picks the music up or puts it down, and `H` puts a hat on a duck or takes it off. The garden saves when you close it. When you come back it ages the ducks by however long you were away. Add `--fresh` to hatch new ducks, `--labels Bully,Napper,Carefree,Chatty,Scaredy` to choose who hatches, and `--blind` to hide who is who until you quit. Five ducks with their eyes open run at about real time on an M-series Mac.
+
+To run the ducks as simulated robots, check out [microduck](https://github.com/pollen-robotics/microduck) and [microduck_rl](https://github.com/pollen-robotics/microduck_rl), start five ducks with `DUCK_SIM_DUCKS=5 scripts/duck-sim`, and then start the garden around them:
+
+```
+uv run python -m body.mujoco.adapter --ducks 5 --view --brain
+```
+
+`PLAN.md` under Gate 10 has the setup, which runs natively on a Mac. The walking policy upstream ships does not yet track a velocity, so these ducks march and pivot. Tab takes the wheel of the selected duck in either body, and W, A, S and D drive it while its brain keeps watching.
 
 ## How it is checked
 

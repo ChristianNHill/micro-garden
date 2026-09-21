@@ -17,6 +17,9 @@ from pathlib import Path
 
 GATES = ["00_data", "01_tick", "02_sugar", "03_stub", "04_seek", "04b_senses", "04c_temperament",
          "05_personality", "06_vision", "07_learn", "08_social", "08b_toys", "09_persist", "09b_soak"]
+# Gates that need something outside this repo running, so they are run by number and never by default:
+# 10 wants the microduck simulator up and 11 wants it up with a camera on (PLAN.md Gates 10 and 11).
+ON_REQUEST = ["10_sim_one", "11_sim_vision", "12_sim_five"]
 FAST = {"00_data", "01_tick", "02_sugar", "03_stub", "06_vision", "07_learn", "09_persist"}
 # The line worth putting in the table, per gate. First capture group wins; nothing means no number.
 HEADLINE = {
@@ -26,12 +29,15 @@ HEADLINE = {
     "04_seek": r"real\s+(found \d+/\d+\s+median [\d.]+ s)",
     "04b_senses": r"pond\s+real\s+(found \d+/\d+)",
     "04c_temperament": r"aggressiveness [^:]*: (first headbutt after \[[^\]]*\])",
-    "05_personality": r"(signature distance: .*)",
+    "05_personality": r"(time swimming in the shade: .*)",
     "06_vision": r"loom\s+LPLC2\s+[\d.]+\s*->\s*([\d.]+ Hz)",
     "07_learn": r"weights, paired duck: (odor A's own synapses [\d.]+)",
     "08_social": r"one dish, [^:]*:\s+(share of the bites .*)",
     "08b_toys": r"(a hat stays on [^\n]*)",
     "09b_soak": r"soak: ([^\n]*)",
+    "10_sim_one": r"(the real brain, hungry[^(]*)",
+    "11_sim_vision": r"(camera: [^;]*)",
+    "12_sim_five": r"sim five: ([^;]*)",
     "09_persist": r"(three days away catches up in [\d.]+ s)",
 }
 
@@ -59,7 +65,7 @@ def choose(which: list[str], fast: bool) -> list[str]:
     if not which:
         return chosen
     want = {w.lstrip("0") or "0" for w in which}
-    return [g for g in chosen if (g.split("_")[0].lstrip("0") or "0") in want or g.split("_")[0] in want]
+    return [g for g in chosen + ON_REQUEST if (g.split("_")[0].lstrip("0") or "0") in want or g.split("_")[0] in want]
 
 
 def main() -> int:

@@ -198,10 +198,12 @@ def temperature_at(xy, light: float = 1.0) -> np.ndarray:
     return warm - NIGHT_C * (1.0 - light)
 
 
-def contacts(duck_xy: np.ndarray, heading: np.ndarray, food_xy: np.ndarray):
-    """Per duck: other ducks touching on its left and on its right, and the dish it stands on (-1 if none)."""
+def contacts(duck_xy: np.ndarray, heading: np.ndarray, food_xy: np.ndarray, touch_m: float = 2 * DUCK_R):
+    """Per duck: other ducks touching on its left and on its right, and the dish it stands on (-1 if none).
+    touch_m is how near two ducks' centres are when they touch: two circles' worth here, arm's length for a
+    body that falls over if it is actually bumped."""
     rel = duck_xy[None] - duck_xy[:, None]  # [i, j] = j relative to i
-    touching = np.linalg.norm(rel, axis=-1) < 2 * DUCK_R
+    touching = np.linalg.norm(rel, axis=-1) < touch_m
     np.fill_diagonal(touching, False)
     left_side = rel[..., 1] * np.cos(heading)[:, None] - rel[..., 0] * np.sin(heading)[:, None] > 0
     touch_left = (touching & left_side).sum(axis=1)

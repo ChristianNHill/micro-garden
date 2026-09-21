@@ -6,7 +6,7 @@ frame_port + duck. robot.do ground_pick on a dish eats it; robot.do headbutt pus
 in front of the attacker back by PUSH_M. robot.do drink at the pond's shore band takes a sip; past the
 shore a duck swims at SWIM_SPEED. robot.sound is logged. With fruit_every_s set, the shade tree drops fruit on that
 period; garden.shake_tree on control.sock (a player action) drops SHAKE_FRUIT at once. In the viewer,
-click the tree; P pets the selected duck, C claps, F feeds by hand at the mouse, M starts or stops
+click the tree; Tab takes the wheel of the selected duck (W A S D drive it, Tab gives it back); P pets it, C claps, F feeds by hand at the mouse, M starts or stops
 music there, H puts a hat on the selected duck or takes it off. garden.pet {duck} is the player's hand on a duck's head: bristles, and a reward.
 garden.scare claps, startling every duck. garden.hand {x, y, feed} puts the hand in the garden, where
 the ducks can see it, and drops that many bites at it. garden.music {x, y, on} picks the music up and puts it down there, or takes it away,
@@ -56,7 +56,8 @@ PUSH_M = 0.15
 SWIM_SPEED = 0.5  # fraction of commanded speed while swimming
 SOUND_TAGS = {"alarm", "greet", "inquire", "peck", "chirp", "coo", "wheee"}  # microduck's voice bank
 BITE_S = 0.5  # ground_pick takes this long, so at most one bite per BITE_S
-# ponytail: "headbutt" is a stub-only skill name; map it to microduck's real kick skill at Gate 12
+# "headbutt", "drink", "preen" and "zoomies" are our names for what a duck does; this body acts the first three
+# out in the garden and ignores the last. body/mujoco/adapter.py maps them onto the robot's own skills.
 
 
 class Stub:
@@ -86,6 +87,8 @@ class Stub:
         self.cmd = np.zeros((n, 3))
         self.head = np.zeros((n, 4))
         self.relaxed = np.zeros(n, bool)
+        self.seen = None
+        self.touch_m = 2 * DUCK_R  # how near two ducks' centres are when they touch
         self.t = 0.0
         self.lock = threading.Lock()
         self.udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -159,7 +162,7 @@ class Stub:
     def _headbutt(self, i: int) -> None:
         fwd = np.array([np.cos(self.pose[i, 2]), np.sin(self.pose[i, 2])])
         rel = self.pose[:, :2] - self.pose[i, :2]
-        hit = (np.linalg.norm(rel, axis=1) < 2 * DUCK_R) & (rel @ fwd > 0)
+        hit = (np.linalg.norm(rel, axis=1) < self.touch_m) & (rel @ fwd > 0)
         hit[i] = False
         for j in np.flatnonzero(hit):
             self.pose[j, :2] = np.clip(self.pose[j, :2] + PUSH_M * fwd, DUCK_R, SIZE_M - DUCK_R)
@@ -232,14 +235,14 @@ class Stub:
             sense[f"temp_{side}"] = temperature_at(p, light)
             sense[f"duck_{side}"] = np.array([duck_odor_at(p[i], xy, i) for i in range(len(xy))])
             sense[f"music_{side}"] = music_at(p, w.music)
-        sense["touch_left"], sense["touch_right"], dish = contacts(xy, h, w.food)
+        sense["touch_left"], sense["touch_right"], dish = contacts(xy, h, w.food, self.touch_m)
         sense["sugar"] = (dish >= 0).astype(float)
         edge = w.pond_distance(xy)
         sense["water"] = (np.abs(edge) <= SHORE_M).astype(float)
         sense["swimming"] = (edge < -SHORE_M).astype(float)
         sense["bumped"], sense["ate"], sense["drank"], sense["petted"], sense["scared"] = (
             x.astype(float) for x in (self.bumped, self.ate, self.drank, self.petted, self.scared))
-        sense["lum"] = retina.luminance(xy, h, w, light)
+        sense["lum"] = self.seen = self.sight(xy, h, light)  # kept for the viewer's possession view
         self.bumped[:] = self.ate[:] = self.drank[:] = self.petted[:] = self.scared[:] = False
         sense["light"] = np.full(len(xy), light)
         sense["hat"] = self.hats.astype(float)
@@ -248,6 +251,10 @@ class Stub:
             self.udp.sendto(frames.pack(
                 t=self.t, duck=i, x=xy[i, 0], y=xy[i, 1], heading=h[i], **{k: v[i] for k, v in sense.items()},
             ), (frames.HOST, self.frame_port + i))
+
+    def sight(self, xy, h, light) -> np.ndarray:
+        """(ducks, 2 eyes, 721) of what each duck sees: here, the garden drawn from above."""
+        return retina.luminance(xy, h, self.world, light)
 
     def state(self) -> dict:
         return {"t": self.t, "pose": self.pose.tolist(), "food": self.world.food.tolist(), "eaten": self.eaten}
@@ -344,6 +351,23 @@ def main() -> None:
             print(f"saved to {args.save}")
 
 
+WHEEL_VX, WHEEL_VYAW = 0.2, 1.2  # what W/S and A/D ask for while the player has the wheel
+
+
+def take_the_wheel(stub, server, view) -> None:
+    """Possession (ARCHITECTURE.md 2.6): Tab hands the selected duck's legs to the player and back. The
+    brain goes on seeing, smelling and learning; only its motor output is muted."""
+    if view is None or server is None:
+        return
+    server.possessed[:] = False
+    if view.possessing:
+        i = view.selected
+        server.possessed[i] = True
+        fwd, turn = view.wasd()
+        with stub.lock:
+            stub._move(i, {"vx": WHEEL_VX * fwd, "vy": 0.0, "vyaw": WHEEL_VYAW * turn})
+
+
 def run_loop(args, stub, view, server, rng, click, key) -> None:
     next_t, ticks = time.monotonic(), 0
     while view is None or view.alive(on_click=click, on_key=key):
@@ -355,6 +379,7 @@ def run_loop(args, stub, view, server, rng, click, key) -> None:
             stub.step()
         if server is not None:
             server.step(lockstep=False)  # outside the lock: it talks to the stub over its sockets
+        take_the_wheel(stub, server, view)
         with stub.lock:
             if view:
                 view.draw(stub, server)

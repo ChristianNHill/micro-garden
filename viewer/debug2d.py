@@ -6,7 +6,7 @@ sun goes down. A panel on the right for whichever duck is selected: its drives, 
 neurons, and a running list of what has just happened to anyone.
 
 Debug only, never a gate check. Click a duck to follow it, click the tree to shake it; the keys
-are the player's verbs: P pet, C clap, F feed at the mouse, M music at the mouse, H hat.
+are the player's verbs: Tab take the wheel of the selected duck (W A S D drive, Tab gives it back), P pet, C clap, F feed at the mouse, M music at the mouse, H hat.
 
 With a brain attached (`stub --view --brain`) the panel has something to show; without one the ducks
 stand still and only the garden is worth looking at.
@@ -14,6 +14,7 @@ stand still and only the garden is worth looking at.
 import numpy as np
 import pygame
 
+from body.stub2d.retina import HEX_AZ, HEX_EL
 from world.fields import DISH_R, DUCK_R, SIZE_M, TREE, daylight
 
 PX = 160  # pixels per metre
@@ -36,6 +37,7 @@ class Viewer:
         self.big = pygame.font.SysFont("Menlo", 15, bold=True)
         self.selected = 0
         self.click = None
+        self.possessing = False  # the player has the selected duck's wheel
         self.seen = {"eaten": 0, "headbutts": 0, "pets": 0, "sounds": 0}
         self.toasts = []
 
@@ -47,7 +49,9 @@ class Viewer:
                 return False
             if e.type == pygame.KEYDOWN and e.key == pygame.K_ESCAPE:
                 return False
-            if e.type == pygame.KEYDOWN and on_key:
+            if e.type == pygame.KEYDOWN and e.key == pygame.K_TAB:
+                self.possessing = not self.possessing
+            elif e.type == pygame.KEYDOWN and on_key:
                 mx, my = pygame.mouse.get_pos()
                 on_key(pygame.key.name(e.key), (min(mx / PX, SIZE_M), SIZE_M - my / PX))
             if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
@@ -57,6 +61,22 @@ class Viewer:
                     if on_click:
                         on_click(xy)
         return True
+
+    @staticmethod
+    def wasd() -> tuple[int, int]:
+        """(forward, turn left) from the keys held down, each -1, 0 or 1."""
+        k = pygame.key.get_pressed()
+        return int(k[pygame.K_w]) - int(k[pygame.K_s]), int(k[pygame.K_a]) - int(k[pygame.K_d])
+
+    def _eyes(self, x0: int, y0: int, seen) -> int:
+        """What the selected duck sees: both hex retinas, left eye on the left. Returns the height used."""
+        r, scale = 58, 58 / float(np.abs(HEX_AZ).max())
+        for eye, cx in enumerate((x0 + r + 4, x0 + 3 * r + 16)):
+            pygame.draw.circle(self.screen, (40, 44, 52), (cx, y0 + r), r + 3)
+            for az, el, v in zip(HEX_AZ, HEX_EL, seen[eye]):
+                g = int(255 * float(np.clip(v, 0, 1)))
+                pygame.draw.circle(self.screen, (g, g, g), (int(cx + az * scale), int(y0 + r - el * scale)), 2)
+        return 2 * r + 10
 
     @staticmethod
     def on_tree(xy) -> bool:
@@ -170,8 +190,13 @@ class Viewer:
                 self._bar(left + 12, y, 120, rates[i][idx] / 5.0, (110, 180, 220), f"{label} {rates[i][idx]:.1f}")
                 y += 17
 
+        if stub.seen is not None:
+            y += 8
+            label = "what it sees" + ("   YOU HAVE THE WHEEL: W A S D" if self.possessing else "")
+            self.screen.blit(self.font.render(label, True, (255, 210, 120) if self.possessing else (215, 220, 230)), (left + 12, y))
+            y += 18 + self._eyes(left + 12, y + 18, stub.seen[i])
         y += 10
-        self.screen.blit(self.font.render("P pet  C clap  F feed  M music  H hat", True, (120, 130, 145)), (left + 12, y))
+        self.screen.blit(self.font.render("Tab wheel  P pet  C clap  F feed  M music  H hat", True, (120, 130, 145)), (left + 12, y))
         y += 22
         self.screen.blit(self.font.render("just happened", True, (215, 220, 230)), (left + 12, y))
         y += 18

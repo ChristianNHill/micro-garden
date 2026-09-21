@@ -136,6 +136,10 @@ class BrainServer:
         self.escaped = np.zeros(self.n, bool)
         self.quiet_until = np.zeros(self.n)
         self.clap_left = np.zeros(self.n)  # seconds of the last clap still ringing
+        # Ducks the player has taken the wheel of (ARCHITECTURE.md 2.6). The brain goes on seeing, smelling
+        # and learning, and what it would have done is still returned; it just is not sent to the legs.
+        self.possessed = np.zeros(self.n, bool)
+        self.zooming = np.zeros(self.n, bool)
         self.t = 0.0
 
     def step(self, lockstep: bool) -> list[dict]:
@@ -187,6 +191,8 @@ class BrainServer:
         self.last_vx = np.array([it["vx"] for it in intents])
 
         for i, (robot, it) in enumerate(zip(self.robots, intents)):
+            if self.possessed[i]:
+                continue
             self._send(robot.call if lockstep else robot.notify, i, it, f[i], falls_asleep[i], wakes[i])
         return intents
 
@@ -240,6 +246,9 @@ class BrainServer:
             send("robot.do", skill="headbutt")
         if it["preen"]:
             send("robot.do", skill="preen")
+        if it["zoomies"] and not self.zooming[i]:  # once, as they start; a body shows them how it likes
+            send("robot.do", skill="zoomies")
+        self.zooming[i] = it["zoomies"]
         tag = self._voice(i, f, falls_asleep, wakes)
         if tag:
             send("robot.sound", tag=tag)
