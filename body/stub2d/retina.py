@@ -16,7 +16,11 @@ N_HEX = 721
 OMMATIDIUM_DEG = 5.8  # interommatidial angle, Drosophila
 EYE_AZ_DEG = 55.0  # each eye's optical axis, degrees off forward; the two overlap frontally to +-20 deg
 BACKGROUND, DISH_I, DUCK_I, TREE_I = 0.5, 1.0, 0.15, 0.0
-ROCK_I = 0.3  # a rock is a dull thing, darker than the ground and lighter than a trunk
+# A rock is pale stone in the sun, as light as the ground: drawn dark (0.3) it was a dark upright thing, which
+# a fly steers for, and being solid it held the ducks that reached it (0.04 of their time against a rock, from
+# 0.01, three gardens of five: Chris saw them gather at the waterfall, 2026-09-21). The tree is dark too, but a
+# duck can walk under a tree.
+ROCK_I = 0.5
 HAND_I, HAND_R = 0.9, 0.12  # the player's hand, a pale thing about the size of two dishes
 POND_I = 0.85  # water reflecting the sky; bright, but not as bright as food
 EYE_H = 0.10  # metres off the ground. ponytail: a guess at microduck eye height; measure it at Gate 10

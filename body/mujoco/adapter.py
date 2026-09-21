@@ -26,8 +26,9 @@ import time
 import numpy as np
 
 from body.contract import ROBOT_PARAMS, Client
+from world.fields import SIZE_M
 from body.mujoco.camera import FRAME_PORT, SimCamera
-from body.stub2d.stub import DEMO_GARDEN, DT, Stub, take_the_wheel
+from body.stub2d.stub import DEMO_GARDEN, DT, EMOTE_ACTS, Stub, take_the_wheel
 
 SIM_STATE = os.path.expanduser("~/.cache/duck-sim")  # where duck-sim puts each duck's robotd socket
 TRUTH_PORT = 7801  # the first duck's body server; +1 per duck
@@ -77,26 +78,6 @@ RISE_S = 12.0  # standing up takes about ten seconds, and for that long the duck
 
 
 ROBOT_SKILLS = {"ground_pick", "sit_toggle", "roulade", "kick_left", "kick_right"}  # what robotd will run
-# How a robot acts out each feeling (brain/emotes.py): a voice tag, and its head through a few poses, each
-# (seconds after the last, neck_pitch, head_pitch, head_yaw, head_roll) in radians, pitch positive down. The
-# head works sitting as well as standing, so a duck at rest still shows what it feels. Every one ends level.
-# ponytail: drawn by eye on the simulated duck; a real one's neck will want these re-posed.
-LEVEL = (0.0, 0.0, 0.0, 0.0)
-EMOTE_ACTS = {
-    "happy": ("wheee", [(0.0, -0.1, -0.2, 0.0, 0.3), (0.3, -0.1, -0.2, 0.0, -0.3), (0.3, -0.1, -0.2, 0.0, 0.3),
-                        (0.3, -0.1, -0.2, 0.0, -0.3)]),
-    "playful": ("wheee", [(0.0, 0.0, -0.2, 0.4, 0.3), (0.3, 0.0, -0.2, -0.4, -0.3), (0.3, 0.0, -0.2, 0.4, 0.3)]),
-    "scared": ("alarm", [(0.0, 0.3, 0.3, 0.0, 0.0), (0.4, 0.3, 0.3, 0.5, 0.0), (0.4, 0.3, 0.3, -0.5, 0.0), (0.6, 0.3, 0.3, 0.0, 0.0)]),
-    "angry": ("alarm", [(0.0, -0.2, 0.0, 0.0, 0.0), (0.25, 0.3, 0.2, 0.0, 0.0), (0.25, -0.2, 0.0, 0.0, 0.0), (0.25, 0.3, 0.2, 0.0, 0.0)]),
-    "sad": ("coo", [(0.0, 0.3, 0.4, 0.0, 0.0), (1.0, 0.3, 0.4, 0.2, 0.0), (1.0, 0.3, 0.4, -0.2, 0.0), (1.0, 0.3, 0.4, 0.0, 0.0)]),
-    "lonely": ("inquire", [(0.0, -0.2, -0.2, 0.6, 0.0), (0.9, -0.2, -0.2, -0.6, 0.0), (0.9, 0.2, 0.3, 0.0, 0.0), (0.8, 0.2, 0.3, 0.0, 0.0)]),
-    "bored": ("inquire", [(0.0, 0.0, 0.0, 0.6, 0.0), (1.0, 0.0, 0.0, -0.6, 0.0), (1.0, 0.0, 0.2, 0.0, 0.2), (0.8, 0.0, 0.2, 0.0, 0.2)]),
-    "hungry": ("peck", [(0.0, 0.3, 0.4, 0.0, 0.0), (0.3, 0.0, 0.0, 0.0, 0.0), (0.3, 0.3, 0.4, 0.0, 0.0), (0.3, 0.0, 0.0, 0.0, 0.0)]),
-    "thirsty": ("chirp", [(0.0, 0.3, 0.4, 0.0, 0.0), (0.5, -0.2, -0.4, 0.0, 0.0), (0.7, -0.2, -0.4, 0.0, 0.0)]),
-    "sleepy": ("coo", [(0.0, 0.2, 0.4, 0.0, 0.1), (0.8, 0.0, 0.0, 0.0, 0.0), (0.4, 0.3, 0.4, 0.0, 0.1), (1.0, 0.3, 0.4, 0.0, 0.1)]),
-    "curious": ("chirp", [(0.0, -0.1, 0.0, 0.3, 0.4), (1.0, -0.1, 0.0, -0.3, -0.4), (1.0, -0.1, 0.0, -0.3, -0.4)]),
-    "proud": ("greet", [(0.0, -0.3, -0.3, 0.0, 0.0), (0.6, -0.3, -0.3, 0.5, 0.0), (0.6, -0.3, -0.3, -0.5, 0.0), (0.6, -0.3, -0.3, 0.0, 0.0)]),
-}
 
 
 def robot_state(sock_path: str) -> dict:
@@ -141,10 +122,21 @@ class Truth:
         return json.loads(self.f.readline())
 
     def pose(self) -> tuple[float, float, float]:
-        """(x, y, heading) in the simulator's own frame."""
-        r = self._ask({"op": "read"})
+        """(x, y, heading) in the simulator's own frame. The rest of the reading is kept in `last`, for a
+        viewer that wants to draw the robot as it really stands: its joints, its height, how it leans."""
+        r = self.last = self._ask({"op": "read"})
         w, x, y, z = r["imu"]["quat"]
         return r["trunk"][0], r["trunk"][1], math.atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z))
+
+    def articulation(self) -> dict:
+        """Joint angles in robotd's order, the trunk's height, and its lean: its orientation with the heading
+        taken out, since a viewer turns the whole duck to its heading already."""
+        w, x, y, z = self.last["imu"]["quat"]
+        half = math.atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z)) / 2
+        c, s = math.cos(half), -math.sin(half)  # the heading's inverse, as a quaternion (c, 0, 0, s), times the whole
+        tilt = (c * w - s * z, c * x - s * y, c * y + s * x, c * z + s * w)
+        return {"joints": [round(v, 3) for v in self.last["positions"]], "z": round(self.last["trunk"][2], 4),
+                "tilt": [round(v, 4) for v in tilt]}
 
     def close(self) -> None:
         self.f.close()
@@ -164,14 +156,13 @@ class MujocoBody(Stub):
         self.kicks = np.zeros(n, bool)  # which foot kicked last
         self.truth = [Truth(truth_port + i) for i in range(n)]
         # where MuJoCo's (0, 0) sits in the garden: by default, so that the row of ducks straddles the middle
-        self.origin = np.asarray(origin if origin is not None
-                                 else (self.world.size / 2, self.world.size / 2 - SPACING_M * (n - 1) / 2), float)
+        size = garden.get("size", SIZE_M)  # the world is not made until Stub's __init__, below
+        self.origin = np.asarray(origin if origin is not None else (size / 2, size / 2 - SPACING_M * (n - 1) / 2), float)
         self.turning = np.zeros(n)  # the brain's turning intent, smoothed
         self.banked = np.zeros(n)  # metres the brain has asked for and the duck has not walked yet
         self.marching = np.zeros(n, bool)
         self.idle_for = np.zeros(n)  # seconds on its feet and not marching
         self.eating_until = np.zeros(n)  # garden time until which it counts as eating or drinking
-        self.acting = [[] for _ in range(n)]  # head poses still to come in an emote, as (garden time, pose)
         self.sat = np.zeros(n, bool)  # sitting because it wants nothing (asleep is `relaxed`)
         self.cameras = {i: SimCamera(FRAME_PORT + i) for i in cameras}
         self.got_up_at = np.full(n, -np.inf)
@@ -333,7 +324,7 @@ class MujocoBody(Stub):
         if self.limp[i] or self.t < self.rising_until[i]:
             return
         if p["skill"].startswith("emote_"):
-            return self._emote(i, p["skill"][len("emote_"):])
+            return  # acted already, by _emote, through Stub._do
         if self.sat[i]:
             return
         skill = p["skill"]
@@ -344,31 +335,29 @@ class MujocoBody(Stub):
         if skill in ROBOT_SKILLS:
             self.robots[i].notify("robot.do", skill=skill)
 
+    def articulation(self) -> list[dict]:
+        return [t.articulation() for t in self.truth]
+
     def posture(self) -> list[str]:
         return ["down" if limp else "sat" if sat else "up" for limp, sat in zip(self.limp, self.sat)]
 
     def _emote(self, i: int, feeling: str) -> None:
-        """Act a feeling out: say it, and queue the head's poses for step() to play. A playful duck on its
-        feet rolls over instead, which is the one emote the legs join in."""
-        if self.acting[i] or self.relaxed[i]:
+        """The poses and the voice are every body's (Stub); a robot that is down or getting up is left alone,
+        and a playful one on its feet rolls over instead, the one emote the legs join in."""
+        if self.limp[i] or self.t < self.rising_until[i]:
             return
-        tag, poses = EMOTE_ACTS[feeling]
-        self.robots[i].notify("robot.sound", tag=tag)
-        if feeling == "playful" and not self.sat[i] and not self.marching[i]:
+        if feeling == "playful" and not (self.sat[i] or self.marching[i] or self.acting[i] or self.relaxed[i]):
+            self.emotes.append((self.t, i, feeling))
+            self._sound(i, {"tag": EMOTE_ACTS[feeling][0]})
             self.robots[i].notify("robot.do", skill="roulade")
             return
-        at = self.t
-        for after, *pose in poses + [(0.5, *LEVEL)]:
-            at += after
-            self.acting[i].append((at, pose))
+        super()._emote(i, feeling)
 
     def _act(self) -> None:
-        """Send whichever queued head poses have come due. A duck that went down mid-emote drops the rest."""
-        for i, queue in enumerate(self.acting):
+        for i, queue in enumerate(self.acting):  # a duck that went down mid-emote drops the rest
             if queue and (self.limp[i] or self.t < self.rising_until[i]):
                 queue.clear()
-            while queue and queue[0][0] <= self.t:
-                self.robots[i].notify("robot.head", **dict(zip(ROBOT_PARAMS["robot.head"], queue.pop(0)[1])))
+        super()._act()
 
     def sight(self, xy, h, light) -> np.ndarray:
         lum = super().sight(xy, h, light)
@@ -414,14 +403,15 @@ def main() -> None:
     args = ap.parse_args()
     os.makedirs(args.sock_dir, exist_ok=True)
     cameras = [ord(c.strip()) - ord("a") for c in args.cameras.split(",") if c.strip()]
-    body = MujocoBody(args.ducks, args.seed, args.sock_dir, cameras=cameras, **DEMO_GARDEN)
+    from body import frames
+    frame_port = frames.free_port_base(frames.FRAME_PORT, args.ducks)  # never the ports of a garden that is up
+    body = MujocoBody(args.ducks, args.seed, args.sock_dir, cameras=cameras, frame_port=frame_port, **DEMO_GARDEN)
     view = None
     if args.view:
         from viewer.debug2d import Viewer
         view = Viewer(body.world)
     server = None
     if args.brain:
-        from body import frames
         from brain.data import load_connectome, named_sets
         from brain.personality import preset, stack
         from brain.server import BrainServer
@@ -429,7 +419,7 @@ def main() -> None:
         W, ann = load_connectome()
         rng = np.random.default_rng(args.seed)
         labels = (args.labels.split(",") * args.ducks)[:args.ducks]
-        bodies = [(os.path.join(args.sock_dir, f"{name}.sock"), frames.FRAME_PORT + i) for i, name in enumerate(body.names)]
+        bodies = [(os.path.join(args.sock_dir, f"{name}.sock"), frame_port + i) for i, name in enumerate(body.names)]
         server = BrainServer(W, ann, named_sets(ann), bodies, args.seed, personality=stack([preset(x, rng) for x in labels]))
         print(f"driving {', '.join(labels)} in MuJoCo")
     world_out = None

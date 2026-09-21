@@ -39,14 +39,21 @@ uv run python -m body.mujoco.adapter --ducks 5 --view --brain
 
 ## The Godot garden
 
-`viewer/godot/` is the garden as a print: low-poly ducks under a halftone screen of navy ink, on cream paper. It needs [Godot 4](https://godotengine.org). Start either body with `--godot`, and then open the project:
+`viewer/godot/` is the garden to look at. It is laid out after the Chao gardens of Sonic Adventure 2: a lawn in a bowl of rock, a pond under a waterfall, a fruit tree, a rail fence over the sea. The ducks are the real microduck, built from Pollen Robotics' own meshes and posed joint by joint. A halftone screen of ink shades everything, and night is a wash of blue. It needs [Godot 4](https://godotengine.org). Start either body with `--godot`, and then open the project:
 
 ```
 uv run python -m body.stub2d.stub --brain --godot
 /Applications/Godot.app/Contents/MacOS/Godot --path viewer/godot
 ```
 
-Godot only draws. The garden publishes its world over UDP, and clicks go back as the same control calls the 2D window uses. Click a duck to select it and click the tree to shake it. `P`, `F`, `H`, `C` and `M` work as above. Drag to orbit and scroll to zoom. A duck's outline comes from its personality dials, so a big eater is wide and a timid duck is small with a long neck. Ducks also emote every so often, like a Chao or a Sim. Each one acts out its strongest feeling, and a chatty duck does it more often.
+Godot only draws. The garden publishes its world over UDP, and what you do goes back as the same control calls the 2D window uses.
+
+- Click a duck to select it. The camera follows it, a panel shows its needs, moods and wants as bars, and another shows its fly brain: 12,000 of its 139,000 neurons where FlyWire has them, each flaring as it fires.
+- `Tab` rides the selected duck. W, A, S and D steer it, and you see its two hex retinas and what its descending neurons ask of its legs.
+- `F` drops fruit at the mouse, `H` drops a hat, `M` puts the music box down or picks it up, `C` claps, `P` pets the selected duck, and a click on the tree shakes fruit down.
+- Hats are for the ducks. A duck that finds one decides whether to wear it, and a vain duck usually does. A duck that shakes one off leaves it on the lawn for the next.
+
+The ducks emote every so often, like a Chao or a Sim. Each acts out its strongest feeling with its head and its voice, a chatty duck more often. Strong characters have a trick of their own: an aggressive duck stomps, a sleepy one yawns, a water lover splashes, a chatty one sings, and a timid one cowers. A flag on the near cliff shows the breeze, which is what the ducks find food by.
 
 ## How it is checked
 
@@ -58,14 +65,14 @@ uv run python -m gates --fast # the ones that take about a minute
 uv run python -m gates 4 8 # just those
 ```
 
-Most gates pass. Two results stand as they are because they are true. The five demo personalities are hard to tell apart by numbers alone, so Gate 5's label check fails. The Bully's aggression costs it food, which is character and not a bug.
+Most gates pass. One check fails today and `PLAN.md` says so: in Gate 5 a fed duck that is too hot does not go and cool off, water lover or not, because nothing but a need or boredom gets a duck walking. Two other results stand because they are true. The five demo personalities are hard to tell apart by numbers alone, so Gate 5 prints that comparison and does not assert it. The Bully's aggression costs it food, which is character and not a bug.
 
 ## Where things are
 
 - `brain/` loads the connectome and holds the spiking model, the sensory encoder, the motor decoder, learning, bodily needs, and the personality presets.
 - `body/` holds the robot command contract, the sensory frame, and the 2D stub body with its retina.
 - `world/` holds the garden: smells that drift on the wind, the pond, temperature, day and night, music.
-- `viewer/` holds the debug window, the world snapshot, and the Godot garden.
+- `viewer/` holds the debug window, the world snapshot, and the Godot garden with the script that builds its robot.
 - `gates/` holds one check per gate.
 
 `RESEARCH.md` has the goal and the reading behind it. `ARCHITECTURE.md` has the design and the decisions. `PLAN.md` is the build log. `ATTRIBUTION.md` lists the data, the papers to cite, and the projects this leans on.

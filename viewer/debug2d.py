@@ -15,6 +15,7 @@ import numpy as np
 import pygame
 
 from body.stub2d.retina import HEX_AZ, HEX_EL
+from brain.emotes import phrase
 from world.fields import DISH_R, DUCK_R, SIZE_M, TREE, daylight
 
 WINDOW_PX = 720  # the garden's side on screen, whatever its size in metres
@@ -99,12 +100,13 @@ class Viewer:
         """One line per new thing that happened, newest last."""
         for key, fmt in (("eaten", "{who} ate"), ("headbutts", "{who} shoved {other}"),
                          ("pets", "{who} was petted"), ("sounds", "{who}: {other}"),
-                         ("emotes", "{who} looks {other}")):
+                         ("emotes", "{who} {other}")):
             events = getattr(stub, key)
             for e in events[self.seen[key]:]:
                 who = stub.names[e[1]].replace("duck-", "")
                 other = e[2] if len(e) > 2 else ""
                 other = stub.names[other].replace("duck-", "") if isinstance(other, (int, np.integer)) else other
+                other = phrase(other) if key == "emotes" else other
                 self.toasts.append((e[0], fmt.format(who=who, other=other)))
             self.seen[key] = len(events)
         self.toasts = self.toasts[-TOASTS:]

@@ -1,25 +1,34 @@
-# One duck: the real microduck, simplified (build_robot.py writes robot.json from Pollen Robotics' meshes),
-# in four rigid pieces that are animated by rule: trunk, head, and a leg each side. It faces +x and stands on
-# y = 0. Personality shows in its proportions, as far as a robot's can: a big appetite is a wide one, a timid
-# duck is small, a vain one has a big head, and the grey plastic takes the duck's own colour.
+# One duck: the real microduck, simplified (build_robot.py writes robot.json from Pollen Robotics' meshes) and
+# built as the robot is, every body on its own hinge under its parent. So it is posed by joint angles: the
+# simulated robot's own, when the garden sends them (its real walk, its real falls), and otherwise a standing
+# pose with a walk made by rule. It faces +x and stands on y = 0. Personality shows in its proportions, as far
+# as a robot's can: a big appetite is a wide one, a timid duck is small, a vain one has a big head, and the grey
+# plastic takes the duck's own colour.
 # It is told where it is and how it feels (`show_state`), and everything else here is how that looks.
 extends Node3D
 
 const Ink := preload("res://ink.gd")
+const Hats := preload("res://hats.gd")
 const CELL := 5.0  # a finer screen than the ground's: at 9 px a duck this small came out spotted like a dalmatian
 const LOOK := 1.9  # drawn a little larger than life, so a duck reads from across the garden
 const EMOTE_S := 2.4
 const RIBBONS := [Ink.CORAL, Ink.TEAL, Ink.MUSTARD, Color("7d6bd0"), Color("e58ac0")]
+const DOES := {"stomp": "stomps", "yawn": "yawns", "splash": "splashes", "sing": "sings", "cower": "cowers"}  # a signature is what it does
 const MOOD_SHAPES := {"joy": "ball", "fear": "spike", "anger": "block", "sorrow": "drop"}
 
 var model := Node3D.new()  # everything that waddles, sits and falls over; the shadow and the signs do not
-var neck := Node3D.new()  # the head turns about this
-var legs: Array[Node3D] = []
-var hat: MeshInstance3D
+var rig := Node3D.new()  # the robot in MuJoCo's own frame (z up), turned once to stand in Godot's
+var trunk := Node3D.new()
+var hinges := {}  # joint name -> [the node it turns, its axis]
+var frames := {}  # body name -> its node
+var head: Node3D  # the body the hat sits on
+var hat: Node3D  # whichever hat it wears, made from its style number
+var hat_style := -1
 var shadow: MeshInstance3D
 var mood := Node3D.new()
 var mood_shapes := {}
 var sign := Label3D.new()
+var zs: Array[Label3D] = []  # a sleeper's z's, streaming up from its head: zzZZ
 var ring: MeshInstance3D
 
 var state := {}
@@ -30,26 +39,24 @@ var emote := ""
 var emote_age := 99.0
 var emote_seen := -1.0
 var calm := 1.0  # 0.5 under reduced motion
-var hip_y := 0.1  # how far the trunk drops to sit
-static var robot := {}  # group -> {pivot, parts: [[ink, mesh]]}, built once and shared by every duck
+const WIRE := ["left_hip_yaw", "left_hip_roll", "left_hip_pitch", "left_knee", "left_ankle", "neck_pitch", "head_pitch",
+	"head_yaw", "head_roll", "mouth", "right_hip_yaw", "right_hip_roll", "right_hip_pitch", "right_knee", "right_ankle"]  # robotd's joint order
+static var robot := {}  # robot.json with its meshes made, built once and shared by every duck
 
 
-static func robot_groups() -> Dictionary:
+static func robot_data() -> Dictionary:
 	if robot.is_empty():
-		var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://robot.json"))
-		for group in data.groups:
-			var parts := []
-			for p in data.groups[group].parts:
+		robot = JSON.parse_string(FileAccess.get_file_as_string("res://robot.json"))
+		for body in robot.bodies:
+			for p in body.parts:
 				var st := SurfaceTool.new()
 				st.begin(Mesh.PRIMITIVE_TRIANGLES)
 				for k in range(0, p.v.size(), 3):
-					st.add_vertex(Vector3(p.v[k], p.v[k + 1], p.v[k + 2]) * data.unit)
+					st.add_vertex(Vector3(p.v[k], p.v[k + 1], p.v[k + 2]) * robot.unit)
 				for index in p.i:
 					st.add_index(int(index))
 				st.generate_normals()  # smooth ones, for the outline to grow along; the print shader shades flat
-				parts.append([p.ink, st.commit()])
-			var at: Array = data.groups[group].pivot
-			robot[group] = {"pivot": Vector3(at[0], at[1], at[2]), "parts": parts}
+				p["mesh"] = st.commit()
 	return robot
 
 
@@ -64,24 +71,34 @@ func build(index: int, knobs: Dictionary) -> void:
 
 	add_child(model)
 	model.scale = Vector3(1.0, 1.0, girth) * LOOK * size
-	var groups := robot_groups()
-	hip_y = groups["leg_left"].pivot.y
-	for group in groups:
-		var node := neck if group == "head" else Node3D.new()
-		node.position = groups[group].pivot
-		model.add_child(node)
-		for part in groups[group].parts:
-			var shell: bool = part[0] == "cream"  # the line goes round the shells; round every servo it is a blot
-			var piece := Ink.part(node, part[1], inks[part[0]], Vector3.ZERO, Vector3.ONE, CELL, -1.0, shell)
+	var data := robot_data()
+	rig.rotation.x = -PI / 2  # MuJoCo's z is up and its y is to the left; Godot's y is up and its z to the right
+	rig.position.y = data.stand_z
+	model.add_child(rig)
+	rig.add_child(trunk)
+	for body in data.bodies:
+		var node := Node3D.new()
+		if body.parent == "world":
+			trunk.add_child(node)  # the trunk: where it is and how it leans is set on `trunk` each frame
+		else:
+			node.position = Vector3(body.pos[0], body.pos[1], body.pos[2])
+			node.quaternion = Quaternion(body.quat[1], body.quat[2], body.quat[3], body.quat[0])
+			frames[body.parent].add_child(node)
+		var turns := Node3D.new()  # the hinge: everything of this body, and every body after it, turns here
+		node.add_child(turns)
+		frames[body.name] = turns
+		if body.joint != null:
+			hinges[body.joint.name] = [turns, Vector3(body.joint.axis[0], body.joint.axis[1], body.joint.axis[2]).normalized()]
+		for part in body.parts:
+			var shell: bool = part.ink == "cream"  # the line goes round the shells; round every servo it is a blot
+			var piece := Ink.part(turns, part.mesh, inks[part.ink], Vector3.ZERO, Vector3.ONE, CELL, -1.0, shell)
 			piece.material_override.set_shader_parameter("lift", 0.25)  # a duck stays bright on its shaded side
 			if shell:
 				(piece.material_override.next_pass as ShaderMaterial).set_shader_parameter("grow", 0.0025)
-		if group.begins_with("leg"):
-			legs.append(node)
-	neck.scale = Vector3.ONE * (0.9 + 0.3 * k.call("vanity"))
-	var body_y: float = groups["head"].pivot.y
+	head = frames[data.hat.body]
+	frames["neck_pitch"].scale = Vector3.ONE * (0.9 + 0.3 * k.call("vanity"))  # the head and all that rides on it
+	var body_y := 0.2
 	var neck_len := 0.06
-	hat = Ink.part(neck, Ink.cone(0.04, 0.07), Ink.MUSTARD, Vector3(0.03, 0.13, 0), Vector3.ONE, CELL, -1.0, true)
 
 	shadow = Ink.part(self, Ink.cone(0.1 * LOOK * size * girth, 0.001, 0.1 * LOOK * size * girth, 12), Ink.GRASS, Vector3(0, 0.003, 0), Vector3.ONE, 7.0, 0.35)
 	ring = Ink.part(self, _torus(0.17 * LOOK, 0.19 * LOOK), Ink.CORAL, Vector3(0, 0.004, 0), Vector3(1, 0.2, 1), 7.0, 1.0)
@@ -104,6 +121,16 @@ func build(index: int, knobs: Dictionary) -> void:
 	sign.outline_size = 10
 	sign.position = mood.position + Vector3(0, 0.12, 0)
 	add_child(sign)
+	for _z in 4:
+		var z := Label3D.new()
+		z.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		z.no_depth_test = true
+		z.font_size = 64
+		z.outline_size = 14
+		z.outline_modulate = Ink.CREAM
+		z.visible = false
+		add_child(z)
+		zs.append(z)
 
 
 func _torus(inner: float, outer: float) -> TorusMesh:
@@ -142,45 +169,80 @@ func _process(dt: float) -> void:
 	var swimming: bool = state.swimming
 	var low: bool = state.sat or state.asleep
 	var walk: float = clamp(speed / 0.08, 0.0, 1.0) * calm
-	var want_y := -(hip_y - 0.02) * model.scale.y if (swimming or low) else 0.0  # folded, or afloat to the trunk
-	var want_roll := 1.45 if state.down else sin(stride) * 0.16 * walk + (sin(t * 1.7) * 0.05 * calm if swimming else 0.0)
-	model.position.y = lerp(model.position.y, want_y + abs(sin(stride)) * 0.008 * walk, min(1.0, 8.0 * dt))
-	model.rotation.x = lerp(model.rotation.x, want_roll, min(1.0, 8.0 * dt))
-	for i in 2:
-		legs[i].visible = not (swimming or low)
-		legs[i].rotation.z = sin(stride + PI * i) * 0.6 * walk
+	var data := robot_data()
+	var real: bool = state.has("joints")  # the simulated robot's own joints: then nothing here is by rule
+	var angle := {}
+	for name in data.stand:
+		angle[name] = float(data.stand[name])
+	if real:
+		for k in WIRE.size():
+			angle[WIRE[k]] = float(state.joints[k])
+		trunk.quaternion = trunk.quaternion.slerp(Quaternion(state.tilt[1], state.tilt[2], state.tilt[3], state.tilt[0]), min(1.0, 12.0 * dt))
+		rig.position.y = lerp(rig.position.y, float(state.z), min(1.0, 12.0 * dt))
+		model.rotation.x = 0.0
+		model.position.y = 0.0
+	else:
+		# a walk by rule: the hips swing against each other (the right leg's hinges are the left's mirrored,
+		# so the same number added to both does that) and each ankle gives it back, to keep the foot flat
+		var swing := sin(stride) * 0.35 * walk
+		for side in ["left", "right"]:
+			angle[side + "_hip_pitch"] = angle.get(side + "_hip_pitch", 0.0) + swing
+			angle[side + "_ankle"] = angle.get(side + "_ankle", 0.0) - swing
+		var want_y := -(float(data.stand_z) - 0.045) * model.scale.y if (swimming or low) else 0.0  # folded, or afloat to the trunk
+		var want_roll := 1.45 if state.down else sin(stride) * 0.12 * walk + (sin(t * 1.7) * 0.05 * calm if swimming else 0.0)
+		model.position.y = lerp(model.position.y, want_y + abs(sin(stride)) * 0.006 * walk, min(1.0, 8.0 * dt))
+		model.rotation.x = lerp(model.rotation.x, want_roll, min(1.0, 8.0 * dt))
+	for leg in ["yaw2roll", "bearing_roll"]:  # where each leg joins the trunk
+		frames[leg].visible = real or not (swimming or low)
 	shadow.visible = not swimming
-	hat.visible = state.hat
+	var wearing: int = state.hat_style if state.hat else -1
+	if wearing != hat_style:
+		if hat != null:
+			hat.queue_free()
+			hat = null
+		if wearing >= 0:
+			hat = Hats.make(wearing)
+			var seat: Dictionary = data.hat  # the crown of the head shell, and which way is up there, in the head's frame
+			var up := Vector3(seat.up[0], seat.up[1], seat.up[2])
+			var forward := Vector3(seat.forward[0], seat.forward[1], seat.forward[2])
+			hat.transform = Transform3D(Basis(forward, up, forward.cross(up)).scaled(Vector3.ONE * 1.25), Vector3(seat.at[0], seat.at[1], seat.at[2]) - up * 0.012)
+			head.add_child(hat)
+		hat_style = wearing
 
-	# the head: what it is doing outranks what it is feeling, and breathing fills the gaps
-	var pitch := sin(t * 0.9) * 0.04 * calm
-	var yaw := sin(t * 0.37) * 0.25 * calm
-	var roll := 0.0
+	# The head does what the body was told (`state.head`: neck_pitch, head_pitch, head_yaw, head_roll, offsets
+	# on the robot's own joints), so an emote here is the emote the robot makes. Sleeping and eating have no
+	# head commands of their own yet and are posed here; breathing fills the gaps.
+	if not real:
+		var told: Array = state.get("head", [0.0, 0.0, 0.0, 0.0])
+		var nod: Array = [told[0], told[1] + sin(t * 0.9) * 0.03 * calm, told[2] + sin(t * 0.37) * 0.1 * calm, told[3]]
+		if state.asleep:
+			nod = [0.45, 0.6, 0.9, 0.0]
+		elif state.eating:
+			nod = [0.45 + sin(t * 9.0) * 0.2, 0.5, 0.0, 0.0]
+		var names := ["neck_pitch", "head_pitch", "head_yaw", "head_roll"]
+		for k in 4:
+			angle[names[k]] = angle.get(names[k], 0.0) + nod[k]
+	for name in hinges:  # and the pose is set: every hinge eased to its angle about its own axis
+		var hinge: Array = hinges[name]
+		var node: Node3D = hinge[0]
+		node.quaternion = node.quaternion.slerp(Quaternion(hinge[1], angle.get(name, 0.0)), min(1.0, (20.0 if real else 9.0) * dt))
+	# the rest of the body joins in a little, for the feelings that would move more than a head
 	var hop := 0.0
 	var squash := 0.0
-	if state.asleep:
-		pitch = 0.9; yaw = 1.3
-	elif state.eating:
-		pitch = 0.7 + sin(t * 9.0) * 0.5; yaw = 0.0
-	elif emote_age < EMOTE_S:
-		var u := emote_age / EMOTE_S
-		var beat := sin(u * TAU * 3.0)
+	if emote_age < EMOTE_S and not state.asleep:
+		var beat := sin(emote_age / EMOTE_S * TAU * 3.0)
 		match emote:
-			"happy": hop = abs(beat) * 0.05; roll = beat * 0.3; squash = -abs(beat) * 0.12
-			"playful": hop = abs(beat) * 0.07; model.rotation.y = u * TAU
-			"scared": pitch = 0.5; squash = 0.25; yaw = sin(u * 60.0) * 0.15
-			"angry": pitch = -0.2 + max(beat, 0.0) * 0.7; squash = -0.1
-			"sad": pitch = 0.75; yaw = sin(u * TAU) * 0.2
-			"lonely": pitch = -0.25; yaw = sin(u * TAU) * 1.0
-			"bored": yaw = sin(u * TAU) * 0.8; roll = 0.25
-			"hungry": pitch = 0.4 + max(beat, 0.0) * 0.5
-			"thirsty": pitch = -0.5 * sin(u * PI); yaw = 0.0
-			"sleepy": pitch = 0.5 * abs(sin(u * PI * 2.0)); roll = 0.15
-			"curious": roll = sin(u * TAU) * 0.45; pitch = -0.1
-			"proud": pitch = -0.45; squash = -0.15; yaw = sin(u * TAU) * 0.5
+			"happy": hop = abs(beat) * 0.04; squash = -abs(beat) * 0.08
+			"playful": hop = abs(beat) * 0.06; model.rotation.y = emote_age / EMOTE_S * TAU
+			"scared": squash = 0.18
+			"proud": squash = -0.1
+			"stomp": hop = max(beat, 0.0) * 0.025; squash = max(-beat, 0.0) * 0.1
+			"yawn": squash = -0.07 * sin(emote_age / EMOTE_S * PI)
+			"splash": hop = abs(beat) * 0.03; squash = -abs(beat) * 0.06
+			"sing": model.rotation.x += beat * 0.08
+			"cower": squash = 0.24
 	if emote_age >= EMOTE_S or emote != "playful":
 		model.rotation.y = lerp_angle(model.rotation.y, 0.0, min(1.0, 8.0 * dt))
-	neck.rotation = neck.rotation.lerp(Vector3(roll, yaw, -pitch), min(1.0, 10.0 * dt))
 	model.position.y += hop * LOOK * calm
 	var s := model.scale.x
 	model.scale = model.scale.lerp(Vector3(s, s * (1.0 - squash * calm), model.scale.z), min(1.0, 12.0 * dt))
@@ -192,4 +254,15 @@ func _process(dt: float) -> void:
 	mood.scale = Vector3.ONE * (0.6 + 0.9 * state.strength) * LOOK
 	mood.rotation.y += dt * (4.0 if shape == "block" else 1.0) * calm
 	mood.position.x = sin(t * 40.0) * 0.006 * calm if shape == "spike" else 0.0
-	sign.text = "z" if state.asleep else (emote if emote_age < EMOTE_S + 0.6 else "")
+	sign.text = "" if state.asleep else (DOES.get(emote, emote) if emote_age < EMOTE_S + 0.6 else "")
+	for k in zs.size():  # each z rises from the head, drifts, grows from z to Z, and fades: a stream of them
+		var z := zs[k]
+		z.visible = state.asleep
+		if state.asleep:
+			var u := fmod(t * 0.3 * (0.5 + 0.5 * calm) + float(k) / zs.size(), 1.0)
+			z.text = "z" if u < 0.45 else "Z"
+			z.position = Vector3(0.0, 0.2 * LOOK, 0.0) + Vector3(0.04 + 0.12 * u + sin(u * 7.0) * 0.02, 0.3 * u, 0.0) * LOOK
+			z.pixel_size = 0.0012 + 0.0026 * u
+			var there: float = min(1.0, u * 6.0) * sqrt(1.0 - u)  # in quickly, out slowly
+			z.modulate = Color(Color.WHITE, there)
+			z.outline_modulate = Color(Ink.NAVY, there)

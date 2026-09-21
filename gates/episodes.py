@@ -7,32 +7,10 @@ from contextlib import ExitStack, closing
 import numpy as np
 
 from body import frames
+from body.frames import free_port_base  # noqa: F401  (gates import it from here)
 from body.contract import Client
 from body.stub2d.stub import DT, Stub
 from brain.server import BrainServer
-
-
-def free_port_base(wanted: int, count: int, tries: int = 40) -> int:
-    """A block of `count` UDP ports nobody else holds, starting at or after `wanted`.
-
-    Gates bind a port per duck and two running at once used to collide on the default, which kills one
-    of them partway through a long run. Asking the operating system is cheaper than remembering.
-    """
-    for attempt in range(tries):
-        base = wanted + attempt * 64
-        probes = []
-        try:
-            for i in range(count):
-                sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                sock.bind((frames.HOST, base + i))
-                probes.append(sock)
-            return base
-        except OSError:
-            continue
-        finally:
-            for sock in probes:
-                sock.close()
-    raise OSError(f"no free block of {count} ports from {wanted}")
 
 
 def run(W, ann, sets, episodes: list[dict], max_s: float, seed: int, port_base: int = 7700, until=None,

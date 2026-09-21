@@ -43,12 +43,13 @@ from world.fields import (DAY_S, SHORE_M, SIZE_M, TREE, DUCK_R, World, contacts,
 # The garden people watch is bigger than the one the gates measure in (Chris, 2026-09-21: 4 m was cramped for
 # five ducks), and laid out after the Chao gardens of Sonic Adventure 2: a big pond tucked into the back
 # corner, where a viewer can put a waterfall and cliffs behind it, the fruit tree on the other side of the
-# back, and the lawn in front left open, with the dish, the music and the stink spread along it. The rocks are
+# back, and the lawn in front left open, with the dish and the stink on it. The rocks are
 # the foot of that waterfall, stepping up from the pond's edge into the corner: solid, so no duck walks through
-# what a viewer draws there.
+# what a viewer draws there. They stand on the shore and not in the water: the first ones reached half a metre
+# into the pond, so every duck swimming or asleep at that end looked pressed against the waterfall (2026-09-21).
 DEMO_GARDEN = dict(size=6.0, tree=(1.5, 4.3, 0.9), food_xy=((3.0, 2.2),), bites=10, danger_xy=((4.9, 1.3),),
-                   pond=(4.5, 4.4, 1.2), rocks=((5.2, 5.45, 0.55), (5.8, 5.55, 0.62), (5.85, 6.15, 0.7)), fruit_every_s=10.0, wind=(0.0, -1.0), wind_turns_s=0.7 * DAY_S,
-                   music=(1.1, 1.2))
+                   pond=(4.5, 4.4, 1.2), rocks=((5.5, 5.47, 0.42), (5.95, 5.9, 0.55)), fruit_every_s=10.0, wind=(0.0, -1.0), wind_turns_s=0.7 * DAY_S,
+                   music=None)  # the music box is the player's to put down (M), and to pick up again
 
 DT = 0.02
 # ponytail: guessed limits standing in for robotd's clamps; replace with the sim's real ones at Gate 10
@@ -56,15 +57,50 @@ MAX_V, MAX_VY, MAX_VYAW = 0.3, 0.15, 2.0
 ANTENNA = np.array([0.06, 0.05])  # forward, lateral offset of each odor sample, metres
 CONTROL_PARAMS = {"sim.step": {"n": 1}, "sim.state": {}, "garden.shake_tree": {}, "garden.pet": {"duck": 0},
                   "garden.scare": {}, "garden.hand": {"x": 0.0, "y": 0.0, "feed": 0},
-                  "garden.music": {"x": 0.0, "y": 0.0, "on": 1}, "garden.hat": {"duck": 0, "on": 1}}
+                  "garden.music": {"x": 0.0, "y": 0.0, "on": 1}, "garden.hat": {"duck": 0, "on": 1},
+                  "garden.drop_hat": {"x": 0.0, "y": 0.0}}
 SHAKE_FRUIT = 2
 PUSH_M = 0.15
 DOWN_S = 10.0  # a kicked duck goes over, and this is about how long a microduck takes to get back on its feet
 SWIM_SPEED = 0.5  # fraction of commanded speed while swimming
 SOUND_TAGS = {"alarm", "greet", "inquire", "peck", "chirp", "coo", "wheee"}  # microduck's voice bank
+SIT_AFTER_S = 3.0  # a duck that has not moved for this long is drawn sitting (body/mujoco/adapter.py really sits)
+HAT_REACH_M = 0.25  # a hat on the ground nearer than this is one a duck could put on
 BITE_S = 0.5  # ground_pick takes this long, so at most one bite per BITE_S
 # "headbutt", "drink", "preen" and "zoomies" are our names for what a duck does; this body acts the first three
 # out in the garden and ignores the last. "emote_<feeling>" (brain/emotes.py) it writes down for the viewer to show. body/mujoco/adapter.py maps them onto the robot's own skills.
+
+# How a duck acts out each feeling (brain/emotes.py), in every body: a voice tag, and its head through a few poses, each
+# (seconds after the last, neck_pitch, head_pitch, head_yaw, head_roll) in radians, pitch positive down. The
+# head works sitting as well as standing, so a duck at rest still shows what it feels. Every one ends level.
+# One definition, on the robot's own four head joints: this body records the poses, the MuJoCo body forwards
+# them to the robot, and a viewer draws whatever the head was told. There were two, one here for the robot and
+# a looser one in Godot for a cartoon duck, and the same feeling looked different in each (Chris, 2026-09-21).
+# ponytail: drawn by eye on the simulated duck; a real one's neck will want these re-posed.
+LEVEL = (0.0, 0.0, 0.0, 0.0)
+EMOTE_ACTS = {
+    "happy": ("wheee", [(0.0, -0.1, -0.2, 0.0, 0.3), (0.3, -0.1, -0.2, 0.0, -0.3), (0.3, -0.1, -0.2, 0.0, 0.3),
+                        (0.3, -0.1, -0.2, 0.0, -0.3)]),
+    "playful": ("wheee", [(0.0, 0.0, -0.2, 0.4, 0.3), (0.3, 0.0, -0.2, -0.4, -0.3), (0.3, 0.0, -0.2, 0.4, 0.3)]),
+    "scared": ("alarm", [(0.0, 0.3, 0.3, 0.0, 0.0), (0.4, 0.3, 0.3, 0.5, 0.0), (0.4, 0.3, 0.3, -0.5, 0.0), (0.6, 0.3, 0.3, 0.0, 0.0)]),
+    "angry": ("alarm", [(0.0, -0.2, 0.0, 0.0, 0.0), (0.25, 0.3, 0.2, 0.0, 0.0), (0.25, -0.2, 0.0, 0.0, 0.0), (0.25, 0.3, 0.2, 0.0, 0.0)]),
+    "sad": ("coo", [(0.0, 0.3, 0.4, 0.0, 0.0), (1.0, 0.3, 0.4, 0.2, 0.0), (1.0, 0.3, 0.4, -0.2, 0.0), (1.0, 0.3, 0.4, 0.0, 0.0)]),
+    "lonely": ("inquire", [(0.0, -0.2, -0.2, 0.6, 0.0), (0.9, -0.2, -0.2, -0.6, 0.0), (0.9, 0.2, 0.3, 0.0, 0.0), (0.8, 0.2, 0.3, 0.0, 0.0)]),
+    "bored": ("inquire", [(0.0, 0.0, 0.0, 0.6, 0.0), (1.0, 0.0, 0.0, -0.6, 0.0), (1.0, 0.0, 0.2, 0.0, 0.2), (0.8, 0.0, 0.2, 0.0, 0.2)]),
+    "hungry": ("peck", [(0.0, 0.3, 0.4, 0.0, 0.0), (0.3, 0.0, 0.0, 0.0, 0.0), (0.3, 0.3, 0.4, 0.0, 0.0), (0.3, 0.0, 0.0, 0.0, 0.0)]),
+    "thirsty": ("chirp", [(0.0, 0.3, 0.4, 0.0, 0.0), (0.5, -0.2, -0.4, 0.0, 0.0), (0.7, -0.2, -0.4, 0.0, 0.0)]),
+    "sleepy": ("coo", [(0.0, 0.2, 0.4, 0.0, 0.1), (0.8, 0.0, 0.0, 0.0, 0.0), (0.4, 0.3, 0.4, 0.0, 0.1), (1.0, 0.3, 0.4, 0.0, 0.1)]),
+    "curious": ("chirp", [(0.0, -0.1, 0.0, 0.3, 0.4), (1.0, -0.1, 0.0, -0.3, -0.4), (1.0, -0.1, 0.0, -0.3, -0.4)]),
+    "proud": ("greet", [(0.0, -0.3, -0.3, 0.0, 0.0), (0.6, -0.3, -0.3, 0.5, 0.0), (0.6, -0.3, -0.3, -0.5, 0.0), (0.6, -0.3, -0.3, 0.0, 0.0)]),
+    # the signatures (brain/emotes.py): a stamp of the head, a long yawn, dips in the water, a song, a shiver
+    "stomp": ("alarm", [(0.0, -0.2, -0.2, 0.0, 0.0), (0.2, 0.35, 0.3, 0.0, 0.0), (0.2, -0.2, -0.2, 0.0, 0.0), (0.2, 0.35, 0.3, 0.0, 0.0)]),
+    "yawn": ("coo", [(0.0, -0.25, -0.5, 0.0, 0.1), (1.2, -0.3, -0.6, 0.0, 0.15), (0.8, 0.2, 0.3, 0.0, 0.0)]),
+    "splash": ("wheee", [(0.0, 0.4, 0.5, 0.0, 0.0), (0.2, -0.2, -0.3, 0.0, 0.0), (0.2, 0.4, 0.5, 0.0, 0.0), (0.2, -0.2, -0.3, 0.0, 0.0)]),
+    "sing": ("chirp", [(0.0, -0.25, -0.4, 0.35, 0.0), (0.35, -0.25, -0.4, -0.35, 0.0), (0.35, -0.25, -0.4, 0.35, 0.0),
+                       (0.35, -0.25, -0.4, -0.35, 0.0)]),
+    "cower": ("inquire", [(0.0, 0.45, 0.5, 0.0, 0.0), (0.3, 0.45, 0.5, 0.15, 0.0), (0.15, 0.45, 0.5, -0.15, 0.0),
+                          (0.15, 0.45, 0.5, 0.15, 0.0), (0.15, 0.45, 0.5, -0.15, 0.0), (0.8, 0.45, 0.5, 0.0, 0.0)]),
+}
 
 
 class Stub:
@@ -82,10 +118,16 @@ class Stub:
         self.eaten = []  # (t, duck)
         self.headbutts = []  # (t, attacker, victim)
         self.emotes = []  # (t, duck, feeling)
+        self.acting = [[] for _ in range(n)]  # head poses still to come in an emote, as (garden time, pose)
         self.bumped = np.zeros(n, bool)
         self.petted = np.zeros(n, bool)
         self.scared = np.zeros(n, bool)
         self.hats = np.zeros(n, bool)
+        self.still_for = np.zeros(n)  # seconds since it last moved, for posture()
+        self.hat_style = np.full(n, -1)  # which hat each wears: a number a viewer makes a hat from; -1 for none
+        self.hat_items = []  # hats lying in the garden, as [x, y, style], for a duck to put on if it likes
+        self.donned = []  # (t, duck) each time one puts a hat on
+        self.hat_rng = np.random.default_rng(seed + 2)
         self.preened = []  # (t, duck) each time one is shaken off
         self.pets = []  # (t, duck)
         self.ate = np.zeros(n, bool)
@@ -138,10 +180,36 @@ class Stub:
         elif p["skill"] == "drink":
             self._drink(i)
         elif p["skill"].startswith("emote_"):
-            self.emotes.append((self.t, i, p["skill"][len("emote_"):]))
+            self._emote(i, p["skill"][len("emote_"):])
+        elif p["skill"] == "wear" and not self.hats[i]:
+            near = [k for k, (x, y, _) in enumerate(self.hat_items) if np.hypot(x - self.pose[i, 0], y - self.pose[i, 1]) < HAT_REACH_M]
+            if near:
+                self.hats[i], self.hat_style[i] = True, self.hat_items.pop(near[0])[2]
+                self.donned.append((self.t, i))
         elif p["skill"] == "preen" and self.hats[i]:
-            self.hats[i] = False  # shaken off
+            self.hats[i] = False  # shaken off, and it lands where the duck stands, for whoever wants it next
+            self.hat_items.append([float(self.pose[i, 0]), float(self.pose[i, 1]), int(max(self.hat_style[i], 0))])
+            self.hat_style[i] = -1
             self.preened.append((self.t, i))
+
+    def _emote(self, i: int, feeling: str) -> None:
+        """Act a feeling out: say it, and queue the head's poses for step() to play. One at a time, and not
+        in its sleep."""
+        if self.acting[i] or self.relaxed[i]:
+            return
+        tag, poses = EMOTE_ACTS[feeling]
+        self.emotes.append((self.t, i, feeling))
+        self._sound(i, {"tag": tag})
+        at = self.t
+        for after, *pose in poses + [(0.5, *LEVEL)]:
+            at += after
+            self.acting[i].append((at, pose))
+
+    def _act(self) -> None:
+        """Turn the head to whichever queued poses have come due."""
+        for i, queue in enumerate(self.acting):
+            while queue and queue[0][0] <= self.t:
+                self._head(i, dict(zip(ROBOT_PARAMS["robot.head"], queue.pop(0)[1])))
 
     def _sound(self, i: int, p: dict) -> None:
         if p["tag"] not in SOUND_TAGS:
@@ -169,9 +237,17 @@ class Stub:
         if shore and self.t - self.last_bite[i] >= BITE_S:
             self.last_bite[i], self.drank[i] = self.t, True
 
+    def articulation(self) -> list[dict]:
+        """Per duck, what a jointed body knows of itself, for a viewer: nothing here, so a viewer poses the
+        duck by rule. The MuJoCo body gives the robot's joints, height and lean."""
+        return [{} for _ in self.names]
+
     def posture(self) -> list[str]:
-        """Per duck, "up", "sat" or "down", for a viewer to draw. This body has no sitting."""
-        return ["down" if self.t < until else "up" for until in self.down_until]
+        """Per duck, "up", "sat" or "down", for a viewer to draw. A duck that has stood still for SIT_AFTER_S
+        has sat down, as the robots do. Here that is only how it is drawn: it is up and walking the step it
+        wants to be, so nothing a gate measures moves."""
+        return ["down" if self.t < until else "sat" if still > SIT_AFTER_S else "up"
+                for until, still in zip(self.down_until, self.still_for)]
 
     def _swimming(self) -> np.ndarray:
         return self.world.pond_distance(self.pose[:, :2]) < -SHORE_M
@@ -206,7 +282,14 @@ class Stub:
         self.world.music = (float(p["x"]), float(p["y"])) if int(p["on"]) else None
 
     def _hat(self, p):
-        self.hats[int(p["duck"])] = bool(int(p["on"]))
+        """The player's hand putting a hat on a duck, or taking it away."""
+        i = int(p["duck"])
+        self.hats[i] = bool(int(p["on"]))
+        self.hat_style[i] = int(self.hat_rng.integers(1_000_000)) if self.hats[i] else -1
+
+    def _drop_hat(self, p):
+        """A hat left in the garden, no two alike. Whether anyone wears it is up to the ducks."""
+        self.hat_items.append([float(p["x"]), float(p["y"]), int(self.hat_rng.integers(1_000_000))])
 
     def _scare(self, p):
         self.scared[:] = True  # a clap: everything in the garden hears it
@@ -226,6 +309,7 @@ class Stub:
 
     def _control_call(self, method, p):
         handlers = {"garden.pet": self._pet, "garden.music": self._place_music, "garden.hat": self._hat,
+                    "garden.drop_hat": self._drop_hat,
                     "garden.scare": self._scare, "garden.hand": self._hand, "sim.step": self._sim_step,
                     "garden.shake_tree": lambda p: {"fell": self.shake_tree()}, "sim.state": lambda p: self.state()}
         return handlers[method](p) or {}
@@ -236,8 +320,10 @@ class Stub:
         h += vyaw * DT
         x += (vx * np.cos(h) - vy * np.sin(h)) * DT
         y += (vx * np.sin(h) + vy * np.cos(h)) * DT
+        self.still_for = np.where(np.hypot(vx, vy) > 0.01, 0.0, self.still_for + DT)
         np.clip(self.pose[:, :2], DUCK_R, self.world.size - DUCK_R, out=self.pose[:, :2])
         self.world.push_out(self.pose[:, :2], DUCK_R)
+        self._act()
         self.pose[:, 2] = (h + np.pi) % (2 * np.pi) - np.pi
         self.world.step(self.t)
         self.t += DT
@@ -271,6 +357,8 @@ class Stub:
         self.bumped[:] = self.ate[:] = self.drank[:] = self.petted[:] = self.scared[:] = False
         sense["light"] = np.full(len(xy), light)
         sense["hat"] = self.hats.astype(float)
+        lying = np.array([h[:2] for h in self.hat_items], float).reshape(-1, 2)
+        sense["hat_near"] = (np.linalg.norm(xy[:, None] - lying[None], axis=-1) < HAT_REACH_M).any(axis=1).astype(float)
         sense["wind"], sense["wind_from"] = wind_on(h, w.wind)
         for i in range(len(xy)):
             self.udp.sendto(frames.pack(
@@ -297,6 +385,8 @@ def main() -> None:
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--sock-dir", default=os.path.expanduser("~/.cache/micro-garden"))
     ap.add_argument("--view", action="store_true")
+    ap.add_argument("--frame-port", type=int, default=frames.FRAME_PORT,
+                    help="first UDP port to try for the ducks' senses; a free block at or after it is used")
     ap.add_argument("--godot", action="store_true", help="publish the world for the Godot garden (viewer/godot/)")
     ap.add_argument("--wander", action="store_true", help="random walk every 0.5 s, for watching the stub alone")
     ap.add_argument("--brain", action="store_true",
@@ -315,7 +405,8 @@ def main() -> None:
                          "ignore any save, and print who was who on exit")
     args = ap.parse_args()
     os.makedirs(args.sock_dir, exist_ok=True)
-    stub = Stub(args.ducks, args.seed, args.sock_dir, **DEMO_GARDEN)
+    args.frame_port = frames.free_port_base(args.frame_port, args.ducks)  # never the ports of a garden that is up
+    stub = Stub(args.ducks, args.seed, args.sock_dir, frame_port=args.frame_port, **DEMO_GARDEN)
     print(f"sockets in {args.sock_dir}: {', '.join(stub.names)}, control")
     view = None
     if args.view:
@@ -332,7 +423,7 @@ def main() -> None:
         labels = (args.labels.split(",") * args.ducks)[:args.ducks]
         if args.blind:
             labels = list(np.random.default_rng().permutation(labels))  # unseeded on purpose
-        bodies = [(os.path.join(args.sock_dir, f"{name}.sock"), frames.FRAME_PORT + i)
+        bodies = [(os.path.join(args.sock_dir, f"{name}.sock"), args.frame_port + i)
                   for i, name in enumerate(stub.names)]
         server = BrainServer(W, ann, named_sets(ann), bodies, args.seed, learns=args.learns,
                              personality=stack([preset(x, rng_k) for x in labels]))

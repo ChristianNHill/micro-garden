@@ -85,6 +85,7 @@ class Physiology:
         self.body_temp = full(body_temp)
         self.asleep = np.zeros(n, bool)
         self.alone_s = np.zeros(n)
+        self.swimming = np.zeros(n, bool)
         self.joy, self.fear, self.sorrow = full(0.0), full(0.0), full(0.0)
         self.anger = full(provoked)
         self.scent, self.scent_was = full(0.0), full(0.0)
@@ -93,6 +94,7 @@ class Physiology:
         """f: frame records (structured array); escaped and speed: per duck, from the last step."""
         k = self.k
         ate, drank, bumped, swimming = (f[name] > 0 for name in ("ate", "drank", "bumped", "swimming"))
+        self.swimming = np.asarray(swimming)  # kept for what a duck shows of itself (brain/emotes.py)
         touching = (f["touch_left"] + f["touch_right"]) > 0
         ambient = (f["temp_left"] + f["temp_right"]) / 2
         escaped = np.asarray(escaped, bool)

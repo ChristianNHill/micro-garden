@@ -105,9 +105,22 @@ def main() -> int:
         gap = float(np.hypot(*(rocky.pose[0, :2] - 2.0)) - 0.5)
         rocky.close()
     print(f"a duck walking at a rock for 8 s stops {gap:.3f} m from it")
+    with tempfile.TemporaryDirectory() as d:  # an emote is head poses, played in order and ending level, one at a time
+        actor = Stub(2, 0, d, food_xy=[], frame_port=PORT_BASE + 9)
+        for feeling in ("curious", "happy"):  # the second is refused: the first is still playing
+            actor._do(0, {"skill": f"emote_{feeling}"})
+        heads = []
+        for _ in range(250):
+            actor.step()
+            heads.append(actor.head.copy())
+        heads = np.array(heads)
+        emoted = (np.abs(heads[:, 0]).max() > 0.3 and not heads[-1].any() and not heads[:, 1].any()
+                  and [e[2] for e in actor.emotes] == ["curious"])
+        actor.close()
 
     checks = {
         "a rock stops a duck at its edge": 0.06 < gap < 0.1,
+        "an emote moves that duck's head through its poses and back to level": bool(emoted),
         "same seed, identical final poses": np.array_equal(pose_a, pose_b),
         "different seed, different poses": not np.array_equal(pose_a, pose_c),
         "every duck moved": (np.linalg.norm(pose_a[:, :2] - start[:, :2], axis=1) > 0.1).all(),

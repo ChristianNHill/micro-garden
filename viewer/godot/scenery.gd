@@ -72,7 +72,10 @@ static func palm(root: Node3D, at: Vector3, height: float, rng: RandomNumberGene
 		frond.translate_object_local(Vector3(0, -0.35, 0))
 
 
-static func build(root: Node3D, snap: Dictionary, falls: Array) -> void:
+static func build(root: Node3D, snap: Dictionary, falls: Array, viewer: Vector3) -> Vector3:
+	# Returns the top of the cliff rock nearest `viewer` (where the camera starts), which is where the garden's
+	# flag goes: near enough to read.
+	var summit := Vector3.INF
 	var size: float = snap.size
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 11
@@ -95,6 +98,8 @@ static func build(root: Node3D, snap: Dictionary, falls: Array) -> void:
 			var out: float = r * 0.78 + rng.randf_range(0.0, 0.25)
 			var at := Vector3(along, -0.3, -(size + out)) if edge == 0 else Vector3(size + out, -0.3, -along)
 			place_lump(root, at, r, h, rng)
+			if summit == Vector3.INF or (at - viewer).length() < (summit - viewer).length():
+				summit = at + Vector3(0, h, 0)
 			if rng.randf() < 0.3:
 				palm(root, at + Vector3(rng.randf_range(-0.3, 0.3), h - 0.25, rng.randf_range(-0.3, 0.3)), rng.randf_range(0.5, 0.9), rng)
 			along += r * 1.25
@@ -162,3 +167,4 @@ static func build(root: Node3D, snap: Dictionary, falls: Array) -> void:
 	Ink.part(root, Ink.cone(0.1, 1.0, 0.07, 6), WOOD, trunk + Vector3(0, 0.5, 0), Vector3.ONE, 7.0, -1.0, true)
 	for blob in [[0.0, 1.2, 0.0, 0.6], [0.32, 1.05, 0.14, 0.42], [-0.3, 1.1, -0.18, 0.45], [0.03, 1.6, 0.04, 0.38]]:
 		Ink.part(root, Ink.ball(blob[3], 7), FROND, trunk + Vector3(blob[0], blob[1], blob[2]), Vector3(1, 0.8, 1), 8.0, -1.0, true).material_override.set_shader_parameter("lift", 0.15)
+	return summit

@@ -19,6 +19,7 @@ import torch
 from body import frames
 from body.contract import Client
 from brain import emotes
+from brain.brainview import BrainView
 from brain.data import load_connectome, named_sets, shuffled
 from brain.decoder import Decoder
 from brain.encoder import graded as graded_senses
@@ -55,6 +56,8 @@ NO_SPIKES = np.empty(0, np.int64)  # every sense is graded now; nothing is injec
 SCARE_LEVEL = 0.8  # a clap, straight onto the looming detectors
 # ... for as long as a clap lasts. The body reports it on one step, 20 ms, and driven for only that the giant
 # fiber gave 2 or 3 spikes, so two claps in three startled nobody; over 200 ms it gives 7 to 9 (bench, 2026-09-20).
+WEAR_P = (0.1, 0.95)  # chance a duck puts on a hat it comes upon, at no vanity and at full
+HAT_SHY_S = 30.0
 CLAP_S = 0.2
 SIDED = ["orn_food", "orn_danger", "moist_air", "dry_air", "heat", "cold", "bristle", "orn_pheromone",
          "jo_push", "jo_pull"]
@@ -142,6 +145,9 @@ class BrainServer:
         self.possessed = np.zeros(self.n, bool)
         self.zooming = np.zeros(self.n, bool)
         self.emote_rng = np.random.default_rng(seed + 7)  # its own, so emotes leave the senses' noise as it was
+        self.brainview = BrainView(ann, self.sets, self.brain.dev)  # for a viewer; idle until a duck is watched
+        self.hat_was_near = np.zeros(self.n, bool)
+        self.hat_shy_until = np.zeros(self.n)  # a duck that has just shaken a hat off leaves hats alone a while
         self.emote_at = self.emote_rng.uniform(0, emotes.EVERY_S, self.n)  # staggered, so five ducks do not emote as one
         self.t = 0.0
 
@@ -191,6 +197,7 @@ class BrainServer:
             spk = self.brain.step(NO_SPIKES, NO_SPIKES, graded=drive, plastic=self.plastic)
             if self.plastic is not None:
                 self.plastic.step(spk, reward, punish)
+            self.brainview.tick(spk)
             intents = self.decoder.update(spk)
             self.escaped |= [it["escape"] for it in intents]
         self.last_vx = np.array([it["vx"] for it in intents])
@@ -251,6 +258,14 @@ class BrainServer:
             send("robot.do", skill="headbutt")
         if it["preen"]:
             send("robot.do", skill="preen")
+            self.hat_shy_until[i] = self.t + HAT_SHY_S
+        # A hat lying in the garden is the duck's to put on or walk past (Chris, 2026-09-21). It decides once,
+        # as it comes upon one, and vanity is the chance: explicit, like shedding one, and a scale like it.
+        near = f["hat_near"] > 0
+        if near and not self.hat_was_near[i] and f["hat"] == 0 and not self.body.asleep[i] and self.t >= self.hat_shy_until[i]:
+            if self.emote_rng.random() < WEAR_P[0] + (WEAR_P[1] - WEAR_P[0]) * float(self.body.k["vanity"][i]):
+                send("robot.do", skill="wear")
+        self.hat_was_near[i] = near
         if it["zoomies"] and not self.zooming[i]:  # once, as they start; a body shows them how it likes
             send("robot.do", skill="zoomies")
         self.zooming[i] = it["zoomies"]

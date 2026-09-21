@@ -62,6 +62,7 @@ COMPANIONSHIP_VYAW = 1.5
 # a duck keeps its fear and its temper and they no longer steer it by the others, which is the control to
 # measure them against.
 FLEE, CHASE = 1.0, 1.0
+PURSUE_VX = 0.2  # m/s an angry duck closes on another at: brisk, and short of the run that overshot
 MUSIC_VYAW = 1.5  # rad/s toward the louder ear at full music affinity, and away from it at none
 GROOM_HZ = 0.4  # grooming DN rate at which a duck is fussing with its head enough to shed a hat
 PREEN_REROLL_TICKS = 500  # a hatted duck reconsiders the thing on its head every 5 s, as it does wading
@@ -183,12 +184,16 @@ class Decoder:
         vx = np.where(feeding, 0.0, vx)  # stop to eat
         # A frightened duck runs from the other ducks (Chris, 2026-09-21), as far as it can smell any: fear
         # picks a duck's feet up, the way a stink does. An angry one turns after them (below) and does not
-        # run: running, it overshot the duck it was after, and at the top of the aggressiveness dial landed 2
+        # run at them: running, it overshot the duck it was after, and at the top of the aggressiveness dial landed 2
         # blows in 10 meetings where it lands 6 without, and lost the dish it was fighting over (Gate 4c).
         # It already runs when it strikes.
         ducks_near = np.clip((b("duck_left", 0.0) + b("duck_right", 0.0)) / 2, 0, 1)
         fled, chased = FLEE * np.clip(b("fear", 0.0), 0, 1), CHASE * aggression
         vx = vx + (RUN_VX - np.maximum(vx, 0)) * fled * ducks_near * (vx >= 0)
+        # Pursuit is closing the gap, so it ends at the gap: an angry duck hurries towards a duck it can smell
+        # and is not yet touching, at PURSUE_VX, and at arm's length it is back to its own pace and its blows.
+        apart = ~(r[TOUCH_L] + r[TOUCH_R] > TOUCH_HZ)
+        vx = vx + (PURSUE_VX - np.minimum(np.maximum(vx, 0), PURSUE_VX)) * chased * ducks_near * apart * (vx >= 0)
         vx = np.where(attack, RUN_VX, vx)
         vx = np.where(asleep, 0.0, vx)
 

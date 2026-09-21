@@ -24,6 +24,7 @@ FRAME = np.dtype([
     ("light", "<f4"),  # how light the garden is, 0 at night and 1 in the day
     ("music_left", "<f4"), ("music_right", "<f4"),  # how loud the music is at each ear (Gate 8b)
     ("hat", "<f4"),  # 1 while this duck is wearing a hat
+    ("hat_near", "<f4"),  # 1 while a hat lies on the ground within this duck's reach
     # The wind on the antennae: how hard it blows, 0 to 1, and where it comes from, in radians off the
     # nose and positive to the left. A still garden sends zeros.
     ("wind", "<f4"), ("wind_from", "<f4"),
@@ -54,6 +55,30 @@ def pack(**fields) -> bytes:
 
 def unpack(data: bytes) -> np.void:
     return np.frombuffer(data, FRAME)[0]
+
+
+def free_port_base(wanted: int, count: int, tries: int = 40) -> int:
+    """A block of `count` UDP ports nobody else holds, starting at or after `wanted`.
+
+    Gates bind a port per duck and two running at once used to collide on the default, which kills one
+    of them partway through a long run. Asking the operating system is cheaper than remembering. A garden
+    someone is watching asks too: a fixed 7700 put a watched garden and a gate on the same ports (2026-09-21).
+    """
+    for attempt in range(tries):
+        base = wanted + attempt * 64
+        probes = []
+        try:
+            for i in range(count):
+                sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                sock.bind((HOST, base + i))
+                probes.append(sock)
+            return base
+        except OSError:
+            continue
+        finally:
+            for sock in probes:
+                sock.close()
+    raise OSError(f"no free block of {count} ports from {wanted}")
 
 
 def receiver(port: int) -> socket.socket:

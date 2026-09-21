@@ -5,7 +5,7 @@
 # After `--`:
 #   --orbit=yaw,pitch,distance  where the camera starts       --ride=N   start on duck N's back, --select=N beside it
 #   --reduced-motion            a still camera, half the animation       --mute     no sound
-#   --light=0.1                 draw that daylight whatever the hour, to look at the night
+#   --light=0.1                 draw that daylight whatever the hour, to look at the night; --asleep=N draws duck N asleep
 #   --port=N                    listen there, for a garden started with MICRO_GARDEN_PORT=N
 #   --shot=file.png             save the window after --shot-after=S seconds (6 by default)
 #   --feed-at=x,y               drop food there once snapshots arrive, and --quit-after=S: both for Gate 13
@@ -14,6 +14,8 @@ extends Node3D
 const Ink := preload("res://ink.gd")
 const Duck := preload("res://duck.gd")
 const Scenery := preload("res://scenery.gd")
+const Hats := preload("res://hats.gd")
+const BrainView := preload("res://brainview.gd")
 const SNAPSHOT_PORT := 7650  # actions go back on the next one up; --port moves the pair
 const PITCH := Vector2(0.35, 1.25)  # radians above the horizon the camera may sit
 const DRIFT := 0.12  # radians the idle camera sways either way
@@ -24,6 +26,7 @@ var snap := {}
 var got := 0
 var ducks: Array = []
 var selected := -1
+var flag := Node3D.new()  # turns to the wind
 var falls: Array = []  # the waterfall's sheets of water, which shimmer
 var props := {}  # what is in the garden now, by kind, as the nodes drawn for it
 
@@ -42,6 +45,10 @@ var water := AudioStreamPlayer.new()  # the pond: soft brown noise that swells a
 var water_level := 0.0
 var water_t := 0.0
 
+var bars := Control.new()  # the selected duck's needs, moods and wants, as bars under its card
+var brain := Control.new()  # the selected duck's brain, firing
+var watching := -2  # whose brain the garden was last asked for
+var asked := 0.0
 var overlay := Control.new()  # the ride view's retinas and descending-neuron bars; O hides it
 var card := Label.new()
 var toasts := Label.new()
@@ -71,6 +78,12 @@ func _ready() -> void:
 		paper.set_content_margin_all(8)
 		label.add_theme_stylebox_override("normal", paper)
 		ui.add_child(label)
+	bars.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bars.draw.connect(_draw_bars)
+	ui.add_child(bars)
+	brain.set_script(BrainView)
+	ui.add_child(brain)
+	brain.visible = false
 	overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
 	overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	overlay.draw.connect(_draw_overlay)
@@ -121,6 +134,8 @@ func _process(dt: float) -> void:
 			snap = parsed
 			if args.has("light"):  # for looking at the night without waiting for it
 				snap.light = float(args["light"])
+			if args.has("asleep"):  # and at a sleeper without waiting for one
+				snap.ducks[int(args["asleep"])].asleep = true
 			if first:
 				_build()
 			_show(first)
@@ -132,7 +147,13 @@ func _build() -> void:
 	var size: float = snap.size
 	if not args.has("orbit"):
 		orbit = Vector3(2.2, 0.5, 1.7 * size)  # from the open front of the lawn, looking into the bowl
-	Scenery.build(self, snap, falls)
+	var eye := Vector3(size / 2, 0, -size / 2) + Vector3(cos(orbit.x), 0, sin(orbit.x)) * orbit.z
+	var summit := Scenery.build(self, snap, falls, eye)
+	# a white flag on the cliff rock nearest the viewer, flying the way the breeze goes (it is the breeze the ducks smell by)
+	var pole := Ink.part(self, Ink.cone(0.035, 1.5, 0.028, 5), Scenery.WOOD, summit + Vector3(0, 0.7, 0), Vector3.ONE, 7.0)
+	flag.position = summit + Vector3(0, 1.22, 0)
+	add_child(flag)
+	Ink.part(flag, BoxMesh.new(), Color.WHITE, Vector3(0.42, 0, 0), Vector3(0.84, 0.46, 0.02), 7.0, -1.0, true).material_override.set_shader_parameter("lift", 0.4)
 	for i in snap.ducks.size():
 		var d := Node3D.new()
 		d.set_script(Duck)
@@ -159,6 +180,10 @@ func _show(first: bool) -> void:
 		ducks[i].show_state(snap.ducks[i], first)
 		ducks[i].ring.visible = i == selected and not possessing
 	_props("food", snap.food, _fruit)
+	_props("hats", snap.get("hats", []), func(n: Node3D, h: Array) -> void:
+		var lying := Hats.make(int(h[2]))
+		lying.scale = Vector3.ONE * 1.9  # the size it is on a duck's head, which is drawn that much over life
+		n.add_child(lying))
 	_props("danger", snap.danger, func(n: Node3D, f: Array) -> void:
 		Ink.part(n, Ink.cone(0.22, 0.002, 0.22, 10), Ink.MUSTARD, Vector3(0, 0.003, 0), Vector3.ONE, 5.0, 0.3))
 	_props("music", [snap.music] if snap.music != null else [], func(n: Node3D, f: Array) -> void:
@@ -166,10 +191,27 @@ func _show(first: bool) -> void:
 		Ink.part(n, Ink.cone(0.02, 0.16, 0.1, 8), Ink.MUSTARD, Vector3(0.03, 0.18, 0), Vector3.ONE, 7.0, -1.0, true).rotation.z = -0.5)
 	_props("hand", [snap.hand] if snap.hand != null else [], func(n: Node3D, f: Array) -> void:
 		Ink.part(n, Ink.ball(0.12, 8), Ink.CREAM, Vector3(0, 0.3, 0), Vector3(1, 0.5, 1), 7.0, -1.0, true))
+	var wind = snap.get("wind")
+	var blowing: bool = wind != null and Vector2(wind[0], wind[1]).length() > 0.05
+	var flutter := sin(Time.get_ticks_msec() / 160.0) * 0.14 * calm
+	flag.rotation.y = lerp_angle(flag.rotation.y, (atan2(wind[1], wind[0]) if blowing else flag.rotation.y) + flutter, 0.08)
+	flag.rotation.z = lerp(flag.rotation.z, 0.0 if blowing else -1.35, 0.05)  # no wind, and it hangs
 	for i in falls.size():
 		falls[i].scale.z = 0.5 * (1.0 + 0.12 * calm * sin(Time.get_ticks_msec() / 130.0 + i * 1.7))
 	for n in props.get("music", []):
 		n.scale = Vector3.ONE * (1.0 + 0.06 * calm * sin(Time.get_ticks_msec() / 90.0))  # it plays
+	# ask for the selected duck's brain, and again every second in case the garden was restarted
+	asked += 0.02
+	if watching != selected or asked > 1.0:
+		watching = selected
+		asked = 0.0
+		_act("garden.watch", {"duck": selected})
+	brain.visible = selected >= 0 and snap.has("brain") and snap.brain.duck == selected
+	if brain.visible:
+		brain.show_brain(snap.brain, snap.ducks[selected].name)
+		brain.position = Vector2(get_viewport().get_visible_rect().size.x - brain.size.x - 20.0, 20.0)
+	bars.position = card.position + Vector2(0, card.size.y + 8.0)
+	bars.queue_redraw()
 	toasts.text = "\n".join(snap.toasts)
 	toasts.visible = not snap.toasts.is_empty()
 	overlay.queue_redraw()
@@ -182,11 +224,11 @@ func _show(first: bool) -> void:
 	if possessing:
 		_act("garden.wheel", {"duck": selected, "fwd": int(Input.is_key_pressed(KEY_W)) - int(Input.is_key_pressed(KEY_S)),
 			"turn": int(Input.is_key_pressed(KEY_A)) - int(Input.is_key_pressed(KEY_D))})
-	card.text = "click a duck, or the tree to shake it\nF  food at the mouse      C  clap      M  music"
+	card.text = "click a duck, or the tree to shake it\nF  food      H  a hat      M  the music box, down or up  (all at the mouse)      C  clap"
 	if selected >= 0:
 		var d: Dictionary = snap.ducks[selected]
-		card.text = "%s  %s\n%s\nhunger %d%%   thirst %d%%   sleep %d%%\n\nTab  ride it: W A S D steer, O hides its eyes\nP  pet      H  hat\nF  food at the mouse      C  clap      M  music" % [
-			d.name, d.label, ("asleep" if d.asleep else d.mood), d.hunger * 100, d.thirst * 100, d.sleepy * 100]
+		card.text = "%s  %s\n%s\n\nTab  ride it: W A S D steer, O hides its eyes\nP  pet\nF  food      H  a hat      M  the music box, down or up  (all at the mouse)      C  clap" % [
+			d.name, d.label, ("asleep" if d.asleep else d.mood)]
 
 
 func _fruit(n: Node3D, f: Array) -> void:
@@ -226,6 +268,35 @@ func _props(kind: String, items: Array, make: Callable) -> void:
 		props[kind] = nodes
 	for i in items.size():
 		nodes[i].position = Vector3(items[i][0], 0, -items[i][1])
+
+
+func _draw_bars() -> void:
+	# needs fill towards coral as they press, moods in mustard, wants in teal: three short lists, a bar each
+	if selected < 0 or snap.is_empty() or possessing:
+		return
+	var rows: Array = snap.ducks[selected].get("readout", [])
+	if rows.is_empty():
+		return
+	var tints := {"needs": Ink.CORAL, "moods": Ink.MUSTARD, "wants": Ink.TEAL}
+	var font := ThemeDB.fallback_font
+	var sections := 0
+	var last := ""
+	for row in rows:
+		sections += int(row[0] != last)
+		last = row[0]
+	bars.draw_rect(Rect2(0, 0, 300, rows.size() * 19.0 + sections * 24.0 + 10.0), Color(Ink.CREAM, 0.88))
+	var y := 6.0
+	last = ""
+	for row in rows:
+		if row[0] != last:
+			last = row[0]
+			bars.draw_string(font, Vector2(10, y + 15.0), last, HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Ink.NAVY)
+			y += 24.0
+		bars.draw_string(font, Vector2(10, y + 12.0), row[1], HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Ink.NAVY)
+		bars.draw_rect(Rect2(90, y + 2.0, 170, 11), Color(Ink.NAVY, 0.18))
+		bars.draw_rect(Rect2(90, y + 2.0, 170.0 * float(row[2]), 11), tints.get(last, Ink.NAVY))
+		bars.draw_string(font, Vector2(266, y + 12.0), "%d" % int(row[2] * 100.0), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Ink.NAVY)
+		y += 19.0
 
 
 func _draw_overlay() -> void:
@@ -372,9 +443,10 @@ func _key(code: int) -> void:
 			_act("garden.music", {"x": xy.x, "y": xy.y, "on": int(snap.music == null)})
 	elif selected >= 0 and code == KEY_P:
 		_act("garden.pet", {"duck": selected})
-	elif selected >= 0 and code == KEY_H:
-		_act("garden.hat", {"duck": selected, "on": int(not snap.ducks[selected].hat)})
-
+	elif code == KEY_H:  # a hat, no two alike, left where the mouse is; the ducks decide who wears it
+		var spot = _ground(get_viewport().get_mouse_position())
+		if spot != null:
+			_act("garden.drop_hat", {"x": spot.x, "y": spot.y})
 
 func _act(method: String, params: Dictionary) -> void:
 	out.put_packet(JSON.stringify({"method": method, "params": params}).to_utf8_buffer())

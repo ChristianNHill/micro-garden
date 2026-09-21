@@ -21,7 +21,10 @@ import numpy as np
 
 from body.stub2d.retina import HEX_AZ, HEX_EL
 from body.stub2d.stub import WHEEL_VX, WHEEL_VYAW
+from brain.brainview import POINTS
+from brain.emotes import phrase
 from brain.personality import label_of
+from brain.physiology import pressing
 from world.fields import DAY_S, daylight
 
 # Under the sensory frames, which take 7700 and up. MICRO_GARDEN_PORT moves the pair, for a second garden
@@ -40,7 +43,21 @@ _b64 = lambda a: base64.b64encode(np.asarray(a).tobytes()).decode()
 # where each of an eye's 721 columns looks, as signed bytes across the eye's field: sent with the view
 HEX = _b64(np.round(np.concatenate([HEX_AZ, HEX_EL]) / np.abs(HEX_AZ).max() * 127).astype(np.int8))
 TOAST_FORMATS = (("eaten", "{who} ate"), ("headbutts", "{who} shoved {other}"), ("pets", "{who} was petted"),
-                 ("emotes", "{who} looks {other}"))
+                 ("emotes", "{who} {other}"), ("donned", "{who} put a hat on"), ("preened", "{who} shook its hat off"))
+
+
+def readout(body, i: int) -> list:
+    """Duck i's needs, moods and wants as [section, name, 0 to 1] rows, for a viewer's bars: what the body
+    keeps, as it keeps it. A want is a like the duck is free to act on: it gives way as a need presses."""
+    hot, cold = (float(v[i]) for v in body.discomfort())
+    k = lambda name: float(body.k[name][i])
+    free = 1.0 - float(pressing(np.maximum(body.hunger, body.thirst))[i])
+    rows = [("needs", "hunger", body.hunger[i]), ("needs", "thirst", body.thirst[i]), ("needs", "sleep", body.sleep_pressure[i]),
+            ("needs", "tired", body.fatigue[i]), ("needs", "bored", body.boredom[i]), ("needs", "too hot", hot), ("needs", "too cold", cold),
+            ("moods", "joy", body.joy[i]), ("moods", "fear", body.fear[i]), ("moods", "anger", body.anger[i]), ("moods", "sorrow", body.sorrow[i]),
+            ("wants", "a swim", k("water_love") * (1 + hot) / 2 * free), ("wants", "company", k("sociability") * free),
+            ("wants", "music", k("music_affinity") * free), ("wants", "a hat", k("vanity")), ("wants", "to play", k("playfulness") * free)]
+    return [[section, name, round(float(np.clip(v, 0, 1)), 2)] for section, name, v in rows]
 
 
 class Snapshot:
@@ -52,6 +69,7 @@ class Snapshot:
         self.blind = blind
         self.seen = {key: 0 for key, _ in TOAST_FORMATS}
         self.toasts = []
+        self.watched = -1  # the duck the viewer has selected, whose readout and brain go along
         self.wheel = (-1, 0.0, 0.0, -np.inf)  # duck, forward, turn, and the garden time it was last asked for
 
     def close(self) -> None:
@@ -63,7 +81,8 @@ class Snapshot:
         for key, fmt in TOAST_FORMATS:
             events = getattr(stub, key)
             for e in events[self.seen[key]:]:
-                line = fmt.format(who=short(e[1]), other=short(e[2]) if len(e) > 2 else "")
+                other = phrase(e[2]) if key == "emotes" else short(e[2]) if len(e) > 2 else ""
+                line = fmt.format(who=short(e[1]), other=other)
                 if line not in self.toasts[-3:]:  # two ducks at a dish are two pieces of news, not twenty
                     self.toasts.append(line)
             self.seen[key] = len(events)
@@ -76,7 +95,7 @@ class Snapshot:
         last = lambda events: {e[1]: e for e in events[-4 * n:]}  # each duck's latest, from the recent few
         emotes, bites = last(stub.emotes), last(stub.eaten)
         w = stub.world
-        posture = stub.posture()
+        posture, joints = stub.posture(), stub.articulation()
         swimming = stub._swimming()
         ducks = []
         for i in range(n):
@@ -89,18 +108,23 @@ class Snapshot:
                 "x": round(float(stub.pose[i, 0]), 3), "y": round(float(stub.pose[i, 1]), 3),
                 "h": round(float(stub.pose[i, 2]), 3),
                 "asleep": bool(body.asleep[i]) if body else False, "sat": posture[i] == "sat",
-                "down": posture[i] == "down", "swimming": bool(swimming[i]), "hat": bool(stub.hats[i]),
+                "down": posture[i] == "down", "swimming": bool(swimming[i]), "hat": bool(stub.hats[i]), "hat_style": int(max(stub.hat_style[i], 0)),
+                "head": [round(float(v), 3) for v in stub.head[i]],  # neck_pitch, head_pitch, head_yaw, head_roll, as told
                 "eating": i in bites and stub.t - bites[i][0] < EATING_S,
                 "mood": mood, "strength": round(strength, 2),
                 "emote": emote[2] if showing else "", "emote_t": round(emote[0], 2) if showing else -1.0,
                 "hunger": level("hunger"), "thirst": level("thirst"), "sleepy": level("sleep_pressure"),
                 "knobs": {k: round(float(body.k[k][i]), 2) for k in SHAPE_KNOBS} if body and not self.blind else {},
+                "readout": readout(body, i) if body and i == self.watched else [],  # the selected duck's only: it is 400 bytes
+                **joints[i],
             })
         return {"t": round(stub.t, 2), "size": w.size, "light": round(float(daylight(stub.t)), 3),
                 "day": round(stub.t % DAY_S / DAY_S, 4), "ducks": ducks,
                 "food": [[round(float(x), 3), round(float(y), 3)] for x, y in w.food],
                 "danger": [[float(x), float(y)] for x, y in w.danger],
                 "pond": None if w.pond is None else [float(v) for v in w.pond], "tree": list(w.tree), "rocks": w.rocks.round(3).tolist(),
+                "wind": None if w.wind is None else [round(float(v), 3) for v in w.wind],  # where the air is going, m/s
+                "hats": [[round(x, 3), round(y, 3), k] for x, y, k in stub.hat_items],
                 "music": None if w.music is None else list(w.music),
                 "hand": None if w.hand is None else [float(v) for v in w.hand], "toasts": self.toasts,
                 "sounds": [[round(t, 2), int(i), tag] for t, i, tag in stub.sounds[-2 * n:] if stub.t - t < HEARD_S]}
@@ -118,6 +142,8 @@ class Snapshot:
         world = self.build(stub, server.body if server else None)
         if server is not None and getattr(server, "decoder", None) and self.wheel[0] >= 0 and stub.seen is not None:
             world["ride"] = self.ride(stub, server, self.wheel[0])
+        if server is not None and getattr(server, "brainview", None) is not None and server.brainview.duck >= 0:
+            world["brain"] = {"duck": server.brainview.duck, "points": str(POINTS), "spikes": server.brainview.take()}
         self.out.sendto(json.dumps(world).encode(), ("127.0.0.1", SNAPSHOT_PORT))
         while True:
             try:
@@ -125,7 +151,11 @@ class Snapshot:
             except BlockingIOError:
                 break
             method, p = str(action.get("method", "")), action.get("params", {})
-            if method == "garden.wheel":
+            if method == "garden.watch":  # which duck the viewer has selected, or -1 for none
+                self.watched = int(p["duck"]) if 0 <= int(p["duck"]) < len(stub.names) else -1
+                if server is not None and hasattr(server, "brainview"):
+                    server.brainview.duck = int(p["duck"]) if 0 <= int(p["duck"]) < len(stub.names) else -1
+            elif method == "garden.wheel":
                 self.wheel = (int(p["duck"]), float(np.clip(p["fwd"], -1, 1)), float(np.clip(p["turn"], -1, 1)), stub.t)
             elif method.startswith("garden."):  # the player's calls, and nothing else
                 stub._control_call(method, p)
@@ -155,6 +185,12 @@ if __name__ == "__main__":
         dishes, t = len(stub.world.food), stub.t
         snap.step(stub)
         got = json.loads(rx.recv(65535))
+        world_fields = {"t", "size", "light", "day", "ducks", "food", "danger", "pond", "tree", "rocks", "wind", "hats", "music", "hand",
+                        "toasts", "sounds"}
+        assert world_fields <= set(got), f"the snapshot lost {world_fields - set(got)}: Godot reads every one of these"
+        duck_fields = {"name", "label", "x", "y", "h", "asleep", "sat", "down", "swimming", "hat", "hat_style", "head", "eating",
+                       "mood", "strength", "emote", "emote_t", "knobs", "readout"}
+        assert duck_fields <= set(got["ducks"][0]), f"a duck lost {duck_fields - set(got['ducks'][0])}"
         assert len(got["ducks"]) == 3 and got["ducks"][1]["emote"] == "happy" and got["ducks"][0]["emote"] == ""
         assert got["toasts"] == ["b looks happy"], got["toasts"]
         assert len(stub.world.food) == dishes + 1, "a player's feed reaches the garden"

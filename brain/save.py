@@ -38,6 +38,8 @@ def save(path, body, plastic=None, stub=None, when=None) -> None:
     if stub is not None:
         world, nowhere = stub.world, [np.nan, np.nan]
         state["pose"], state["hats"] = stub.pose, stub.hats
+        state["hat_style"] = stub.hat_style
+        state["hat_items"] = np.asarray(stub.hat_items, float).reshape(-1, 3)
         state["food"] = np.asarray(world.food, float).reshape(-1, 2)
         state["bites"] = np.asarray(world.bites).reshape(-1)
         state["hand"] = np.asarray(world.hand if world.hand is not None else nowhere, float)
@@ -63,6 +65,9 @@ def load(path, body, plastic=None, stub=None, now=None) -> float:
     if stub is not None and "pose" in z.files:
         world = stub.world
         stub.pose[:], stub.hats[:] = z["pose"], z["hats"]
+        if "hat_style" in z.files:  # saves from before hats had looks have neither
+            stub.hat_style[:] = z["hat_style"]
+            stub.hat_items = [[float(x), float(y), int(k)] for x, y, k in z["hat_items"]]
         stub.t = since + gap
         world.food, world.bites = z["food"].copy(), z["bites"].copy()
         world.hand = None if np.isnan(z["hand"]).any() else tuple(z["hand"])
