@@ -21,6 +21,7 @@ Please cite:
 | Project | How it is used | License |
 |---|---|---|
 | [pollen-robotics/microduck](https://github.com/pollen-robotics/microduck) | The body contract follows robotd's JSON-RPC method and parameter names (`robot.move`, `robot.head`, `robot.do`, `robot.sound`, ...); no code copied | Apache-2.0 |
+| [pollen-robotics/microduck_rl](https://github.com/pollen-robotics/microduck_rl) | `viewer/godot/robot.json` is the microduck's own meshes, posed from its MuJoCo description and simplified to about 10,000 triangles by `viewer/godot/build_robot.py`. A derived work of their STL files, redistributed here | Apache-2.0 |
 | [TuragaLab/flyvis](https://github.com/TuragaLab/flyvis) | Visual front end (Gate 6), installed as a dependency | MIT |
 | [snedea/flybrain](https://github.com/snedea/flybrain) | Starting LIF parameters and the neuron group map read as a reference; no code copied | MIT |
 | [philshiu/Drosophila_brain_model](https://github.com/philshiu/Drosophila_brain_model) (Shiu et al. 2024) | The idea of treating glutamate as inhibitory and of reading sugar responses from proboscis motor neurons; no code copied | MIT |

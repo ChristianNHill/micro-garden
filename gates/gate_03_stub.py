@@ -12,11 +12,13 @@ import numpy as np
 from body import frames
 from body.contract import Client
 from body.stub2d.stub import DT, Stub
-from gates.episodes import verdict
+from gates.episodes import free_port_base, verdict
 from world.fields import CELL_M, MAX_FOOD, SIZE_M, TREE, World
 
 N, SIM_S, HOLD_STEPS = 5, 60.0, 25
-PORT_BASE = 7650  # away from the live stub's 7601
+# A free block, asked for: this was a fixed 7650, which the Godot snapshot later took, and the gate died
+# on a garden that was only being watched (2026-09-21).
+PORT_BASE = free_port_base(7664, 12)
 
 
 def drain(receivers, last):
@@ -95,7 +97,17 @@ def main() -> int:
     dropped, shaken, under = fruit()
     print(f"fruit: {dropped} after 60 s, {shaken} after a shake, all under the tree: {under}")
 
+    with tempfile.TemporaryDirectory() as d:  # a rock is solid: a duck walking straight at one stops at its edge
+        rocky = Stub(1, 0, d, food_xy=[], rocks=[(2.0, 2.0, 0.5)], pose=[[1.2, 2.0, 0.0]], frame_port=PORT_BASE + 11)
+        for _ in range(400):
+            rocky.cmd[0] = [0.3, 0.0, 0.0]
+            rocky.step()
+        gap = float(np.hypot(*(rocky.pose[0, :2] - 2.0)) - 0.5)
+        rocky.close()
+    print(f"a duck walking at a rock for 8 s stops {gap:.3f} m from it")
+
     checks = {
+        "a rock stops a duck at its edge": 0.06 < gap < 0.1,
         "same seed, identical final poses": np.array_equal(pose_a, pose_b),
         "different seed, different poses": not np.array_equal(pose_a, pose_c),
         "every duck moved": (np.linalg.norm(pose_a[:, :2] - start[:, :2], axis=1) > 0.1).all(),

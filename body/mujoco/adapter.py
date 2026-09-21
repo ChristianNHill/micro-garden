@@ -28,12 +28,10 @@ import numpy as np
 from body.contract import ROBOT_PARAMS, Client
 from body.mujoco.camera import FRAME_PORT, SimCamera
 from body.stub2d.stub import DEMO_GARDEN, DT, Stub, take_the_wheel
-from world.fields import SIZE_M
 
 SIM_STATE = os.path.expanduser("~/.cache/duck-sim")  # where duck-sim puts each duck's robotd socket
 TRUTH_PORT = 7801  # the first duck's body server; +1 per duck
 SPACING_M = 0.5  # duck-body sets its ducks down in a row along y, this far apart
-GARDEN_MID = (2.0, 2.0)
 
 # ponytail: the walking policy upstream ships does not walk (pollen-robotics/microduck_rl issue 46, open
 # since 2026-09-10): below a command of about 0.3 the duck stands still, and turning ignores the command's
@@ -167,7 +165,7 @@ class MujocoBody(Stub):
         self.truth = [Truth(truth_port + i) for i in range(n)]
         # where MuJoCo's (0, 0) sits in the garden: by default, so that the row of ducks straddles the middle
         self.origin = np.asarray(origin if origin is not None
-                                 else (GARDEN_MID[0], GARDEN_MID[1] - SPACING_M * (n - 1) / 2), float)
+                                 else (self.world.size / 2, self.world.size / 2 - SPACING_M * (n - 1) / 2), float)
         self.turning = np.zeros(n)  # the brain's turning intent, smoothed
         self.banked = np.zeros(n)  # metres the brain has asked for and the duck has not walked yet
         self.marching = np.zeros(n, bool)
@@ -192,11 +190,14 @@ class MujocoBody(Stub):
     def fence(self, i: int):
         """The pivot that turns duck i back in, if it is at the edge and heading out; else None."""
         x, y, h = self.pose[i]
-        out = np.array([float(x > SIZE_M - FENCE_M) - float(x < FENCE_M), float(y > SIZE_M - FENCE_M) - float(y < FENCE_M)])
+        out = np.array([float(x > self.world.size - FENCE_M) - float(x < FENCE_M), float(y > self.world.size - FENCE_M) - float(y < FENCE_M)])
+        for rx, ry, r in self.world.rocks:  # a rock turns a robot back as the fence does; nothing can push one
+            if math.hypot(x - rx, y - ry) < r + FENCE_M:
+                out = np.array([rx - x, ry - y])
         ahead = np.array([math.cos(h), math.sin(h)])
         if not out.any() or ahead @ out <= 0:
             return None
-        to_mid = np.array(GARDEN_MID) - (x, y)
+        to_mid = np.full(2, self.world.size / 2) - (x, y)
         return LEFT if ahead[0] * to_mid[1] - ahead[1] * to_mid[0] > 0 else RIGHT
 
     def keep_apart(self, i: int):
@@ -417,7 +418,7 @@ def main() -> None:
     view = None
     if args.view:
         from viewer.debug2d import Viewer
-        view = Viewer()
+        view = Viewer(body.world)
     server = None
     if args.brain:
         from body import frames

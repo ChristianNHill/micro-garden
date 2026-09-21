@@ -24,7 +24,7 @@ import numpy as np
 
 from body.stub2d.stub import DEMO_GARDEN, DT, Stub
 from gates.episodes import verdict
-from viewer.snapshot import Snapshot
+from viewer.snapshot import SNAPSHOT_PORT, Snapshot
 
 GODOT = os.environ.get("GODOT", "/Applications/Godot.app/Contents/MacOS/Godot")
 PROJECT = os.path.join(os.path.dirname(__file__), "..", "viewer", "godot")
@@ -43,7 +43,8 @@ def main() -> int:
     with tempfile.TemporaryDirectory() as d:
         stub, out = Stub(5, 0, d, **DEMO_GARDEN), Snapshot()
         dishes = len(stub.world.food)
-        godot = subprocess.Popen([GODOT, "--headless", "--path", PROJECT, "--", f"--feed-at={FEED_AT[0]},{FEED_AT[1]}",
+        godot = subprocess.Popen([GODOT, "--headless", "--path", PROJECT, "--", f"--port={SNAPSHOT_PORT}", "--mute",
+                                  f"--feed-at={FEED_AT[0]},{FEED_AT[1]}",
                                   f"--quit-after={args.seconds}"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
         next_t, fed_at = time.monotonic(), None
         while godot.poll() is None:
@@ -61,7 +62,7 @@ def main() -> int:
     hz = [int(x) for x in re.findall(r"snapshots hz=(\d+)", log)][1:]  # the first second includes Godot starting
     errors = [line for line in log.splitlines() if "ERROR" in line]
     print(f"Godot took {min(hz, default=0)} to {max(hz, default=0)} snapshots a second over {len(hz)} s; "
-          f"the garden went from {dishes} dishes to a fed one at t = {fed_at:.2f} s")
+          f"the garden went from {dishes} dishes to a fed one at t = {fed_at if fed_at is None else round(fed_at, 2)} s")
     for line in errors[:5]:
         print("  " + line)
     return verdict({

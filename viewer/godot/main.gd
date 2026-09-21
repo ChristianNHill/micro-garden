@@ -3,16 +3,18 @@
 # anything about a duck. Run the garden with --godot and then this project; either can start first.
 #
 # After `--`:
-#   --orbit=yaw,pitch,distance  where the camera starts       --ride=N   start on duck N's back
+#   --orbit=yaw,pitch,distance  where the camera starts       --ride=N   start on duck N's back, --select=N beside it
 #   --reduced-motion            a still camera, half the animation       --mute     no sound
+#   --light=0.1                 draw that daylight whatever the hour, to look at the night
+#   --port=N                    listen there, for a garden started with MICRO_GARDEN_PORT=N
 #   --shot=file.png             save the window after --shot-after=S seconds (6 by default)
 #   --feed-at=x,y               drop food there once snapshots arrive, and --quit-after=S: both for Gate 13
 extends Node3D
 
 const Ink := preload("res://ink.gd")
 const Duck := preload("res://duck.gd")
-const SNAPSHOT_PORT := 7650
-const ACTION_PORT := 7651
+const Scenery := preload("res://scenery.gd")
+const SNAPSHOT_PORT := 7650  # actions go back on the next one up; --port moves the pair
 const PITCH := Vector2(0.35, 1.25)  # radians above the horizon the camera may sit
 const DRIFT := 0.12  # radians the idle camera sways either way
 
@@ -22,10 +24,12 @@ var snap := {}
 var got := 0
 var ducks: Array = []
 var selected := -1
+var falls: Array = []  # the waterfall's sheets of water, which shimmer
 var props := {}  # what is in the garden now, by kind, as the nodes drawn for it
 
 var cam := Camera3D.new()
 var orbit := Vector3(0.75, 0.7, 8.8)  # yaw, pitch, distance
+var centre := Vector3.INF  # what the camera turns about
 var dragging := false
 var dragged := 0.0
 var still := 0.0  # seconds since the player last moved the camera
@@ -52,8 +56,9 @@ func _ready() -> void:
 	if args.has("orbit"):  # yaw,pitch,distance: where the camera starts
 		var o: PackedStringArray = args["orbit"].split(",")
 		orbit = Vector3(float(o[0]), float(o[1]), float(o[2]))
-	udp.bind(SNAPSHOT_PORT, "127.0.0.1")
-	out.set_dest_address("127.0.0.1", ACTION_PORT)
+	var port := int(args.get("port", str(SNAPSHOT_PORT)))
+	udp.bind(port, "127.0.0.1")
+	out.set_dest_address("127.0.0.1", port + 1)
 	cam.fov = 30.0
 	add_child(cam)
 	var ui := CanvasLayer.new()
@@ -114,6 +119,8 @@ func _process(dt: float) -> void:
 		if parsed is Dictionary:
 			var first := snap.is_empty()
 			snap = parsed
+			if args.has("light"):  # for looking at the night without waiting for it
+				snap.light = float(args["light"])
 			if first:
 				_build()
 			_show(first)
@@ -123,29 +130,9 @@ func _process(dt: float) -> void:
 
 func _build() -> void:
 	var size: float = snap.size
-	Ink.part(self, BoxMesh.new(), Ink.GRASS, Vector3(size / 2, -0.2, -size / 2), Vector3(size, 0.4, size), 7.0, -1.0, true)
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 7
-	for i in 90:  # grass: the same tufts every run
-		var at := Vector3(rng.randf_range(0.1, size - 0.1), 0.03, -rng.randf_range(0.1, size - 0.1))
-		if snap.pond == null or Vector2(at.x - snap.pond[0], -at.z - snap.pond[1]).length() > snap.pond[2] + 0.1:
-			Ink.part(self, Ink.cone(0.025, 0.07, 0.0, 4), Ink.TEAL, at, Vector3.ONE, 7.0)
-	if snap.pond != null:
-		var p: Array = snap.pond
-		Ink.part(self, Ink.cone(p[2], 0.002, p[2], 20), Ink.TEAL, Vector3(p[0], 0.002, -p[1]), Vector3.ONE, 7.0, 0.78)
-		for i in 14:  # reeds and a rock, on the shore where no duck needs to walk through them
-			var a := rng.randf_range(0.0, TAU)
-			var at := Vector3(p[0] + cos(a) * (p[2] + 0.04), 0.0, -p[1] - sin(a) * (p[2] + 0.04))
-			if at.x > 0.05 and at.x < size - 0.05 and -at.z > 0.05 and -at.z < size - 0.05:
-				var h := rng.randf_range(0.18, 0.32)
-				Ink.part(self, Ink.cone(0.011, h, 0.008, 4), Ink.TEAL, at + Vector3(0, h / 2, 0), Vector3.ONE, 7.0)
-				Ink.part(self, Ink.cone(0.013, 0.06, 0.013, 5), Ink.CORAL, at + Vector3(0, h, 0), Vector3.ONE, 7.0, -1.0, true)
-	var tree: Array = snap.tree
-	var trunk := Vector3(tree[0], 0, -tree[1])
-	Ink.part(self, Ink.cone(tree[2], 0.001, tree[2], 16), Ink.GRASS, trunk + Vector3(0, 0.0025, 0), Vector3.ONE, 7.0, 0.45)  # its shade
-	Ink.part(self, Ink.cone(0.07, 0.7, 0.05, 6), Ink.NAVY, trunk + Vector3(0, 0.35, 0), Vector3.ONE, 7.0, -1.0, true)
-	for blob in [[0.0, 0.85, 0.0, 0.42], [0.22, 0.75, 0.1, 0.3], [-0.2, 0.78, -0.12, 0.32], [0.02, 1.12, 0.03, 0.27]]:
-		Ink.part(self, Ink.ball(blob[3], 7), Ink.TEAL, trunk + Vector3(blob[0], blob[1], blob[2]), Vector3(1, 0.8, 1), 7.0, -1.0, true)
+	if not args.has("orbit"):
+		orbit = Vector3(2.2, 0.5, 1.7 * size)  # from the open front of the lawn, looking into the bowl
+	Scenery.build(self, snap, falls)
 	for i in snap.ducks.size():
 		var d := Node3D.new()
 		d.set_script(Duck)
@@ -153,6 +140,8 @@ func _build() -> void:
 		d.calm = calm
 		d.build(i, snap.ducks[i].knobs)
 		ducks.append(d)
+	if args.has("select"):
+		selected = int(args["select"])
 	if args.has("ride"):
 		selected = int(args["ride"])
 		possessing = true
@@ -163,14 +152,13 @@ func _build() -> void:
 
 func _show(first: bool) -> void:
 	RenderingServer.global_shader_parameter_set("daylight", snap.light)
+	RenderingServer.set_default_clear_color(Scenery.SKY_NIGHT.lerp(Scenery.SKY_DAY, snap.light))
 	var day: float = snap.day * TAU
 	RenderingServer.global_shader_parameter_set("sun_dir", Vector3(cos(day), 0.35 + 0.65 * snap.light, 0.5 * sin(day)).normalized())
 	for i in ducks.size():
 		ducks[i].show_state(snap.ducks[i], first)
 		ducks[i].ring.visible = i == selected and not possessing
-	_props("food", snap.food, func(n: Node3D, f: Array) -> void:
-		Ink.part(n, Ink.cone(0.085, 0.03, 0.06, 8), Ink.CREAM, Vector3(0, 0.015, 0), Vector3.ONE, 7.0, -1.0, true)
-		Ink.part(n, Ink.ball(0.05, 6), Ink.CORAL, Vector3(0, 0.05, 0), Vector3(1, 0.7, 1), 7.0, -1.0, true))
+	_props("food", snap.food, _fruit)
 	_props("danger", snap.danger, func(n: Node3D, f: Array) -> void:
 		Ink.part(n, Ink.cone(0.22, 0.002, 0.22, 10), Ink.MUSTARD, Vector3(0, 0.003, 0), Vector3.ONE, 5.0, 0.3))
 	_props("music", [snap.music] if snap.music != null else [], func(n: Node3D, f: Array) -> void:
@@ -178,9 +166,12 @@ func _show(first: bool) -> void:
 		Ink.part(n, Ink.cone(0.02, 0.16, 0.1, 8), Ink.MUSTARD, Vector3(0.03, 0.18, 0), Vector3.ONE, 7.0, -1.0, true).rotation.z = -0.5)
 	_props("hand", [snap.hand] if snap.hand != null else [], func(n: Node3D, f: Array) -> void:
 		Ink.part(n, Ink.ball(0.12, 8), Ink.CREAM, Vector3(0, 0.3, 0), Vector3(1, 0.5, 1), 7.0, -1.0, true))
+	for i in falls.size():
+		falls[i].scale.z = 0.5 * (1.0 + 0.12 * calm * sin(Time.get_ticks_msec() / 130.0 + i * 1.7))
 	for n in props.get("music", []):
 		n.scale = Vector3.ONE * (1.0 + 0.06 * calm * sin(Time.get_ticks_msec() / 90.0))  # it plays
 	toasts.text = "\n".join(snap.toasts)
+	toasts.visible = not snap.toasts.is_empty()
 	overlay.queue_redraw()
 	for q in snap.get("sounds", []):  # [t, duck, tag], oldest first
 		if q[0] > heard:
@@ -191,11 +182,33 @@ func _show(first: bool) -> void:
 	if possessing:
 		_act("garden.wheel", {"duck": selected, "fwd": int(Input.is_key_pressed(KEY_W)) - int(Input.is_key_pressed(KEY_S)),
 			"turn": int(Input.is_key_pressed(KEY_A)) - int(Input.is_key_pressed(KEY_D))})
-	card.text = ""
+	card.text = "click a duck, or the tree to shake it\nF  food at the mouse      C  clap      M  music"
 	if selected >= 0:
 		var d: Dictionary = snap.ducks[selected]
-		card.text = "%s  %s\n%s\nhunger %d%%   thirst %d%%   sleep %d%%\n\nTab ride it, W A S D to steer, Tab to let go, O hides its eyes   P pet   H hat   click the ground to feed, the tree to shake it\nC clap   M music" % [
+		card.text = "%s  %s\n%s\nhunger %d%%   thirst %d%%   sleep %d%%\n\nTab  ride it: W A S D steer, O hides its eyes\nP  pet      H  hat\nF  food at the mouse      C  clap      M  music" % [
 			d.name, d.label, ("asleep" if d.asleep else d.mood), d.hunger * 100, d.thirst * 100, d.sleepy * 100]
+
+
+func _fruit(n: Node3D, f: Array) -> void:
+	# An orange, an apple or a banana (Chris, 2026-09-21). Which one is drawn from where it lies, so a fruit
+	# stays the fruit it is while others fall and are eaten around it. All of them are the same food.
+	var kind := int(abs(f[0] * 731.0 + f[1] * 389.0) * 10.0) % 3
+	var leaf := Color("2f8f4a")
+	if kind == 0:
+		Ink.part(n, Ink.ball(0.075, 8), Color("f39a2b"), Vector3(0, 0.072, 0), Vector3.ONE, 6.0, -1.0, true).material_override.set_shader_parameter("lift", 0.3)
+		Ink.part(n, Ink.ball(0.018, 5), leaf, Vector3(0, 0.148, 0), Vector3(1.6, 0.5, 1.0), 6.0)
+	elif kind == 1:
+		Ink.part(n, Ink.ball(0.075, 8), Color("d8342c"), Vector3(0, 0.068, 0), Vector3(1.0, 0.9, 1.0), 6.0, -1.0, true).material_override.set_shader_parameter("lift", 0.3)
+		Ink.part(n, Ink.cone(0.006, 0.045, 0.006, 4), Color("6b4326"), Vector3(0, 0.15, 0), Vector3.ONE, 6.0)
+		Ink.part(n, Ink.ball(0.022, 5), leaf, Vector3(0.03, 0.155, 0), Vector3(1.6, 0.4, 0.9), 6.0)
+	else:
+		for k in 5:  # a curve of short pieces, fat in the middle, lying on its side
+			var u := (k - 2) / 2.0
+			var piece := Ink.part(n, Ink.cone(0.03 - 0.008 * abs(u), 0.062, 0.03 - 0.008 * abs(u), 6), Color("f4d23c"),
+				Vector3(u * 0.075, 0.035 + 0.03 * u * u, 0), Vector3.ONE, 6.0, -1.0, true)
+			piece.rotation.z = PI / 2 - u * 0.55
+			piece.material_override.set_shader_parameter("lift", 0.3)
+	n.rotation.y = f[0] * 7.0 + f[1] * 3.0
 
 
 func _props(kind: String, items: Array, make: Callable) -> void:
@@ -285,12 +298,14 @@ func _camera(dt: float) -> void:
 		cam.position = d.position + Vector3(0, 0.3, 0)
 		cam.rotation = Vector3(-0.15, d.rotation.y - PI / 2, 0)  # a duck faces +x and a camera looks down -z
 		return
-	cam.fov = 30.0
+	cam.fov = 38.0
 	get_viewport().scaling_3d_scale = 1.0
 	var size: float = snap.get("size", 4.0)
 	var sway: float = sin(Time.get_ticks_msec() / 9000.0) * DRIFT * (1.0 if calm == 1.0 else 0.0) * clamp(still - 3.0, 0.0, 1.0)
 	var yaw: float = orbit.x + sway
-	var centre := Vector3(size / 2, 0.1, -size / 2)
+	# the camera turns about the garden's middle, or about the selected duck, easing from one to the other
+	var want: Vector3 = ducks[selected].position + Vector3(0, 0.15, 0) if selected >= 0 and selected < ducks.size() else Vector3(size / 2, 0.1, -size / 2)
+	centre = want if centre == Vector3.INF else centre.lerp(want, min(1.0, 3.0 * dt))
 	cam.position = centre + Vector3(cos(yaw) * cos(orbit.y), sin(orbit.y), sin(yaw) * cos(orbit.y)) * orbit.z
 	cam.look_at(centre)
 
@@ -334,10 +349,8 @@ func _click(screen: Vector2) -> void:
 			return
 	if xy.distance_to(Vector2(snap.tree[0], snap.tree[1])) < 0.3:
 		_act("garden.shake_tree", {})
-	elif xy.x > 0 and xy.y > 0 and xy.x < snap.size and xy.y < snap.size:
-		_act("garden.hand", {"x": xy.x, "y": xy.y, "feed": 3})
 	else:
-		selected = -1
+		selected = -1  # a click on bare ground lets go of the duck; food is F, so a stray click feeds nobody
 
 
 func _key(code: int) -> void:
@@ -349,6 +362,10 @@ func _key(code: int) -> void:
 		overlay.visible = not overlay.visible
 	elif code == KEY_C:
 		_act("garden.scare", {})
+	elif code == KEY_F:
+		var at = _ground(get_viewport().get_mouse_position())
+		if at != null and at.x > 0 and at.y > 0 and at.x < snap.size and at.y < snap.size:
+			_act("garden.hand", {"x": at.x, "y": at.y, "feed": 3})
 	elif code == KEY_M:
 		var xy = _ground(get_viewport().get_mouse_position())
 		if xy != null:

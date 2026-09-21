@@ -5,9 +5,9 @@ Two smells diffuse on their own grids: food (from dishes) and danger (from stink
 """
 import numpy as np
 
-SIZE_M = 4.0
+SIZE_M = 4.0  # the garden every gate is measured in; a World can be another size (the demo garden is)
 GRID = 64
-CELL_M = SIZE_M / GRID
+CELL_M = SIZE_M / GRID  # the same cell whatever the size, so smells spread alike in any garden
 DIFFUSION = 0.2  # per substep, stable below 0.25
 # Per substep; the decay length is sqrt(DIFFUSION / DECAY) cells. At 0.002 it was 0.62 m in a 4 m
 # garden, so a duck starting where the demo garden puts them, 1.5 to 2.5 m from the only dish, could
@@ -22,7 +22,7 @@ SUN_C, SHADE_C = 30.0, 20.0
 DAY_S = 600.0  # a whole day and night in simulated seconds; short enough that a gate can watch one
 NIGHT_C = 8.0  # how much colder the garden gets when the sun is down
 DAWN = 0.15  # fraction of the cycle that dawn and dusk take; the rest is flat day or flat night
-TREE = (1.0, 3.0, 0.7)  # shade centre x, y and radius
+TREE = (1.0, 3.0, 0.7)  # shade centre x, y and radius, unless a World puts its tree elsewhere
 WIND_FULL_MS = 1.5  # light air; this reads as 1.0 on the antennae
 MUSIC_M = 1.2  # music is half as loud every 0.8 m or so; a garden-wide thing, unlike a duck's smell
 DUCK_SMELL_M = 0.5  # another duck smells half as strong every 0.35 m or so
@@ -44,7 +44,8 @@ MAX_FOOD = 4  # the tree stops dropping while this much food is on the ground
 
 
 class World:
-    def __init__(self, food_xy, danger_xy=(), pond=None, bites=1, wind=None, wind_turns_s=None, music=None):
+    def __init__(self, food_xy, danger_xy=(), pond=None, bites=1, wind=None, wind_turns_s=None, music=None,
+                 size=SIZE_M, tree=TREE, rocks=()):
         """pond is (x, y, radius) or None. Each dish holds `bites` bites. wind is the (x, y) velocity
         the air moves at, in m/s, or None for still air: it carries the smells and the pond's damp air
         downwind, so a plume reaches a long way on one side of its source and hardly at all on the
@@ -52,22 +53,25 @@ class World:
         for a steady one: in a steady wind whatever lies downwind of the ducks can never be found. music is
         (x, y), something that plays where it has been put, a part of the garden like the pond and the
         stink patch (Chris, 2026-09-20); the player can pick it up and put it down somewhere else."""
+        self.size, self.tree = float(size), tuple(tree)  # metres along a side, and the tree's (x, y, shade radius)
+        self.rocks = np.asarray(rocks, float).reshape(-1, 3)  # (x, y, radius) each: round, solid, and in the way
+        self.grid = round(self.size / CELL_M)
         self.wind0 = self.wind = None if wind is None else np.asarray(wind, float)
         self.wind_turns_s = wind_turns_s
-        self.damp = np.zeros((GRID, GRID))
+        self.damp = np.zeros((self.grid, self.grid))
         self.food = np.asarray(food_xy, float).reshape(-1, 2)
         self.bites = np.full(len(self.food), bites)
         self.danger = np.asarray(danger_xy, float).reshape(-1, 2)
         self.pond = pond
         self.hand = None  # (x, y) while the player's hand is in the garden (PLAN.md Gate 8)
         self.music = None if music is None else (float(music[0]), float(music[1]))
-        self.odor = np.zeros((GRID, GRID))
-        self.danger_odor = np.zeros((GRID, GRID))
+        self.odor = np.zeros((self.grid, self.grid))
+        self.danger_odor = np.zeros((self.grid, self.grid))
         self.diffuse(2000)  # start near steady state
 
     def _pond_cells(self):
-        c = (np.indices((GRID, GRID)).reshape(2, -1).T + 0.5) * CELL_M
-        return np.argwhere((self.pond_distance(c) < 0).reshape(GRID, GRID))
+        c = (np.indices((self.grid, self.grid)).reshape(2, -1).T + 0.5) * CELL_M
+        return np.argwhere((self.pond_distance(c) < 0).reshape(self.grid, self.grid))
 
     def diffuse(self, n: int) -> None:
         fields = [(self.odor, self.food, EMIT), (self.danger_odor, self.danger, EMIT)]
@@ -76,7 +80,7 @@ class World:
         for grid, sources, emit in fields:
             if sources is not None and len(sources) == 0 and not grid.any():
                 continue
-            src = self._pond_cells() if sources is None else np.clip((sources / CELL_M).astype(int), 0, GRID - 1)
+            src = self._pond_cells() if sources is None else np.clip((sources / CELL_M).astype(int), 0, self.grid - 1)
             for _ in range(n):
                 p = np.pad(grid, 1, mode="edge")
                 grid += DIFFUSION * (p[:-2, 1:-1] + p[2:, 1:-1] + p[1:-1, :-2] + p[1:-1, 2:] - 4 * grid) - DECAY * grid
@@ -108,17 +112,26 @@ class World:
         """Fruit falls somewhere under the shade tree's canopy. Returns how many fell."""
         fell = 0
         while fell < n and len(self.food) < MAX_FOOD:
-            a, r = rng.uniform(-np.pi, np.pi), rng.uniform(0.2, TREE[2] + 0.2)
-            xy = np.clip(np.array(TREE[:2]) + r * np.array([np.cos(a), np.sin(a)]), WALL_CLEAR_M, SIZE_M - WALL_CLEAR_M)
+            a, r = rng.uniform(-np.pi, np.pi), rng.uniform(0.2, self.tree[2] + 0.2)
+            xy = np.clip(np.array(self.tree[:2]) + r * np.array([np.cos(a), np.sin(a)]), WALL_CLEAR_M, self.size - WALL_CLEAR_M)
             self.food = np.vstack([self.food, xy])
             self.bites = np.append(self.bites, FRUIT_BITES)
             fell += 1
         return fell
 
+    def push_out(self, xy: np.ndarray, clearance: float) -> None:
+        """Move any of these (n, 2) points that are inside a rock back to its edge, in place: a rock is a
+        wall that happens to be round."""
+        for x, y, r in self.rocks:
+            away = xy - (x, y)
+            d = np.linalg.norm(away, axis=1)
+            inside = d < r + clearance
+            xy[inside] = (x, y) + away[inside] / np.maximum(d[inside], 1e-9)[:, None] * (r + clearance)
+
     def odor_at(self, xy, grid=None) -> np.ndarray:
         """Bilinear sample of a smell grid (food by default) at (..., 2) positions."""
         o = self.odor if grid is None else grid
-        u = np.clip(np.asarray(xy, float) / CELL_M - 0.5, 0, GRID - 1.001)
+        u = np.clip(np.asarray(xy, float) / CELL_M - 0.5, 0, self.grid - 1.001)
         i, f = u.astype(int), u % 1
         i0, i1, fx, fy = i[..., 0], i[..., 1], f[..., 0], f[..., 1]
         return ((1 - fx) * (1 - fy) * o[i0, i1] + fx * (1 - fy) * o[i0 + 1, i1]
@@ -191,10 +204,10 @@ def daylight(t: float) -> float:
     return float(np.clip((phase - (1.0 - DAWN)) / DAWN, 0, 1))  # dawn
 
 
-def temperature_at(xy, light: float = 1.0) -> np.ndarray:
+def temperature_at(xy, light: float = 1.0, tree=TREE) -> np.ndarray:
     """Sunny garden with one shade tree, soft 10 cm edge. The whole garden cools once the sun is down."""
-    d = np.linalg.norm(np.asarray(xy, float) - TREE[:2], axis=-1)
-    warm = SHADE_C + (SUN_C - SHADE_C) / (1 + np.exp(-(d - TREE[2]) / 0.1))
+    d = np.linalg.norm(np.asarray(xy, float) - tree[:2], axis=-1)
+    warm = SHADE_C + (SUN_C - SHADE_C) / (1 + np.exp(-(d - tree[2]) / 0.1))
     return warm - NIGHT_C * (1.0 - light)
 
 

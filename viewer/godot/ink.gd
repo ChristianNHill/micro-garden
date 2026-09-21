@@ -6,6 +6,8 @@ const CREAM := Color("f4ead5")
 const CORAL := Color("ee6f5c")
 const TEAL := Color("2f9c8f")
 const MUSTARD := Color("e6b54a")
+const STONE := Color("c9c2b2")  # paper in shadow: the robot's grey plastic
+const SEA := Color("bfe0d6")  # teal let down with paper, so the sea lies back and the garden stands on it
 const GRASS := Color("b9c46a")  # mustard pulled towards teal: the ground, so the five inks stay for things
 
 const PRINT := preload("res://print.gdshader")

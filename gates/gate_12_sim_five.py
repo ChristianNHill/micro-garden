@@ -29,7 +29,6 @@ from brain.data import load_connectome, named_sets
 from brain.personality import preset, stack
 from brain.server import BrainServer
 from gates.episodes import free_port_base, verdict
-from world.fields import SIZE_M
 
 LABELS = "Bully,Napper,Carefree,Chatty,Scaredy".split(",")
 OUTSIDE_M = 0.5  # further out of the garden than this and the fence has failed
@@ -64,7 +63,7 @@ def main() -> int:
             xy = body.pose[:, :2]
             moved += np.linalg.norm(xy - last_xy, axis=1)
             last_xy = xy.copy()
-            out_most = np.maximum(out_most, np.maximum(-xy, xy - SIZE_M).max(1))
+            out_most = np.maximum(out_most, np.maximum(-xy, xy - body.world.size).max(1))
             if k % 250 == 0:  # every five seconds: is a sleeping duck sitting?
                 for i in np.flatnonzero(asleep):
                     sat_asleep[i] |= robot_state(body.robot_paths[i])["policy"] == "sit"

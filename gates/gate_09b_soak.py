@@ -47,7 +47,6 @@ from body.stub2d.stub import DEMO_GARDEN, DT
 from brain.data import load_connectome, named_sets
 from brain.personality import preset, stack
 from gates.episodes import run, verdict
-from world.fields import SIZE_M, TREE
 
 LABELS = "Bully,Napper,Carefree,Chatty,Scaredy"  # the demo's
 NEEDY = 0.8
@@ -64,7 +63,7 @@ def soak(W, ann, sets, labels, minutes, seed, gardens):
     """One row per simulated second, per duck; ducks of garden g are columns g * len(labels) onward."""
     n = len(labels) * gardens
     rng = np.random.default_rng(seed)
-    pose = np.column_stack([rng.uniform(0.5, SIZE_M - 0.5, (n, 2)), rng.uniform(-np.pi, np.pi, n)])
+    pose = np.column_stack([rng.uniform(0.5, DEMO_GARDEN["size"] - 0.5, (n, 2)), rng.uniform(-np.pi, np.pi, n)])
     log = {k: [] for k in ("xy", "asleep", "hunger", "thirst", "swimming", "sips", "fear", "following")}
     sips, steps = np.zeros(n), [0]
 
@@ -137,7 +136,7 @@ def main() -> int:
     mean = lambda x: np.asarray(x, float).reshape(G, per).mean(0)  # per label, over gardens
 
     speed = np.linalg.norm(np.diff(d["xy"], axis=0), axis=-1)
-    shade = np.linalg.norm(d["xy"] - np.array(TREE[:2]), axis=-1) < TREE[2]
+    shade = np.linalg.norm(d["xy"] - np.array(DEMO_GARDEN["tree"][:2]), axis=-1) < DEMO_GARDEN["tree"][2]
     print(f"{args.minutes:g} simulated minutes in {G} demo gardens, share of each duck's time, mean over gardens:")
     print(f"  {'':10s} {'asleep':>7s} {'moving':>7s} {'swims':>7s} {'shade':>7s} {'hungry':>7s} {'thirsty':>7s}"
           f" {'bites':>6s} {'sips':>6s} {'stuck s':>8s}")

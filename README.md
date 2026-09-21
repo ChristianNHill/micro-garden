@@ -46,7 +46,7 @@ uv run python -m body.stub2d.stub --brain --godot
 /Applications/Godot.app/Contents/MacOS/Godot --path viewer/godot
 ```
 
-Godot only draws. The garden publishes its world over UDP, and clicks go back as the same control calls the 2D window uses. Click a duck to select it, click the ground to feed, and click the tree to shake it. `P`, `H`, `C` and `M` work as above. Drag to orbit and scroll to zoom. A duck's outline comes from its personality dials, so a big eater is wide and a timid duck is small with a long neck. Ducks also emote every so often, like a Chao or a Sim. Each one acts out its strongest feeling, and a chatty duck does it more often.
+Godot only draws. The garden publishes its world over UDP, and clicks go back as the same control calls the 2D window uses. Click a duck to select it and click the tree to shake it. `P`, `F`, `H`, `C` and `M` work as above. Drag to orbit and scroll to zoom. A duck's outline comes from its personality dials, so a big eater is wide and a timid duck is small with a long neck. Ducks also emote every so often, like a Chao or a Sim. Each one acts out its strongest feeling, and a chatty duck does it more often.
 
 ## How it is checked
 

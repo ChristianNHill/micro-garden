@@ -1,19 +1,20 @@
-# One duck, built from a dozen low-poly primitives and animated by rule. It faces +x and stands on y = 0.
-# Its proportions come from its personality knobs, so who a duck is shows in its outline before it moves:
-# a big appetite is a wide body, a timid duck is small with a long neck, a vain one grows its tuft.
-# It is told where it is and how it feels (`show`), and everything else here is how that looks.
+# One duck: the real microduck, simplified (build_robot.py writes robot.json from Pollen Robotics' meshes),
+# in four rigid pieces that are animated by rule: trunk, head, and a leg each side. It faces +x and stands on
+# y = 0. Personality shows in its proportions, as far as a robot's can: a big appetite is a wide one, a timid
+# duck is small, a vain one has a big head, and the grey plastic takes the duck's own colour.
+# It is told where it is and how it feels (`show_state`), and everything else here is how that looks.
 extends Node3D
 
 const Ink := preload("res://ink.gd")
 const CELL := 5.0  # a finer screen than the ground's: at 9 px a duck this small came out spotted like a dalmatian
-const LOOK := 1.9  # drawn this much larger than life: a 4 m garden on one screen leaves a true duck a speck
+const LOOK := 1.9  # drawn a little larger than life, so a duck reads from across the garden
 const EMOTE_S := 2.4
-const RIBBONS := [Ink.CORAL, Ink.TEAL, Ink.MUSTARD, Ink.NAVY, Ink.GRASS]
+const RIBBONS := [Ink.CORAL, Ink.TEAL, Ink.MUSTARD, Color("7d6bd0"), Color("e58ac0")]
 const MOOD_SHAPES := {"joy": "ball", "fear": "spike", "anger": "block", "sorrow": "drop"}
 
 var model := Node3D.new()  # everything that waddles, sits and falls over; the shadow and the signs do not
 var neck := Node3D.new()  # the head turns about this
-var legs: Array[MeshInstance3D] = []
+var legs: Array[Node3D] = []
 var hat: MeshInstance3D
 var shadow: MeshInstance3D
 var mood := Node3D.new()
@@ -29,43 +30,58 @@ var emote := ""
 var emote_age := 99.0
 var emote_seen := -1.0
 var calm := 1.0  # 0.5 under reduced motion
+var hip_y := 0.1  # how far the trunk drops to sit
+static var robot := {}  # group -> {pivot, parts: [[ink, mesh]]}, built once and shared by every duck
+
+
+static func robot_groups() -> Dictionary:
+	if robot.is_empty():
+		var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://robot.json"))
+		for group in data.groups:
+			var parts := []
+			for p in data.groups[group].parts:
+				var st := SurfaceTool.new()
+				st.begin(Mesh.PRIMITIVE_TRIANGLES)
+				for k in range(0, p.v.size(), 3):
+					st.add_vertex(Vector3(p.v[k], p.v[k + 1], p.v[k + 2]) * data.unit)
+				for index in p.i:
+					st.add_index(int(index))
+				st.generate_normals()  # smooth ones, for the outline to grow along; the print shader shades flat
+				parts.append([p.ink, st.commit()])
+			var at: Array = data.groups[group].pivot
+			robot[group] = {"pivot": Vector3(at[0], at[1], at[2]), "parts": parts}
+	return robot
 
 
 func build(index: int, knobs: Dictionary) -> void:
 	var k := func(name: String) -> float: return float(knobs.get(name, 0.5))
-	var girth: float = 0.85 + 0.4 * k.call("appetite")
+	var girth: float = 0.85 + 0.3 * k.call("appetite")
 	var size: float = 0.9 + 0.25 * k.call("aggressiveness") - 0.2 * k.call("timidity")
-	var neck_len: float = 0.03 + 0.04 * k.call("timidity") + 0.02 * k.call("vanity")
-	var bill: float = 0.7 + 0.7 * k.call("chattiness")
-	var tuft: float = 0.4 + 1.4 * k.call("vanity")
-	var leg: float = 0.04 + 0.04 * k.call("energy")
-	var slump: float = 0.25 * k.call("sleepiness")
+	# the servos are dark on the real robot; drawn dark they turned a small duck into a scribble, so they are
+	# grey here and the links between them carry the duck's own colour
+	var inks := {"cream": Ink.CREAM, "navy": Ink.STONE, "coral": Ink.CORAL, "mustard": Ink.MUSTARD,
+		"stone": RIBBONS[index % RIBBONS.size()]}
 
 	add_child(model)
-	model.scale = Vector3.ONE * LOOK * size
-	var body_y := leg + 0.055
-	var body := Ink.part(model, Ink.ball(0.07), Ink.CREAM, Vector3(0, body_y, 0), Vector3(1.25, 0.9 - slump * 0.3, girth), CELL, -1.0, true)
-	Ink.part(model, Ink.cone(0.03, 0.07), Ink.CREAM, Vector3(-0.09, body_y + 0.03, 0), Vector3.ONE, CELL, -1.0, true).rotation.z = 1.0
-	for side in [-1, 1]:
-		Ink.part(model, Ink.ball(0.045), Ink.CREAM, Vector3(-0.01, body_y + 0.005, side * 0.06 * girth), Vector3(1.2, 0.7, 0.35), CELL, -1.0, true)
-		var l := Ink.part(model, Ink.cone(0.009, leg, 0.009, 5), Ink.MUSTARD, Vector3(0.0, leg / 2, side * 0.03 * girth), Vector3.ONE, CELL)
-		Ink.part(l, Ink.ball(0.022, 6), Ink.MUSTARD, Vector3(0.015, -leg / 2 + 0.004, 0), Vector3(1.3, 0.25, 1.0), CELL, -1.0, true)
-		legs.append(l)
-
-	neck.position = Vector3(0.055, body_y + 0.03, 0)
-	neck.rotation.z = -slump
-	model.add_child(neck)
-	var head_at := Vector3(0.02, neck_len + 0.04, 0)
-	Ink.part(neck, Ink.cone(0.028, neck_len + 0.03, 0.024), Ink.CREAM, Vector3(0.008, neck_len / 2, 0), Vector3.ONE, CELL, -1.0, true)
-	Ink.part(neck, _torus(0.028, 0.012), RIBBONS[index % RIBBONS.size()], Vector3(0.004, 0.012, 0), Vector3.ONE, CELL, 0.9)
-	Ink.part(neck, Ink.ball(0.052), Ink.CREAM, head_at, Vector3.ONE, CELL, -1.0, true)
-	var beak := Ink.part(neck, Ink.cone(0.024, 0.06), Ink.CORAL, head_at + Vector3(0.05 + 0.02 * bill, -0.008, 0), Vector3(1.0, bill, 0.6), CELL, -1.0, true)
-	beak.rotation.z = -PI / 2
-	beak.scale = Vector3(0.6, bill, 1.0)  # after the turn: flat top to bottom, long forwards
-	for side in [-1, 1]:
-		Ink.part(neck, Ink.ball(0.009, 6), Ink.NAVY, head_at + Vector3(0.03, 0.015, side * 0.04), Vector3.ONE, CELL, 0.0)
-	Ink.part(neck, Ink.cone(0.012, 0.03 * tuft), Ink.CREAM, head_at + Vector3(-0.01, 0.05 + 0.012 * tuft, 0), Vector3.ONE, CELL, -1.0, true).rotation.z = 0.5
-	hat = Ink.part(neck, Ink.cone(0.04, 0.07), Ink.MUSTARD, head_at + Vector3(0, 0.075, 0), Vector3.ONE, CELL, -1.0, true)
+	model.scale = Vector3(1.0, 1.0, girth) * LOOK * size
+	var groups := robot_groups()
+	hip_y = groups["leg_left"].pivot.y
+	for group in groups:
+		var node := neck if group == "head" else Node3D.new()
+		node.position = groups[group].pivot
+		model.add_child(node)
+		for part in groups[group].parts:
+			var shell: bool = part[0] == "cream"  # the line goes round the shells; round every servo it is a blot
+			var piece := Ink.part(node, part[1], inks[part[0]], Vector3.ZERO, Vector3.ONE, CELL, -1.0, shell)
+			piece.material_override.set_shader_parameter("lift", 0.25)  # a duck stays bright on its shaded side
+			if shell:
+				(piece.material_override.next_pass as ShaderMaterial).set_shader_parameter("grow", 0.0025)
+		if group.begins_with("leg"):
+			legs.append(node)
+	neck.scale = Vector3.ONE * (0.9 + 0.3 * k.call("vanity"))
+	var body_y: float = groups["head"].pivot.y
+	var neck_len := 0.06
+	hat = Ink.part(neck, Ink.cone(0.04, 0.07), Ink.MUSTARD, Vector3(0.03, 0.13, 0), Vector3.ONE, CELL, -1.0, true)
 
 	shadow = Ink.part(self, Ink.cone(0.1 * LOOK * size * girth, 0.001, 0.1 * LOOK * size * girth, 12), Ink.GRASS, Vector3(0, 0.003, 0), Vector3.ONE, 7.0, 0.35)
 	ring = Ink.part(self, _torus(0.17 * LOOK, 0.19 * LOOK), Ink.CORAL, Vector3(0, 0.004, 0), Vector3(1, 0.2, 1), 7.0, 1.0)
@@ -126,7 +142,7 @@ func _process(dt: float) -> void:
 	var swimming: bool = state.swimming
 	var low: bool = state.sat or state.asleep
 	var walk: float = clamp(speed / 0.08, 0.0, 1.0) * calm
-	var want_y := -0.05 * LOOK if swimming else (-0.035 * LOOK if low else 0.0)
+	var want_y := -(hip_y - 0.02) * model.scale.y if (swimming or low) else 0.0  # folded, or afloat to the trunk
 	var want_roll := 1.45 if state.down else sin(stride) * 0.16 * walk + (sin(t * 1.7) * 0.05 * calm if swimming else 0.0)
 	model.position.y = lerp(model.position.y, want_y + abs(sin(stride)) * 0.008 * walk, min(1.0, 8.0 * dt))
 	model.rotation.x = lerp(model.rotation.x, want_roll, min(1.0, 8.0 * dt))
@@ -167,7 +183,7 @@ func _process(dt: float) -> void:
 	neck.rotation = neck.rotation.lerp(Vector3(roll, yaw, -pitch), min(1.0, 10.0 * dt))
 	model.position.y += hop * LOOK * calm
 	var s := model.scale.x
-	model.scale = model.scale.lerp(Vector3(s, s * (1.0 - squash * calm), s), min(1.0, 12.0 * dt))
+	model.scale = model.scale.lerp(Vector3(s, s * (1.0 - squash * calm), model.scale.z), min(1.0, 12.0 * dt))
 
 	# the sign overhead: a shape for the mood, a word for the emote, and z for sleep
 	var shape: String = MOOD_SHAPES.get(state.mood, "")

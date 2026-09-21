@@ -27,7 +27,7 @@ import numpy as np
 from body import frames
 from body.contract import ROBOT_PARAMS, serve
 from body.stub2d import retina
-from world.fields import (DAY_S, SHORE_M, SIZE_M, DUCK_R, World, contacts, daylight, duck_odor_at,
+from world.fields import (DAY_S, SHORE_M, SIZE_M, TREE, DUCK_R, World, contacts, daylight, duck_odor_at,
                           music_at, temperature_at, wind_on)
 
 # Light air that starts in the north and swings right round the compass every 0.7 of a day, so that no
@@ -40,9 +40,15 @@ from world.fields import (DAY_S, SHORE_M, SIZE_M, DUCK_R, World, contacts, dayli
 # fell in their waking hours came to about 100 bites in twenty minutes against the 108 five ducks need. They
 # ate all of it and a third of them still starved, the Bully first, since its appetite asks 40% more
 # (Gate 9b; Claude's call while Chris was out, 2026-09-19, for him to ratify).
-DEMO_GARDEN = dict(food_xy=((3.0, 3.0),), bites=10, danger_xy=((2.3, 1.7),), pond=(3.1, 0.9, 0.35), fruit_every_s=10.0,
-                   wind=(0.0, -1.0), wind_turns_s=0.7 * DAY_S,
-                   music=(0.9, 0.9))  # the corner nothing else is in: food north, pond south-east, stink in the middle
+# The garden people watch is bigger than the one the gates measure in (Chris, 2026-09-21: 4 m was cramped for
+# five ducks), and laid out after the Chao gardens of Sonic Adventure 2: a big pond tucked into the back
+# corner, where a viewer can put a waterfall and cliffs behind it, the fruit tree on the other side of the
+# back, and the lawn in front left open, with the dish, the music and the stink spread along it. The rocks are
+# the foot of that waterfall, stepping up from the pond's edge into the corner: solid, so no duck walks through
+# what a viewer draws there.
+DEMO_GARDEN = dict(size=6.0, tree=(1.5, 4.3, 0.9), food_xy=((3.0, 2.2),), bites=10, danger_xy=((4.9, 1.3),),
+                   pond=(4.5, 4.4, 1.2), rocks=((5.2, 5.45, 0.55), (5.8, 5.55, 0.62), (5.85, 6.15, 0.7)), fruit_every_s=10.0, wind=(0.0, -1.0), wind_turns_s=0.7 * DAY_S,
+                   music=(1.1, 1.2))
 
 DT = 0.02
 # ponytail: guessed limits standing in for robotd's clamps; replace with the sim's real ones at Gate 10
@@ -64,12 +70,12 @@ BITE_S = 0.5  # ground_pick takes this long, so at most one bite per BITE_S
 class Stub:
     def __init__(self, n: int, seed: int, sock_dir: str, food_xy=((3.0, 3.0), (1.0, 1.0)), danger_xy=(),
                  pond=None, bites=1, fruit_every_s=None, frame_port: int = frames.FRAME_PORT, pose=None,
-                 wind=None, wind_turns_s=None, music=None):
+                 wind=None, wind_turns_s=None, music=None, size=SIZE_M, tree=TREE, rocks=()):
         rng = np.random.default_rng(seed)
         self.fruit_rng = np.random.default_rng(seed + 1)
         self.fruit_every_s = fruit_every_s
-        self.world = World(food_xy, danger_xy, pond, bites, wind, wind_turns_s, music)
-        self.pose = np.column_stack([rng.uniform(0.5, SIZE_M - 0.5, (n, 2)), rng.uniform(-np.pi, np.pi, n)])
+        self.world = World(food_xy, danger_xy, pond, bites, wind, wind_turns_s, music, size, tree, rocks)
+        self.pose = np.column_stack([rng.uniform(0.5, size - 0.5, (n, 2)), rng.uniform(-np.pi, np.pi, n)])
         if pose is not None:
             self.pose = np.array(pose, float).reshape(n, 3)
         self.frame_port = frame_port
@@ -176,7 +182,7 @@ class Stub:
         hit = (np.linalg.norm(rel, axis=1) < self.touch_m) & (rel @ fwd > 0)
         hit[i] = False
         for j in np.flatnonzero(hit):
-            self.pose[j, :2] = np.clip(self.pose[j, :2] + PUSH_M * fwd, DUCK_R, SIZE_M - DUCK_R)
+            self.pose[j, :2] = np.clip(self.pose[j, :2] + PUSH_M * fwd, DUCK_R, self.world.size - DUCK_R)
             self.bumped[j] = True
             self.headbutts.append((self.t, i, j))
             self.knock_down(j)
@@ -230,7 +236,8 @@ class Stub:
         h += vyaw * DT
         x += (vx * np.cos(h) - vy * np.sin(h)) * DT
         y += (vx * np.sin(h) + vy * np.cos(h)) * DT
-        np.clip(self.pose[:, :2], DUCK_R, SIZE_M - DUCK_R, out=self.pose[:, :2])
+        np.clip(self.pose[:, :2], DUCK_R, self.world.size - DUCK_R, out=self.pose[:, :2])
+        self.world.push_out(self.pose[:, :2], DUCK_R)
         self.pose[:, 2] = (h + np.pi) % (2 * np.pi) - np.pi
         self.world.step(self.t)
         self.t += DT
@@ -250,7 +257,7 @@ class Stub:
             sense[f"odor_{side}"] = w.odor_at(p)
             sense[f"danger_{side}"] = w.odor_at(p, w.danger_odor)
             sense[f"humidity_{side}"] = w.humidity_at(p)
-            sense[f"temp_{side}"] = temperature_at(p, light)
+            sense[f"temp_{side}"] = temperature_at(p, light, self.world.tree)
             sense[f"duck_{side}"] = np.array([duck_odor_at(p[i], xy, i) for i in range(len(xy))])
             sense[f"music_{side}"] = music_at(p, w.music)
         sense["touch_left"], sense["touch_right"], dish = contacts(xy, h, w.food, self.touch_m)
@@ -313,7 +320,7 @@ def main() -> None:
     view = None
     if args.view:
         from viewer.debug2d import Viewer
-        view = Viewer()
+        view = Viewer(stub.world)
     server = None
     if args.brain:
         from brain.data import load_connectome, named_sets

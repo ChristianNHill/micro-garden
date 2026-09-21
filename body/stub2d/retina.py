@@ -9,13 +9,14 @@ Intensities follow flyvis's convention: 0 dark, 0.5 grey background, 1 bright.
 import numpy as np
 from flyvis.utils.hex_utils import get_hex_coords, hex_to_pixel
 
-from world.fields import DISH_R, DUCK_R, TREE
+from world.fields import DISH_R, DUCK_R
 
 EXTENT = 15  # flyvis's lattice: 721 columns
 N_HEX = 721
 OMMATIDIUM_DEG = 5.8  # interommatidial angle, Drosophila
 EYE_AZ_DEG = 55.0  # each eye's optical axis, degrees off forward; the two overlap frontally to +-20 deg
 BACKGROUND, DISH_I, DUCK_I, TREE_I = 0.5, 1.0, 0.15, 0.0
+ROCK_I = 0.3  # a rock is a dull thing, darker than the ground and lighter than a trunk
 HAND_I, HAND_R = 0.9, 0.12  # the player's hand, a pale thing about the size of two dishes
 POND_I = 0.85  # water reflecting the sky; bright, but not as bright as food
 EYE_H = 0.10  # metres off the ground. ponytail: a guess at microduck eye height; measure it at Gate 10
@@ -36,7 +37,8 @@ def scene(world, duck_xy: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """
     rows = [(x, y, DISH_R, DISH_I) for x, y in world.food]
     rows += [(x, y, DUCK_R, DUCK_I) for x, y in duck_xy]
-    rows.append((TREE[0], TREE[1], TREE[2], TREE_I))
+    rows.append((*world.tree, TREE_I))
+    rows += [(x, y, r, ROCK_I) for x, y, r in world.rocks]
     if world.hand is not None:
         rows.append((world.hand[0], world.hand[1], HAND_R, HAND_I))
     owner = np.concatenate([np.full(len(world.food), -1), np.arange(len(duck_xy)),

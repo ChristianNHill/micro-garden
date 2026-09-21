@@ -17,7 +17,7 @@ import pygame
 from body.stub2d.retina import HEX_AZ, HEX_EL
 from world.fields import DISH_R, DUCK_R, SIZE_M, TREE, daylight
 
-PX = 160  # pixels per metre
+WINDOW_PX = 720  # the garden's side on screen, whatever its size in metres
 PANEL_W = 300
 COLORS = [(230, 180, 40), (90, 170, 230), (230, 90, 120), (120, 200, 110), (180, 120, 220)]
 DRIVES = ("hunger", "thirst", "fatigue", "sleep_pressure", "boredom")
@@ -30,9 +30,12 @@ EYE_DEG = 55.0
 
 
 class Viewer:
-    def __init__(self):
+    def __init__(self, world=None):
+        """`world` is the garden to be drawn, for its size and where its tree is; the gates' garden without one."""
+        self.size, self.tree = (world.size, world.tree) if world is not None else (SIZE_M, TREE)
+        self.px = WINDOW_PX / self.size  # pixels per metre
         pygame.init()
-        self.screen = pygame.display.set_mode((int(SIZE_M * PX) + PANEL_W, int(SIZE_M * PX)))
+        self.screen = pygame.display.set_mode((int(self.size * self.px) + PANEL_W, int(self.size * self.px)))
         pygame.display.set_caption("micro garden: 2D stub")
         self.font = pygame.font.SysFont("Menlo", 13)
         self.big = pygame.font.SysFont("Menlo", 15, bold=True)
@@ -55,10 +58,10 @@ class Viewer:
                 self.possessing = not self.possessing
             elif e.type == pygame.KEYDOWN and on_key:
                 mx, my = pygame.mouse.get_pos()
-                on_key(pygame.key.name(e.key), (min(mx / PX, SIZE_M), SIZE_M - my / PX))
+                on_key(pygame.key.name(e.key), (min(mx / self.px, self.size), self.size - my / self.px))
             if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
-                xy = (e.pos[0] / PX, SIZE_M - e.pos[1] / PX)
-                if e.pos[0] < SIZE_M * PX:
+                xy = (e.pos[0] / self.px, self.size - e.pos[1] / self.px)
+                if e.pos[0] < self.size * self.px:
                     self.click = xy
                     if on_click:
                         on_click(xy)
@@ -80,9 +83,8 @@ class Viewer:
                 pygame.draw.circle(self.screen, (g, g, g), (int(cx + az * scale), int(y0 + r - el * scale)), 2)
         return 2 * r + 10
 
-    @staticmethod
-    def on_tree(xy) -> bool:
-        return np.hypot(xy[0] - TREE[0], xy[1] - TREE[1]) < TREE[2]
+    def on_tree(self, xy) -> bool:
+        return np.hypot(xy[0] - self.tree[0], xy[1] - self.tree[1]) < self.tree[2]
 
     def pick(self, xy, pose) -> None:
         """Select the duck nearest a click, if the click was near one."""
@@ -91,7 +93,7 @@ class Viewer:
             self.selected = int(d.argmin())
 
     def _px(self, xy):
-        return int(xy[0] * PX), int((SIZE_M - xy[1]) * PX)
+        return int(xy[0] * self.px), int((self.size - xy[1]) * self.px)
 
     def _gather_toasts(self, stub) -> None:
         """One line per new thing that happened, newest last."""
@@ -115,25 +117,27 @@ class Viewer:
         rgb = np.stack([haze // 3, haze // 2 + 40, haze // 3 + 30], axis=-1)[:, ::-1]  # y up
         rgb = (rgb * (0.25 + 0.75 * light)).astype(np.uint8)  # night draws in
         surf = pygame.transform.smoothscale(pygame.surfarray.make_surface(rgb),
-                                            (int(SIZE_M * PX), int(SIZE_M * PX)))
+                                            (int(self.size * self.px), int(self.size * self.px)))
         self.screen.blit(surf, (0, 0))
-        pygame.draw.circle(self.screen, (20, 40, 30), self._px(TREE[:2]), int(TREE[2] * PX), 2)
+        pygame.draw.circle(self.screen, (20, 40, 30), self._px(stub.world.tree[:2]), int(stub.world.tree[2] * self.px), 2)
+        for x, y, r in stub.world.rocks:
+            pygame.draw.circle(self.screen, (110, 105, 100), self._px((x, y)), int(r * self.px))
         if stub.world.pond is not None:
             x, y, r = stub.world.pond
-            pygame.draw.circle(self.screen, (60, 120, 200), self._px((x, y)), int(r * PX))
+            pygame.draw.circle(self.screen, (60, 120, 200), self._px((x, y)), int(r * self.px))
         for d in stub.world.danger:
-            pygame.draw.circle(self.screen, (120, 80, 40), self._px(d), int(DISH_R * PX))
+            pygame.draw.circle(self.screen, (120, 80, 40), self._px(d), int(DISH_R * self.px))
         for f in stub.world.food:
-            pygame.draw.circle(self.screen, (250, 250, 250), self._px(f), int(DISH_R * PX))
+            pygame.draw.circle(self.screen, (250, 250, 250), self._px(f), int(DISH_R * self.px))
         if stub.world.music is not None:  # the music, and how far it carries
             at = self._px(stub.world.music)
             for ring, alpha in ((0.25, 140), (0.6, 70), (1.2, 35)):
-                halo = pygame.Surface((int(2 * ring * PX) + 4,) * 2, pygame.SRCALPHA)
-                pygame.draw.circle(halo, (200, 120, 230, alpha), (int(ring * PX) + 2,) * 2, int(ring * PX), 2)
+                halo = pygame.Surface((int(2 * ring * self.px) + 4,) * 2, pygame.SRCALPHA)
+                pygame.draw.circle(halo, (200, 120, 230, alpha), (int(ring * self.px) + 2,) * 2, int(ring * self.px), 2)
                 self.screen.blit(halo, halo.get_rect(center=at))
-            pygame.draw.circle(self.screen, (200, 120, 230), at, int(0.07 * PX))
+            pygame.draw.circle(self.screen, (200, 120, 230), at, int(0.07 * self.px))
         if stub.world.hand is not None:
-            pygame.draw.circle(self.screen, (245, 225, 210), self._px(stub.world.hand), int(0.12 * PX))
+            pygame.draw.circle(self.screen, (245, 225, 210), self._px(stub.world.hand), int(0.12 * self.px))
 
     def _duck(self, i, pose, body) -> None:
         x, y, h = pose
@@ -142,17 +146,17 @@ class Viewer:
             name, tint = max(MOODS, key=lambda m: float(np.atleast_1d(getattr(body, m[0]))[i]))
             strength = float(np.atleast_1d(getattr(body, name))[i])
             if strength > 0.05:
-                halo = pygame.Surface((8 * DUCK_R * PX,) * 2, pygame.SRCALPHA)
-                pygame.draw.circle(halo, (*tint, int(90 * strength)), (4 * DUCK_R * PX,) * 2, int(3 * DUCK_R * PX))
+                halo = pygame.Surface((8 * DUCK_R * self.px,) * 2, pygame.SRCALPHA)
+                pygame.draw.circle(halo, (*tint, int(90 * strength)), (4 * DUCK_R * self.px,) * 2, int(3 * DUCK_R * self.px))
                 self.screen.blit(halo, halo.get_rect(center=self._px((x, y))))
         for side in (1, -1):  # what each eye can see
             mid = h + side * np.radians(EYE_DEG)
             for edge in (mid - np.radians(RETINA_DEG), mid + np.radians(RETINA_DEG)):
                 far = (x + 0.45 * np.cos(edge), y + 0.45 * np.sin(edge))
                 pygame.draw.line(self.screen, (*c, 70), self._px((x, y)), self._px(far), 1)
-        pygame.draw.circle(self.screen, c, self._px((x, y)), int(DUCK_R * PX))
+        pygame.draw.circle(self.screen, c, self._px((x, y)), int(DUCK_R * self.px))
         if i == self.selected:
-            pygame.draw.circle(self.screen, (255, 255, 255), self._px((x, y)), int(DUCK_R * PX) + 3, 2)
+            pygame.draw.circle(self.screen, (255, 255, 255), self._px((x, y)), int(DUCK_R * self.px) + 3, 2)
         tip = (x + 2 * DUCK_R * np.cos(h), y + 2 * DUCK_R * np.sin(h))
         pygame.draw.line(self.screen, (0, 0, 0), self._px((x, y)), self._px(tip), 2)
         if i in self.bubbles:
@@ -165,8 +169,8 @@ class Viewer:
         self.screen.blit(self.font.render(label, True, (215, 220, 230)), (x + w + 8, y - 2))
 
     def _panel(self, stub, server, light) -> None:
-        left = int(SIZE_M * PX)
-        pygame.draw.rect(self.screen, (24, 26, 32), (left, 0, PANEL_W, int(SIZE_M * PX)))
+        left = int(self.size * self.px)
+        pygame.draw.rect(self.screen, (24, 26, 32), (left, 0, PANEL_W, int(self.size * self.px)))
         i = min(self.selected, len(stub.pose) - 1)
         clock = "day" if light > 0.6 else "night" if light < 0.2 else "dusk"
         head = f"{stub.names[i]}   t {stub.t:6.1f} s   {clock}"

@@ -14,6 +14,7 @@ both are withheld, as telling a Bully by its silhouette is no blind test.
 """
 import base64
 import json
+import os
 import socket
 
 import numpy as np
@@ -21,9 +22,12 @@ import numpy as np
 from body.stub2d.retina import HEX_AZ, HEX_EL
 from body.stub2d.stub import WHEEL_VX, WHEEL_VYAW
 from brain.personality import label_of
-from world.fields import DAY_S, SIZE_M, TREE, daylight
+from world.fields import DAY_S, daylight
 
-SNAPSHOT_PORT, ACTION_PORT = 7650, 7651  # under the sensory frames, which take 7700 and up
+# Under the sensory frames, which take 7700 and up. MICRO_GARDEN_PORT moves the pair, for a second garden
+# beside one that is being watched (Godot's --port).
+SNAPSHOT_PORT = int(os.environ.get("MICRO_GARDEN_PORT", 7650))
+ACTION_PORT = SNAPSHOT_PORT + 1
 MOODS = ("fear", "anger", "joy", "sorrow")
 SHAPE_KNOBS = ("appetite", "aggressiveness", "timidity", "vanity", "chattiness", "energy", "sleepiness")
 EMOTE_S = 3.0  # how long an emote stays in the snapshot
@@ -71,6 +75,7 @@ class Snapshot:
         n = len(stub.names)
         last = lambda events: {e[1]: e for e in events[-4 * n:]}  # each duck's latest, from the recent few
         emotes, bites = last(stub.emotes), last(stub.eaten)
+        w = stub.world
         posture = stub.posture()
         swimming = stub._swimming()
         ducks = []
@@ -91,12 +96,11 @@ class Snapshot:
                 "hunger": level("hunger"), "thirst": level("thirst"), "sleepy": level("sleep_pressure"),
                 "knobs": {k: round(float(body.k[k][i]), 2) for k in SHAPE_KNOBS} if body and not self.blind else {},
             })
-        w = stub.world
-        return {"t": round(stub.t, 2), "size": SIZE_M, "light": round(float(daylight(stub.t)), 3),
+        return {"t": round(stub.t, 2), "size": w.size, "light": round(float(daylight(stub.t)), 3),
                 "day": round(stub.t % DAY_S / DAY_S, 4), "ducks": ducks,
                 "food": [[round(float(x), 3), round(float(y), 3)] for x, y in w.food],
                 "danger": [[float(x), float(y)] for x, y in w.danger],
-                "pond": None if w.pond is None else [float(v) for v in w.pond], "tree": list(TREE),
+                "pond": None if w.pond is None else [float(v) for v in w.pond], "tree": list(w.tree), "rocks": w.rocks.round(3).tolist(),
                 "music": None if w.music is None else list(w.music),
                 "hand": None if w.hand is None else [float(v) for v in w.hand], "toasts": self.toasts,
                 "sounds": [[round(t, 2), int(i), tag] for t, i, tag in stub.sounds[-2 * n:] if stub.t - t < HEARD_S]}
