@@ -1,6 +1,6 @@
 """pygame debug window for the 2D stub (ARCHITECTURE.md 4).
 
-The garden on the left: food-odor haze, shade tree, pond, stink patches, dishes, the player's hand,
+The garden on the left: food-odor haze, shade tree, pond, stink patches, the music, dishes, the player's hand,
 and the ducks as circles with a heading line, a retina fan and a mood halo. The night draws in as the
 sun goes down. A panel on the right for whichever duck is selected: its drives, its descending
 neurons, and a running list of what has just happened to anyone.
@@ -99,6 +99,13 @@ class Viewer:
             pygame.draw.circle(self.screen, (120, 80, 40), self._px(d), int(DISH_R * PX))
         for f in stub.world.food:
             pygame.draw.circle(self.screen, (250, 250, 250), self._px(f), int(DISH_R * PX))
+        if getattr(stub.world, "music", None) is not None:  # the music, and how far it carries
+            at = self._px(stub.world.music)
+            for ring, alpha in ((0.25, 140), (0.6, 70), (1.2, 35)):
+                halo = pygame.Surface((int(2 * ring * PX) + 4,) * 2, pygame.SRCALPHA)
+                pygame.draw.circle(halo, (200, 120, 230, alpha), (int(ring * PX) + 2,) * 2, int(ring * PX), 2)
+                self.screen.blit(halo, halo.get_rect(center=at))
+            pygame.draw.circle(self.screen, (200, 120, 230), at, int(0.07 * PX))
         if getattr(stub.world, "hand", None) is not None:
             pygame.draw.circle(self.screen, (245, 225, 210), self._px(stub.world.hand), int(0.12 * PX))
 

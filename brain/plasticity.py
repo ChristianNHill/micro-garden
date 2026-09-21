@@ -106,6 +106,22 @@ class Plasticity:
         self.w += (self.slow - self.w) * (1 - np.exp(-s / RECOVER_S)) + (self.slow - before)
         torch.minimum(self.w, self.slow, out=self.w)
 
+    def fondness(self) -> np.ndarray:
+        """What this duck has learned about the smell in its nose right now, -1 to 1, per duck.
+
+        A lesson is weakened synapses, and which dopamine weakened them says which way it went: reward
+        wears down the synapses under PAM, punishment the ones under PPL1. So for the Kenyon cells that
+        have just been firing, the share of their reward-gated weight that is gone is how much the duck
+        has come to like this smell, and the share of their punishment-gated weight that is gone is how
+        much it has come to dread it. Read from the synapses rather than from the MBONs' firing because a
+        firing rate also moves with how strong the smell is, and nothing downstream of the MBONs in this
+        wiring turns a duck anyway (Gate 8 bench, 2026-09-20): this is an explicit readout, like music's.
+        """
+        nose = self.trace.gather(1, self.pre_local.expand(self.trace.shape[0], -1))
+        gone = (1 - self.w / self.base).clamp_(min=0) * nose
+        share = lambda gate: (gone * gate).sum(1) / ((nose * gate).sum(1) + 1e-6)
+        return (share(self.reward_gate) - share(self.punish_gate)).cpu().numpy()
+
     def strength(self) -> np.ndarray:
         """Mean weight as a fraction of baseline, per duck. 1.0 is untouched, lower is learned."""
         return (self.w.sum(1) / self.base.sum()).cpu().numpy()

@@ -16,31 +16,33 @@ UNBUILT = {"playfulness", "hoarding"}
 KNOB_DEFAULT = 0.5
 JITTER = 0.1
 
+# Music taste by label (Chris, 2026-09-20, once music became a thing in the garden): the noisy and the
+# lively like it, the timid and the quiet keep away, and the Napper wants some peace.
 LABELS = {
     # the Chao Doctor list
     "Gentle": dict(aggressiveness=0.05, kindness=0.9, sociability=0.7),
-    "Naughty": dict(aggressiveness=0.6, kindness=0.2, curiosity=0.7, playfulness=0.8),
-    "Energetic": dict(energy=0.9, sleepiness=0.2, playfulness=0.7),
-    "Quiet": dict(energy=0.3, chattiness=0.1, sociability=0.3),
+    "Naughty": dict(aggressiveness=0.6, kindness=0.2, curiosity=0.7, playfulness=0.8, music_affinity=0.7),
+    "Energetic": dict(energy=0.9, sleepiness=0.2, playfulness=0.7, music_affinity=0.8),
+    "Quiet": dict(energy=0.3, chattiness=0.1, sociability=0.3, music_affinity=0.15),
     "Big eater": dict(appetite=0.95, aggressiveness=0.5),
-    "Chatty": dict(chattiness=0.95, sociability=0.8),
+    "Chatty": dict(chattiness=0.95, sociability=0.8, music_affinity=0.9),
     "Easily bored": dict(boredom_rate=0.9, curiosity=0.6),
     "Curious": dict(curiosity=0.95, timidity=0.2),
-    "Carefree": dict(timidity=0.1, water_love=0.8, stink_affinity=0.5),
+    "Carefree": dict(timidity=0.1, water_love=0.8, stink_affinity=0.5, music_affinity=0.7),
     "Careless": dict(carelessness=0.9, timidity=0.1),
     "Smart": dict(smarts=0.95),
-    "Cry baby": dict(timidity=0.9, aggressiveness=0.05, curiosity=0.2),  # low curiosity: sorrow fades slowly
+    "Cry baby": dict(timidity=0.9, aggressiveness=0.05, curiosity=0.2, music_affinity=0.2),  # low curiosity: sorrow fades slowly
     "Lonely": dict(sociability=0.95),
     "Naive": dict(smarts=0.2, timidity=0.1, curiosity=0.7),
     "No personality": dict(),
     # ours
     # seeks company and gets hungry fast, so food defense comes up often (Gate 5 retest, 2026-09-16)
     "Bully": dict(aggressiveness=0.95, kindness=0.1, appetite=0.9, sociability=0.8),
-    "Zoomer": dict(energy=0.95, boredom_rate=0.8, playfulness=0.8),
-    "Napper": dict(sleepiness=0.95, energy=0.3, heat_tolerance=0.3),
-    "Show-off": dict(vanity=0.9, playfulness=0.8, sociability=0.8),
-    "Scaredy": dict(timidity=0.95, sociability=0.4, stink_affinity=0.0),
-    "Loner": dict(sociability=0.05, curiosity=0.6, timidity=0.3),
+    "Zoomer": dict(energy=0.95, boredom_rate=0.8, playfulness=0.8, music_affinity=0.8),
+    "Napper": dict(sleepiness=0.95, energy=0.3, heat_tolerance=0.3, music_affinity=0.25),
+    "Show-off": dict(vanity=0.9, playfulness=0.8, sociability=0.8, music_affinity=0.9),
+    "Scaredy": dict(timidity=0.95, sociability=0.4, stink_affinity=0.0, music_affinity=0.1),
+    "Loner": dict(sociability=0.05, curiosity=0.6, timidity=0.3, music_affinity=0.3),
 }
 
 

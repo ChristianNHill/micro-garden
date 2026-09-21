@@ -44,12 +44,14 @@ MAX_FOOD = 4  # the tree stops dropping while this much food is on the ground
 
 
 class World:
-    def __init__(self, food_xy, danger_xy=(), pond=None, bites=1, wind=None, wind_turns_s=None):
+    def __init__(self, food_xy, danger_xy=(), pond=None, bites=1, wind=None, wind_turns_s=None, music=None):
         """pond is (x, y, radius) or None. Each dish holds `bites` bites. wind is the (x, y) velocity
         the air moves at, in m/s, or None for still air: it carries the smells and the pond's damp air
         downwind, so a plume reaches a long way on one side of its source and hardly at all on the
         other. wind_turns_s is how long the breeze takes to swing right round the compass, or None
-        for a steady one: in a steady wind whatever lies downwind of the ducks can never be found."""
+        for a steady one: in a steady wind whatever lies downwind of the ducks can never be found. music is
+        (x, y), something that plays where it has been put, a part of the garden like the pond and the
+        stink patch (Chris, 2026-09-20); the player can pick it up and put it down somewhere else."""
         self.wind0 = self.wind = None if wind is None else np.asarray(wind, float)
         self.wind_turns_s = wind_turns_s
         self.damp = np.zeros((GRID, GRID))
@@ -58,7 +60,7 @@ class World:
         self.danger = np.asarray(danger_xy, float).reshape(-1, 2)
         self.pond = pond
         self.hand = None  # (x, y) while the player's hand is in the garden (PLAN.md Gate 8)
-        self.music = None  # (x, y) while something is playing (PLAN.md Gate 8b)
+        self.music = None if music is None else (float(music[0]), float(music[1]))
         self.odor = np.zeros((GRID, GRID))
         self.danger_odor = np.zeros((GRID, GRID))
         self.diffuse(2000)  # start near steady state

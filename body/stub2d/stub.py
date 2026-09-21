@@ -9,7 +9,7 @@ period; garden.shake_tree on control.sock (a player action) drops SHAKE_FRUIT at
 click the tree; P pets the selected duck, C claps, F feeds by hand at the mouse, M starts or stops
 music there, H puts a hat on the selected duck or takes it off. garden.pet {duck} is the player's hand on a duck's head: bristles, and a reward.
 garden.scare claps, startling every duck. garden.hand {x, y, feed} puts the hand in the garden, where
-the ducks can see it, and drops that many bites at it. garden.music {x, y, on} starts something playing
+the ducks can see it, and drops that many bites at it. garden.music {x, y, on} picks the music up and puts it down there, or takes it away,
 and garden.hat {duck, on} puts a hat on one; a duck shakes a hat off by grooming.
 
 Run free at real time with the debug window:  uv run python -m body.stub2d.stub --view --wander
@@ -41,7 +41,8 @@ from world.fields import (DAY_S, SHORE_M, SIZE_M, DUCK_R, World, contacts, dayli
 # ate all of it and a third of them still starved, the Bully first, since its appetite asks 40% more
 # (Gate 9b; Claude's call while Chris was out, 2026-09-19, for him to ratify).
 DEMO_GARDEN = dict(food_xy=((3.0, 3.0),), bites=10, danger_xy=((2.3, 1.7),), pond=(3.1, 0.9, 0.35), fruit_every_s=10.0,
-                   wind=(0.0, -1.0), wind_turns_s=0.7 * DAY_S)
+                   wind=(0.0, -1.0), wind_turns_s=0.7 * DAY_S,
+                   music=(0.9, 0.9))  # the corner nothing else is in: food north, pond south-east, stink in the middle
 
 DT = 0.02
 # ponytail: guessed limits standing in for robotd's clamps; replace with the sim's real ones at Gate 10
@@ -61,11 +62,11 @@ BITE_S = 0.5  # ground_pick takes this long, so at most one bite per BITE_S
 class Stub:
     def __init__(self, n: int, seed: int, sock_dir: str, food_xy=((3.0, 3.0), (1.0, 1.0)), danger_xy=(),
                  pond=None, bites=1, fruit_every_s=None, frame_port: int = frames.FRAME_PORT, pose=None,
-                 wind=None, wind_turns_s=None):
+                 wind=None, wind_turns_s=None, music=None):
         rng = np.random.default_rng(seed)
         self.fruit_rng = np.random.default_rng(seed + 1)
         self.fruit_every_s = fruit_every_s
-        self.world = World(food_xy, danger_xy, pond, bites, wind, wind_turns_s)
+        self.world = World(food_xy, danger_xy, pond, bites, wind, wind_turns_s, music)
         self.pose = np.column_stack([rng.uniform(0.5, SIZE_M - 0.5, (n, 2)), rng.uniform(-np.pi, np.pi, n)])
         if pose is not None:
             self.pose = np.array(pose, float).reshape(n, 3)
@@ -267,7 +268,9 @@ def main() -> None:
                     help="drive the ducks from here with the real brain, so the viewer has drives to show")
     ap.add_argument("--labels", default="Bully,Napper,Carefree,Chatty,Scaredy",
                     help="one personality per duck when --brain is on")
-    ap.add_argument("--learns", action="store_true", help="let the ducks learn from sugar and petting")
+    ap.add_argument("--learns", action=argparse.BooleanOptionalAction, default=True,
+                    help="ducks learn from what happens to them and it changes who they keep company with; "
+                         "--no-learns for ducks that stay as they hatched")
     ap.add_argument("--save", default=os.path.expanduser("~/.cache/micro-garden/garden.npz"),
                     help="with --brain: the garden is loaded from here on launch, aged by however long you "
                          "were away, and saved here on exit")

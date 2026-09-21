@@ -22,6 +22,14 @@ and 0.67 m from it, which is no preference at all. Making it learnable needs the
 something, and the only free glomeruli are ones food already uses, so it waits on vision getting
 stronger or on a fourth odor.
 
+STATUS 2026-09-20, evening: PASSING. Chris asked for the two explicit readouts. Companionship turns a duck
+toward or away from the side other ducks smell stronger on, by its sociability; fondness is what it has
+learned about the smell in its nose, read from the mushroom body's own synapses (-0.81 after eight startles
+beside another duck, 0.00 untouched), and it adds to sociability. The pair clapped at ends 1.31 m apart
+and the yoked pair nobody clapped at 0.88 m, from 0.49 m: +0.43 m that is learning, against a control, where
++0.14 m is asked. One smell stands for every other duck, so this is wariness of ducks, not a grudge against
+one; a grudge needs each duck to smell of itself.
+
 DECIDED 2026-09-20 (Chris): a Bully that costs itself food is emergent behaviour and stays. The dish
 contest is printed, not asserted; what it shows is who a Bully is, not a fault to fix.
 

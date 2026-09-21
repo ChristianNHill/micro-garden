@@ -145,7 +145,10 @@ class BrainServer:
         falls_asleep, wakes = body.step(BODY_DT_MS / 1000, f, self.escaped, self.last_vx)
 
         levels = self._levels(f)
-        tune = np.abs(2 * body.k["music_affinity"] - 1) * levels["johnstons_organ"]  # strong taste, loud music
+        # Music is in the garden all day now, so it is a like that gives way to a need as the others do:
+        # a duck that loved it and could always hear it would otherwise sit by it and starve.
+        at_ease = 1 - pressing(np.maximum(body.hunger, body.thirst))
+        tune = np.abs(2 * body.k["music_affinity"] - 1) * levels["johnstons_organ"] * at_ease  # strong taste, loud music
         self.decoder.body = {**body.motor(wants=tune, damp=(f["humidity_left"] + f["humidity_right"]) / 2),
                              "surge": self.following, "swimming": f["swimming"] > 0, "at_shore": f["water"] > 0,
                              "thirst": body.thirst, "hatted": f["hat"] > 0, "fear": body.fear,
@@ -155,7 +158,11 @@ class BrainServer:
                              # by 0.01 of full loudness, a 0.01 rad/s turn under 1.5 of steering noise, and
                              # music never steered a duck (Gate 8b's old pass was two paths diverging)
                              **dict(zip(("music_left", "music_right"),
-                                        bilateral(f["music_left"], f["music_right"], MUSIC_HALF))),
+                                        (at_ease * m for m in bilateral(f["music_left"], f["music_right"], MUSIC_HALF)))),
+                             **dict(zip(("duck_left", "duck_right"),
+                                        (at_ease * m for m in bilateral(f["duck_left"], f["duck_right"], DUCK_HALF)))),
+                             "sociability": body.k["sociability"],
+                             "fondness": self.plastic.fondness() if self.plastic is not None else 0.0,
                              "music_affinity": body.k["music_affinity"], "vanity": body.k["vanity"]}
         # Senses release steadily rather than firing a random subset of each set per tick: the same
         # mean current with none of the sampling noise, which is what makes a smell recognisable from

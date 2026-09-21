@@ -174,10 +174,10 @@ class Physiology:
         hungry_now = pressing(self.hunger)
         water = (self.thirst * thirsty + hot * k["water_love"] * (1 - 0.8 * hungry_now)
                  + 0.5 * k["water_love"] * (1 - hungry_now))
-        # Company is a like, not a need. Sociability sets how much another duck's smell draws this one
+        # Companionship is a like, not a need. Sociability sets how much another duck's smell draws this one
         # (ARCHITECTURE.md 2.4; until now no knob touched it and every duck was drawn alike), and it
         # fades once hunger or thirst passes halfway, or a huddle holds itself together while it starves.
-        company = 2 * k["sociability"] * (1 - pressing(np.maximum(self.hunger, self.thirst)))
+        companionship = 2 * k["sociability"] * (1 - pressing(np.maximum(self.hunger, self.thirst)))
         care = 1 - 0.6 * k["carelessness"]
         # cold sensors steer toward cold (Gate 4b probe), so a hot duck turns up its cold sense to find
         # shade, and a cold duck its heat sense; a water lover skips the shade and heads for the pond
@@ -196,7 +196,7 @@ class Physiology:
             "moist_air": water,
             "cold": 1 + 2 * hot * (1 - k["water_love"]), "heat": 1 + 2 * cold,
             "orn_danger": care,
-            "orn_pheromone": company,
+            "orn_pheromone": companionship,
             "vision": (0.5 + k["timidity"]) * care * (1 + self.fear),  # brain/vision.py, not a set
         }
 

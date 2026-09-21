@@ -50,6 +50,12 @@ FEED_HZ = 1.0  # proboscis MN rate that means "eat"
 # DNp32 is one neuron per side: a stray spike adds 0.5 Hz to its 2 s average, stink holds it near 1 Hz.
 STINK_FLOOR_HZ, STINK_FULL_HZ, STINK_TAU_MS = 0.3, 0.8, 2000.0
 STINK_VYAW_PER_HZ = 0.5  # rad/s per Hz of left minus right DNp32
+# Companionship: a duck turns toward the side the other ducks smell stronger on, or away from it, as far as
+# its sociability and what it has learned about them say (brain/plasticity.py `fondness`). Explicit, like
+# music, and for the same reason: the brain's own left and right for a smell are a fraction of a hertz under
+# 1.5 Hz of steering noise (PLAN.md Gate 9b screens), so sociability never showed. It turns a duck as hard as
+# a tune does.
+COMPANIONSHIP_VYAW = 1.5
 MUSIC_VYAW = 1.5  # rad/s toward the louder ear at full music affinity, and away from it at none
 GROOM_HZ = 0.4  # grooming DN rate at which a duck is fussing with its head enough to shed a hat
 PREEN_REROLL_TICKS = 500  # a hatted duck reconsiders the thing on its head every 5 s, as it does wading
@@ -183,6 +189,9 @@ class Decoder:
         # Music: a duck with a taste for it turns toward the louder ear, one without turns away, and a
         # duck in the middle does neither. Whether it likes music is the knob; the sound is the garden's.
         taste = 2 * b("music_affinity", 0.5) - 1
+        # sociability is where a duck starts; fondness is what life has done to that, and a lesson fully
+        # learned is worth the whole of the dial
+        liking = np.clip(2 * b("sociability", 0.5) - 1 + b("fondness", 0.0), -1, 1)
         # Fleeing a stink adds a turn away from it; it does not stop a duck steering by everything
         # else. The (1 - avoid) factor here used to scale down all the rest, so a hungry duck within
         # smell of the demo garden's stink patch lost a third of its steering toward the dish, ran past
@@ -192,7 +201,8 @@ class Decoder:
         # (brain/server.py), so this is a duck following its nose up the wind and nothing else.
         vyaw = ((wander + VYAW_PER_HZ * (steer + r[WIND_L] - r[WIND_R]))
                 + STINK_VYAW_PER_HZ * (r[STINK_L] - r[STINK_R]) * (like - avoid)
-                + MUSIC_VYAW * taste * (b("music_left", 0.0) - b("music_right", 0.0)))
+                + MUSIC_VYAW * taste * (b("music_left", 0.0) - b("music_right", 0.0))
+                + COMPANIONSHIP_VYAW * liking * (b("duck_left", 0.0) - b("duck_right", 0.0)))
         vyaw = np.where(asleep, 0.0, vyaw)
         return [
             {"vx": float(vx[b]), "vy": 0.0, "vyaw": float(vyaw[b]), "escape": bool(onset[b]),
