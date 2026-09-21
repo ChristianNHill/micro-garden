@@ -232,10 +232,10 @@ class Decoder:
                 + MUSIC_VYAW * taste * (b("music_left", 0.0) - b("music_right", 0.0))
                 + COMPANIONSHIP_VYAW * liking * (b("duck_left", 0.0) - b("duck_right", 0.0))
                 + PLAY_VYAW * b("play", 0.0) * (b("ball_left", 0.0) - b("ball_right", 0.0))
-                # and among the others (brain/social.py): towards the duck beside it if that is a friend and away
-                # if it is a grudge, towards a hand it trusts and away from one it does not, and, for a kind
+                # and among the others (brain/social.py): towards its friends and away from its grudges, by their
+                # own smells from across the garden and more surely for the duck beside it, towards a hand it trusts and away from one it does not, and, for a kind
                 # duck, towards one that is crying. All as far as nothing is pressing, like the other likes.
-                + b("at_ease", 1.0) * (BOND_VYAW * b("bond_near", 0.0) * (b("near_left", 0.0) - b("near_right", 0.0))
+                + b("at_ease", 1.0) * (BOND_VYAW * (b("bond_turn", 0.0) + b("bond_near", 0.0) * (b("near_left", 0.0) - b("near_right", 0.0)))
                                        + HAND_VYAW * b("hand_trust", 0.0) * (b("hand_left", 0.0) - b("hand_right", 0.0))
                                        + COMFORT_VYAW * b("comfort", 0.0) * (b("cry_left", 0.0) - b("cry_right", 0.0))))
         vyaw = np.where(asleep, 0.0, vyaw)

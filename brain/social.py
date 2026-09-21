@@ -18,6 +18,8 @@ from world.fields import FRUITS
 
 BOND_FADES_S = 1800.0  # a bond nobody renews is mostly gone in three days of garden time
 TOGETHER_S = 120.0  # at ease beside the same duck for this long is a full step towards friendship
+SCENT_HALF = 0.05  # the smell of a duck about a metre and a half off: half as telling as one beside it
+SCENT_CONTRAST = 8.0  # two antennae 10 cm apart differ by a few percent; this makes a side of it
 KINDLY = 0.5  # kindness past this is a duck that minds what happens to others
 
 
@@ -105,7 +107,16 @@ def steering(body, f: dict) -> dict:
     kind = trait(body, "kindness", KINDLY)
     crying = np.maximum(f["cry_left"], f["cry_right"])
     hand = np.maximum(f["hand_left"], f["hand_right"])
+    # Friends and grudges from across the garden: each duck has a smell of its own, and which antenna a duck
+    # smells it on more says which side it is on. The difference is taken as a share of the whole, as the other
+    # smells' is, so a faint duck far off still has a side; how much it matters falls off with how faint it is.
+    left, right = f["scent_left"][:, :n], f["scent_right"][:, :n]
+    total = left + right
+    side = (left - right) / np.maximum(total, 1e-9)  # +1 all on the left, -1 all on the right
+    plain = total / (total + SCENT_HALF)
+    bond_turn = np.clip((body.bond * side * plain).sum(axis=1) * SCENT_CONTRAST, -1, 1)
     return {
+        "bond_turn": bond_turn,
         "bond_near": np.where(with_one, body.bond[np.arange(n), np.where(with_one, near, 0)], 0.0),
         "near_left": f["near_left"], "near_right": f["near_right"],
         "hand_trust": body.hand_trust, "hand_left": f["hand_left"], "hand_right": f["hand_right"],
@@ -134,7 +145,7 @@ if __name__ == "__main__":
     b = Physiology(4, stack([preset(x) for x in labels]), hunger=0.2, thirst=0.2)
     init(b)
     one = frames.unpack(frames.pack())
-    blank = lambda: {name: np.full(4, float(one[name])) for name in one.dtype.names if name != "lum"}
+    blank = lambda: {name: np.array([one[name]] * 4, float) for name in one.dtype.names if name != "lum"}
     f = blank()
     f["bumped_by"][2] = 0  # the Bully shoves the Scaredy, and the Gentle and the Chatty see it
     f["saw_shove_by"][[1, 3]], f["saw_shove_of"][[1, 3]] = 0, 2
@@ -154,6 +165,8 @@ if __name__ == "__main__":
     f = blank(); f["near_id"][1], f["near_left"][1] = 3, 0.8
     s = steering(b, f)
     assert s["bond_near"][1] > 0 and s["bond_near"][0] == 0
+    f = blank(); f["scent_left"][2, 0], f["scent_right"][2, 0] = 0.021, 0.019  # the Bully, two metres off to the Scaredy's left
+    assert steering(b, f)["bond_turn"][2] < -0.05 and steering(b, f)["bond_turn"][3] == 0, "a grudge turns a duck away from far off"
     assert friends(b, 2, labels) == ("", "Bully") and friends(b, 3, labels) == ("", ""), "one shove is a grudge for the duck it landed on"
     print("ok  a shove makes a grudge and kind witnesses take sides; a song makes a friend of the Gentle and an "
           f"enemy of the Bully; the hand is trusted by the duck it fed ({b.hand_trust[1]:+.2f}) and not by the rest")

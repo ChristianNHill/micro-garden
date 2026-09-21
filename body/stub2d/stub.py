@@ -27,7 +27,7 @@ import numpy as np
 from body import frames
 from body.contract import ROBOT_PARAMS, serve
 from body.stub2d import retina
-from world.fields import (DAY_S, SHORE_M, SIZE_M, TREE, DUCK_R, World, contacts, daylight, duck_odor_at,
+from world.fields import (DAY_S, DUCK_SMELL_M, SHORE_M, SIZE_M, TREE, DUCK_R, World, contacts, daylight, duck_odor_at,
                           music_at, temperature_at, wind_on)
 
 # Light air that starts in the north and swings right round the compass every 0.7 of a day, so that no
@@ -49,6 +49,7 @@ from world.fields import (DAY_S, SHORE_M, SIZE_M, TREE, DUCK_R, World, contacts,
 # into the pond, so every duck swimming or asleep at that end looked pressed against the waterfall (2026-09-21).
 DEMO_GARDEN = dict(size=6.0, tree=(1.5, 4.3, 0.9), food_xy=((3.0, 2.2),), bites=10, danger_xy=((4.9, 1.3),),
                    pond=(4.5, 4.4, 1.2), rocks=((5.5, 5.47, 0.42), (5.95, 5.9, 0.55)), fruit_every_s=10.0, wind=(0.0, -1.0), wind_turns_s=0.7 * DAY_S,
+                   personal_m=0.24,  # the drawn duck's width: they stop at each other and do not merge
                    music=None)  # the music box is the player's to put down (M), and to pick up again
 
 DT = 0.02
@@ -58,7 +59,7 @@ ANTENNA = np.array([0.06, 0.05])  # forward, lateral offset of each odor sample,
 CONTROL_PARAMS = {"sim.step": {"n": 1}, "sim.state": {}, "garden.shake_tree": {}, "garden.pet": {"duck": 0},
                   "garden.scare": {}, "garden.hand": {"x": 0.0, "y": 0.0, "feed": 0},
                   "garden.music": {"x": 0.0, "y": 0.0, "on": 1}, "garden.hat": {"duck": 0, "on": 1},
-                  "garden.drop_hat": {"x": 0.0, "y": 0.0}, "garden.drop_ball": {"x": 0.0, "y": 0.0}, "garden.volume": {"level": 0.75}, "garden.give": {"duck": 0}, "garden.grab": {"x": 0.0, "y": 0.0}, "garden.hand_at": {"x": 0.0, "y": 0.0},
+                  "garden.drop_hat": {"x": 0.0, "y": 0.0}, "garden.drop_ball": {"x": 0.0, "y": 0.0}, "garden.volume": {"level": 0.75}, "garden.give": {"duck": 0}, "garden.drum": {"x": 0.0, "y": 0.0, "on": 1}, "garden.grab": {"x": 0.0, "y": 0.0}, "garden.hand_at": {"x": 0.0, "y": 0.0},
                   "garden.release": {"x": 0.0, "y": 0.0, "vx": 0.0, "vy": 0.0}}
 SHAKE_FRUIT = 2
 PUSH_M = 0.15
@@ -66,6 +67,7 @@ DOWN_S = 10.0  # a kicked duck goes over, and this is about how long a microduck
 SWIM_SPEED = 0.5  # fraction of commanded speed while swimming
 SOUND_TAGS = {"alarm", "greet", "inquire", "peck", "chirp", "coo", "wheee"}  # microduck's voice bank
 SIT_AFTER_S = 3.0  # a duck that has not moved for this long is drawn sitting (body/mujoco/adapter.py really sits)
+DRUM_REACH_M = 0.32  # how near a drum a duck has to be to tap it
 KICK_REACH_M, KICK_MS = 0.22, 1.6  # how near its feet a ball has to be for a duck to kick it, and how fast it leaves
 BALL_SEEN_M = 1.5  # a ball this far off fills half what it would at a duck's feet
 NEAR_M = 1.0  # another duck nearer than this is the one a duck is with
@@ -129,7 +131,7 @@ EMOTE_ACTS = {
 class Stub:
     def __init__(self, n: int, seed: int, sock_dir: str, food_xy=((3.0, 3.0), (1.0, 1.0)), danger_xy=(),
                  pond=None, bites=1, fruit_every_s=None, frame_port: int = frames.FRAME_PORT, pose=None,
-                 wind=None, wind_turns_s=None, music=None, size=SIZE_M, tree=TREE, rocks=(), balls=()):
+                 wind=None, wind_turns_s=None, music=None, size=SIZE_M, tree=TREE, rocks=(), balls=(), personal_m=0.0):
         rng = np.random.default_rng(seed)
         self.fruit_rng = np.random.default_rng(seed + 1)
         self.fruit_every_s = fruit_every_s
@@ -154,6 +156,8 @@ class Stub:
         self.donned = []  # (t, duck) each time one puts a hat on
         self.kicks = []  # (t, duck) each time one kicks a ball
         self.kicked = np.zeros(n, bool)
+        self.drums = []  # (t, duck) each tap on the drum
+        self.drummed = np.zeros(n, bool)
         self.saw_show = np.zeros(n, bool)
         # who did what to whom this step, for the ducks it happened near (-1 is nobody); sent and then cleared
         self.events = {name: np.full(n, -1.0) for name in frames.IDS if name != "near_id"}
@@ -178,6 +182,13 @@ class Stub:
         self.relaxed = np.zeros(n, bool)
         self.seen = None
         self.touch_m = 2 * DUCK_R  # how near two ducks' centres are when they touch
+        # How near two ducks' centres can come, or 0 for ducks that pass through each other, which is what the
+        # gates were measured with. The garden people watch draws its ducks larger than life, and there they
+        # walked through one another (Chris, 2026-09-21); with a personal space they stop at each other, and
+        # touching is that distance and a little, so a shove, company and comfort all still reach.
+        self.personal_m = float(personal_m)
+        if self.personal_m > 0:
+            self.touch_m = self.personal_m + 0.05
         self.down_until = np.zeros(n)  # garden time until which a kicked duck is on the floor
         self.t = 0.0
         self.lock = threading.Lock()
@@ -229,6 +240,16 @@ class Stub:
                     self.kicks.append((self.t, i))
                     self.kicked[i] = True
                     break
+        elif p["skill"] == "drum" and self.world.drum is not None:
+            rel = np.asarray(self.world.drum) - self.pose[i, :2]
+            if np.linalg.norm(rel) < DRUM_REACH_M:
+                self.drums.append((self.t, i))
+                self.drummed[i] = True
+                self.sounds.append((self.t, i, "drum"))  # the drum's voice and not the duck's; a viewer plays it quietly
+                near = np.linalg.norm(self.pose[:, :2] - self.pose[i, :2], axis=1) < AUDIENCE_M  # and it is a performance
+                near[i] = False
+                self.saw_show |= near
+                self.events["show_by"][near] = i
         elif p["skill"] == "wear" and not self.hats[i]:
             near = [k for k, (x, y, _) in enumerate(self.hat_items) if np.hypot(x - self.pose[i, 0], y - self.pose[i, 1]) < HAT_REACH_M]
             if near:
@@ -366,6 +387,9 @@ class Stub:
         """How loud the music box plays, 0 to 1. Off is off for the ducks too."""
         self.world.music_volume = float(np.clip(p["level"], 0, 1))
 
+    def _drum(self, p):
+        self.world.drum = (float(p["x"]), float(p["y"])) if int(p["on"]) else None
+
     def _drop_ball(self, p):
         """A ball for the ducks, put down where the player says. A few is plenty."""
         self.world.balls = np.vstack([self.world.balls, [float(p["x"]), float(p["y"]), 0.0, 0.0]])[-MAX_BALLS:]
@@ -377,12 +401,30 @@ class Stub:
     def _scare(self, p):
         self.scared[:] = True  # a clap: everything in the garden hears it
 
+    def _keep_apart(self) -> None:
+        """Two ducks nearer than personal_m are each moved half the difference apart: solid to each other, as
+        they are to a rock. A few passes settle a huddle."""
+        if self.personal_m <= 0 or len(self.pose) < 2:
+            return
+        xy = self.pose[:, :2]
+        for _ in range(3):
+            rel = xy[:, None] - xy[None]  # [i, j]: i from j
+            d = np.linalg.norm(rel, axis=-1)
+            np.fill_diagonal(d, np.inf)
+            close = d < self.personal_m
+            if not close.any():
+                return
+            away = np.where(d[..., None] > 1e-6, rel / np.maximum(d, 1e-6)[..., None], [1.0, 0.0])
+            xy += (away * (np.where(close, self.personal_m - d, 0.0) / 2)[..., None]).sum(axis=1)
+        np.clip(xy, DUCK_R, self.world.size - DUCK_R, out=xy)
+
     def _things(self) -> list:
         """Everything the hand could pick up, as (kind, which, x, y). Things before ducks, so a fruit beside
         a duck is the fruit."""
         w = self.world
         things = [("ball", k, *b[:2]) for k, b in enumerate(w.balls)] + [("hat", k, h[0], h[1]) for k, h in enumerate(self.hat_items)]
         things += [("food", k, *xy) for k, xy in enumerate(w.food)] + ([("music", 0, *w.music)] if w.music else [])
+        things += [("drum", 0, *w.drum)] if w.drum else []
         return things + [("duck", i, *xy) for i, xy in enumerate(self.pose[:, :2]) if self.can_carry_ducks]
 
     can_carry_ducks = True  # a simulated robot is not something a cursor can lift (body/mujoco/adapter.py)
@@ -414,6 +456,8 @@ class Stub:
             w.food[which] = at
         elif kind == "music":
             w.music = tuple(at)
+        elif kind == "drum":
+            w.drum = tuple(at)
         elif kind == "duck":
             self.pose[which, :2] = at
             self.cmd[which] = 0
@@ -463,7 +507,7 @@ class Stub:
 
     def _control_call(self, method, p):
         handlers = {"garden.pet": self._pet, "garden.music": self._place_music, "garden.hat": self._hat,
-                    "garden.drop_hat": self._drop_hat, "garden.drop_ball": self._drop_ball, "garden.volume": self._volume, "garden.give": self._give, "garden.grab": self._grab, "garden.hand_at": self._hand_at,
+                    "garden.drop_hat": self._drop_hat, "garden.drop_ball": self._drop_ball, "garden.drum": self._drum, "garden.volume": self._volume, "garden.give": self._give, "garden.grab": self._grab, "garden.hand_at": self._hand_at,
                     "garden.release": self._release,
                     "garden.scare": self._scare, "garden.hand": self._hand, "sim.step": self._sim_step,
                     "garden.shake_tree": lambda p: {"fell": self.shake_tree()}, "sim.state": lambda p: self.state()}
@@ -478,6 +522,7 @@ class Stub:
         y += (vx * np.sin(h) + vy * np.cos(h)) * DT
         self.still_for = np.where(np.hypot(vx, vy) > 0.01, 0.0, self.still_for + DT)
         np.clip(self.pose[:, :2], DUCK_R, self.world.size - DUCK_R, out=self.pose[:, :2])
+        self._keep_apart()
         if self.held is not None and self.held[0] == "duck" and self.world.hand is not None:
             self.pose[self.held[1], :2] = self.world.hand  # its legs may go, and it goes nowhere
         self.world.push_out(self.pose[:, :2], DUCK_R)
@@ -508,6 +553,9 @@ class Stub:
             sense[f"humidity_{side}"] = w.humidity_at(p)
             sense[f"temp_{side}"] = temperature_at(p, light, self.world.tree)
             sense[f"duck_{side}"] = np.array([duck_odor_at(p[i], xy, i) for i in range(len(xy))])
+            each = np.exp(-np.linalg.norm(xy[None] - p[:, None], axis=-1) / DUCK_SMELL_M)  # [i, j]: duck j at i's antenna
+            np.fill_diagonal(each, 0.0)
+            sense[f"scent_{side}"] = np.pad(each, ((0, 0), (0, frames.MAX_DUCKS - len(xy))))[:, :frames.MAX_DUCKS]
             sense[f"music_{side}"] = music_at(p, w.music) * w.music_volume
         sense["touch_left"], sense["touch_right"], dish = contacts(xy, h, w.food, self.touch_m)
         sense["sugar"] = (dish >= 0).astype(float)
@@ -531,6 +579,15 @@ class Stub:
             seen[1] = np.maximum(seen[1], size * (to_left < 0))
             near |= (d < KICK_REACH_M) & (ahead > 0)
         sense["ball_left"], sense["ball_right"], sense["ball_near"] = seen[0], seen[1], near.astype(float)
+        if w.drum is not None:  # the drum, as the ball is seen: which eye, how plain, and whether it is in reach
+            rel = np.asarray(w.drum) - xy
+            d_drum = np.linalg.norm(rel, axis=1)
+            plain_drum = np.where((rel * fwd).sum(1) > -0.3 * d_drum, 1 / (1 + d_drum / BALL_SEEN_M), 0.0)
+            on_left = (rel * left).sum(1) >= 0
+            sense["drum_left"], sense["drum_right"] = plain_drum * on_left, plain_drum * ~on_left
+            sense["drum_near"] = (d_drum < DRUM_REACH_M).astype(float)
+        sense["drummed"] = self.drummed.astype(float)
+        self.drummed[:] = False
         sense["kicked"], sense["show"] = self.kicked.astype(float), self.saw_show.astype(float)
         self.kicked[:] = self.saw_show[:] = False
         side = lambda rel: (rel * left).sum(1) >= 0  # is it to this duck's left
@@ -580,7 +637,9 @@ class Stub:
         return retina.luminance(xy, h, self.world, light)
 
     def state(self) -> dict:
-        return {"t": self.t, "pose": self.pose.tolist(), "food": self.world.food.tolist(), "eaten": self.eaten}
+        w = self.world
+        return {"t": self.t, "pose": self.pose.tolist(), "food": w.food.tolist(), "eaten": self.eaten,
+                "music": w.music, "drum": w.drum, "balls": len(w.balls), "hats": len(self.hat_items)}
 
     def close(self) -> None:
         for s in self.servers:

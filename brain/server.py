@@ -62,6 +62,7 @@ DANCE_EVERY_S = 3.0  # a dance lasts about this long, so a duck that goes on wan
 DANCE_REST_S = (10.0, 25.0)  # between one dance and the next: back to back, five ducks danced without a pause (Chris)
 PERFORM_BORED = 0.5  # boredom past which a duck starts to entertain itself
 DANCE_LOUD = 0.1  # the Johnston's organ level at which the music is loud enough to dance to at full
+DRUM_EVERY_S = 0.6  # a duck at a drum decides this often whether to tap it, so a keen one keeps a beat
 KICK_EVERY_S = 1.0  # how often a duck with a ball at its feet decides whether to kick it
 CLAP_S = 0.2
 SIDED = ["orn_food", "orn_danger", "moist_air", "dry_air", "heat", "cold", "bristle", "orn_pheromone",
@@ -154,6 +155,7 @@ class BrainServer:
         self.brainview = BrainView(ann, self.sets, self.brain.dev)  # for a viewer; idle until a duck is watched
         self.hat_was_near = np.zeros(self.n, bool)
         self.kick_at = np.zeros(self.n)
+        self.drum_at = np.zeros(self.n)
         self.dance_at = np.zeros(self.n)
         self.dancing = np.zeros(self.n)
         self.performing = np.zeros(self.n)
@@ -188,10 +190,11 @@ class BrainServer:
         # A ball is wanted as far as the duck wants to play and can see one: that gets it walking, and the
         # decoder turns it towards the eye the ball is in. Explicit, as music is, and for the same reason.
         self.playing = body.play() * at_ease
-        ball = self.playing * np.maximum(f["ball_left"], f["ball_right"])
+        toy_left, toy_right = np.maximum(f["ball_left"], f["drum_left"]), np.maximum(f["ball_right"], f["drum_right"])
+        ball = self.playing * np.maximum(toy_left, toy_right)  # a ball or a drum: whichever it sees plainer
         wants = np.maximum.reduce([tune, ball, among.pop("social_want") * at_ease])
         self.decoder.body = {**body.motor(wants=wants, damp=(f["humidity_left"] + f["humidity_right"]) / 2), **among,
-                             "play": self.playing, "ball_left": f["ball_left"], "ball_right": f["ball_right"],
+                             "play": self.playing, "ball_left": toy_left, "ball_right": toy_right,
                              "surge": self.following, "swimming": f["swimming"] > 0, "at_shore": f["water"] > 0,
                              "thirst": body.thirst, "hatted": f["hat"] > 0, "fear": body.fear,
                              "hunger": pressing(body.hunger),  # how far hunger outranks a smell it likes
@@ -306,6 +309,10 @@ class BrainServer:
                 self.body.amuse(i)
                 social.performed(self.body, i)
                 self.dance_at[i] += self.emote_rng.uniform(*DANCE_REST_S)  # and then it has had its turn for a while
+        if f["drum_near"] > 0 and self.t >= self.drum_at[i] and not self.body.asleep[i]:  # and a drum in reach is tapped
+            self.drum_at[i] = self.t + DRUM_EVERY_S
+            if self.emote_rng.random() < self.playing[i]:
+                send("robot.do", skill="drum")
         near = f["hat_near"] > 0
         if near and not self.hat_was_near[i] and f["hat"] == 0 and not self.body.asleep[i] and self.t >= self.hat_shy_until[i]:
             if self.emote_rng.random() < WEAR_P[0] + (WEAR_P[1] - WEAR_P[0]) * float(self.body.k["vanity"][i]):

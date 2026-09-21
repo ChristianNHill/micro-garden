@@ -333,7 +333,7 @@ class MujocoBody(Stub):
         if skill in ("headbutt", "kick"):  # a shove and a kick at a ball are both a foot
             self.kick_foot[i] = not self.kick_foot[i]
             skill = "kick_left" if self.kick_foot[i] else "kick_right"
-        skill = {"zoomies": "roulade"}.get(skill, skill)
+        skill = {"zoomies": "roulade", "drum": "ground_pick"}.get(skill, skill)  # a tap on the drum is a peck at it
         if skill in ROBOT_SKILLS:
             self.robots[i].notify("robot.do", skill=skill)
 

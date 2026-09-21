@@ -58,6 +58,7 @@ class World:
         (x, y), something that plays where it has been put, a part of the garden like the pond and the
         stink patch (Chris, 2026-09-20); the player can pick it up and put it down somewhere else."""
         self.size, self.tree = float(size), tuple(tree)  # metres along a side, and the tree's (x, y, shade radius)
+        self.drum = None  # (x, y) of a drum put down for the ducks, or None
         self.balls = np.zeros((0, 4))  # x, y, vx, vy each: toys, which roll (PLAN.md Gate 8b)
         self.rocks = np.asarray(rocks, float).reshape(-1, 3)  # (x, y, radius) each: round, solid, and in the way
         self.grid = round(self.size / CELL_M)

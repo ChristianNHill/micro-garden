@@ -7,6 +7,7 @@
 #   --reduced-motion            a still camera, half the animation       --mute     no sound
 #   --light=0.1                 draw that daylight whatever the hour, to look at the night; --asleep=N draws duck N asleep
 #   --music=DIR                 the folder of mp3s the music box plays (default ~/.cache/micro-garden/music)
+#   --keys=MBT                  press these keys after three seconds, to check they reach the garden
 #   --port=N                    listen there, for a garden started with MICRO_GARDEN_PORT=N
 #   --shot=file.png             save the window after --shot-after=S seconds (6 by default)
 #   --feed-at=x,y               drop food there once snapshots arrive, and --quit-after=S: both for Gate 13
@@ -19,17 +20,36 @@ const Hats := preload("res://hats.gd")
 const BrainView := preload("res://brainview.gd")
 const MusicBox := preload("res://musicbox.gd")
 const SNAPSHOT_PORT := 7650  # actions go back on the next one up; --port moves the pair
-const HELP := """tap a duck      select it: its needs, its brain
-hold and drag   pick up fruit, a hat, a ball, the music box, a duck
-let go moving   throw it (a thrown duck thinks less of you)
-tap the tree/F  shake fruit down       C   clap
-H  B  M         drop a hat, a ball, the music box (M again picks it up)
-tap the box     its volume
-right-drag      turn the camera        scroll   zoom
-/               hide this"""
-const HELP_SELECTED := """Tab  ride it      P  pet it      G  hand it a fruit
-tap the grass   let it go
+const HELP := """
+    MICRO GARDEN
+
+
+    tap a duck            select it: its needs, its moods, its brain, who its friends are
+    tap the grass         let it go
+
+    with a duck selected
+      Tab                 ride it (W A S D steer, O hides its eyes, Tab gets off)
+      P                   pet it
+      G                   hand it a fruit
+
+    H                     bring out the hand, or put it away. With it out:
+      hold and drag         pick up fruit, a hat, a ball, the drum, the music box, or a duck
+      let go on the move    throw it (a thrown duck thinks less of you)
+
+    F, or tap the tree    shake fruit down
+    T                     drop a hat at the mouse, for whoever wants it
+    B                     drop a ball at the mouse
+    D                     put a drum down at the mouse, or take it up
+    M                     put the music box down at the mouse, or take it up
+    tap the music box     step its volume
+    C                     clap
+
+    drag                  turn the camera (right-drag while the hand is out)
+    scroll                zoom
+
+    /                     close this
 """
+const HELP_HINT := "/  controls"
 const HELP_RIDING := "W A S D  steer      O  hide its eyes      Tab  get off"
 const PITCH := Vector2(0.35, 1.25)  # radians above the horizon the camera may sit
 const DRIFT := 0.12  # radians the idle camera sways either way
@@ -48,6 +68,8 @@ var cam := Camera3D.new()
 var orbit := Vector3(0.75, 0.7, 8.8)  # yaw, pitch, distance
 var centre := Vector3.INF  # what the camera turns about
 var glove := Node3D.new()  # the player's hand, where the mouse is over the garden
+var hand_mode := false  # H: the cursor is the glove and the left button is its grip; off, a plain cursor and the camera
+var mouse_inside := true
 var gripping := false  # the left button is down: the hand is closed on whatever was there
 var pressed_at := 0.0
 var trail: Array = []  # [seconds, garden xy] of the hand lately, for how fast it was moving when it let go
@@ -73,7 +95,7 @@ var asked := 0.0
 var overlay := Control.new()  # the ride view's retinas and descending-neuron bars; O hides it
 var card := Label.new()  # who the selected duck is
 var help := Label.new()  # what the player can do, bottom right; / hides it
-var help_on := true
+var help_on := false  # collapsed to a hint until / opens it, over the whole window
 var toasts := Label.new()
 var args := {}
 
@@ -130,7 +152,6 @@ func _ready() -> void:
 	glove.scale = Vector3.ONE * 1.6
 	glove.visible = false
 	add_child(glove)
-	Input.mouse_mode = Input.MOUSE_MODE_HIDDEN if not args.has("shot") else Input.MOUSE_MODE_VISIBLE
 	music.set_script(MusicBox)
 	add_child(music)
 	music.setup(args.get("music", OS.get_environment("HOME").path_join(".cache/micro-garden/music")))
@@ -156,8 +177,34 @@ func _ready() -> void:
 	if args.has("shot"):
 		get_tree().create_timer(float(args.get("shot-after", "6"))).timeout.connect(
 			func() -> void: get_viewport().get_texture().get_image().save_png(args["shot"]))
+	if args.has("keys"):  # press these as a player would, with the mouse over the middle of the window: a check of the keys
+		get_tree().create_timer(3.0).timeout.connect(func() -> void:
+			get_viewport().warp_mouse(get_viewport().get_visible_rect().size / 2)
+			for letter in args["keys"]:
+				var e := InputEventKey.new()
+				e.keycode = KEY_SLASH if letter == "/" else OS.find_keycode_from_string(letter)
+				e.pressed = true
+				Input.parse_input_event(e)
+				print("pressed ", letter))
 	if args.has("quit-after"):
 		get_tree().create_timer(float(args["quit-after"])).timeout.connect(get_tree().quit)
+
+
+func _notification(what: int) -> void:
+	# The glove stands in for the cursor only over the garden: outside the window, or with the window not
+	# in front, the player has their own cursor back (it used to stay hidden wherever the mouse went).
+	if what == NOTIFICATION_WM_MOUSE_EXIT or what == NOTIFICATION_APPLICATION_FOCUS_OUT or what == NOTIFICATION_WM_WINDOW_FOCUS_OUT:
+		mouse_inside = false
+		if gripping:
+			gripping = false
+			_let_go()
+	elif what == NOTIFICATION_WM_MOUSE_ENTER:
+		mouse_inside = true
+	_cursor()
+
+
+func _cursor() -> void:
+	Input.mouse_mode = Input.MOUSE_MODE_HIDDEN if hand_mode and mouse_inside and not possessing else Input.MOUSE_MODE_VISIBLE
 
 
 func _report() -> void:
@@ -238,6 +285,11 @@ func _show(first: bool) -> void:
 		n.set_meta("was", n.position)
 		if moved.length() > 1e-5:
 			ball.rotate(Vector3(moved.z, 0, -moved.x).normalized(), moved.length() / (0.06 * 1.9))
+	_props("drum", [snap.drum] if snap.get("drum") != null else [], func(n: Node3D, f: Array) -> void:
+		Ink.part(n, Ink.cone(0.13, 0.16, 0.11, 10), Ink.CORAL, Vector3(0, 0.11, 0), Vector3.ONE, 6.0, -1.0, true).material_override.set_shader_parameter("lift", 0.3)
+		Ink.part(n, Ink.cone(0.135, 0.02, 0.135, 10), Color("f6f1e6"), Vector3(0, 0.2, 0), Vector3.ONE, 6.0, -1.0, true).material_override.set_shader_parameter("lift", 0.4)
+		for k in 3:
+			Ink.part(n, Ink.cone(0.012, 0.06, 0.012, 4), Scenery.WOOD, Vector3(cos(TAU * k / 3.0) * 0.09, 0.03, sin(TAU * k / 3.0) * 0.09), Vector3.ONE, 6.0))
 	_props("danger", snap.danger, func(n: Node3D, f: Array) -> void:
 		Ink.part(n, Ink.cone(0.22, 0.002, 0.22, 10), Ink.MUSTARD, Vector3(0, 0.003, 0), Vector3.ONE, 5.0, 0.3))
 	_props("music", [snap.music] if snap.music != null else [], func(n: Node3D, f: Array) -> void:
@@ -251,7 +303,7 @@ func _show(first: bool) -> void:
 	for i in falls.size():
 		falls[i].scale.z = 0.5 * (1.0 + 0.12 * calm * sin(Time.get_ticks_msec() / 130.0 + i * 1.7))
 	var held = snap.get("held")
-	for kind in ["balls", "hats", "food", "music"]:  # what the hand holds rides up in it
+	for kind in ["balls", "hats", "food", "music", "drum"]:  # what the hand holds rides up in it
 		var nodes: Array = props.get(kind, [])
 		for k in nodes.size():
 			var up: bool = held != null and held[0] + ("s" if held[0] in ["ball", "hat"] else "") == kind and int(held[1]) == k
@@ -292,8 +344,14 @@ func _show(first: bool) -> void:
 		_act("garden.wheel", {"duck": selected, "fwd": int(Input.is_key_pressed(KEY_W)) - int(Input.is_key_pressed(KEY_S)),
 			"turn": int(Input.is_key_pressed(KEY_A)) - int(Input.is_key_pressed(KEY_D))})
 	card.visible = selected >= 0
-	help.visible = help_on
-	help.text = HELP_RIDING if possessing else (HELP_SELECTED + HELP if selected >= 0 else HELP)
+	help.visible = true
+	help.text = HELP_RIDING if possessing else (HELP if help_on else HELP_HINT)
+	var open: bool = help_on and not possessing
+	help.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT if open else Control.PRESET_BOTTOM_RIGHT,
+		Control.PRESET_MODE_MINSIZE, 0 if open else 24)
+	help.add_theme_font_size_override("font_size", 17 if open else 13)
+	for other in [card, bars, toasts, brain]:  # the menu is the whole window while it is open
+		other.modulate.a = 0.0 if open else 1.0
 	if selected >= 0:
 		var d: Dictionary = snap.ducks[selected]
 		card.text = "%s   %s\n%s" % [d.name, d.label, ("asleep" if d.asleep else ("crying" if d.get("crying", false) else d.mood))]
@@ -408,6 +466,17 @@ func _quack(duck: int, tag: String) -> void:
 	# A quack is a buzz whose pitch moves, shaped by the tag and voiced by the duck. Each duck has its own
 	# voice, made from its number so it is the same every day: how high, how reedy, how much it wobbles and
 	# how fast it speaks. Synthesised here; the garden ships no audio files.
+	if tag == "drum":  # not a voice: a small soft thump, the same from any duck, and quiet (Chris)
+		var skin: AudioStreamGeneratorPlayback = voice.get_stream_playback()
+		var turn := 0.0
+		for k in int(0.14 * 22050.0):
+			if skin.get_frames_available() < 1:
+				return
+			var u := float(k) / (0.14 * 22050.0)
+			turn += lerp(150.0, 80.0, u) / 22050.0
+			var thump: float = sin(TAU * turn) * exp(-5.0 * u) * 0.09
+			skin.push_frame(Vector2(thump, thump))
+		return
 	var shape: Array = {"alarm": [900.0, 0.5, 0.12, 3], "greet": [520.0, 0.8, 0.16, 2], "inquire": [480.0, 1.3, 0.22, 1],
 		"peck": [700.0, 0.9, 0.05, 2], "chirp": [1100.0, 1.1, 0.07, 2], "coo": [330.0, 0.9, 0.4, 1],
 		"wheee": [600.0, 1.8, 0.45, 1]}.get(tag, [500.0, 0.8, 0.15, 1])
@@ -436,7 +505,8 @@ func _quack(duck: int, tag: String) -> void:
 func _hand(_dt: float) -> void:
 	# The glove rides over the lawn under the mouse, lower when it is closed. While it is closed the garden is
 	# told where it is, so what it holds goes with it and the ducks can see it coming.
-	if snap.is_empty() or possessing:
+	_cursor()
+	if snap.is_empty() or possessing or not hand_mode or not mouse_inside:
 		glove.visible = false
 		return
 	var xy = _ground(get_viewport().get_mouse_position())
@@ -502,7 +572,7 @@ func _unhandled_input(e: InputEvent) -> void:
 	if e is InputEventMouseButton:
 		if e.button_index == MOUSE_BUTTON_WHEEL_UP or e.button_index == MOUSE_BUTTON_WHEEL_DOWN:
 			orbit.z = clamp(orbit.z * (0.92 if e.button_index == MOUSE_BUTTON_WHEEL_UP else 1.08), 2.0, 12.0)
-		elif e.button_index == MOUSE_BUTTON_LEFT:  # the hand: down closes it on whatever is there, up opens it
+		elif e.button_index == MOUSE_BUTTON_LEFT and hand_mode:  # the hand: down closes it on whatever is there, up opens it
 			if e.pressed:
 				gripping = true
 				pressed_at = Time.get_ticks_msec() / 1000.0
@@ -516,6 +586,12 @@ func _unhandled_input(e: InputEvent) -> void:
 				_let_go()
 				if quick:  # a tap and not a carry: select, shake the tree, step the volume
 					_click(e.position)
+		elif e.button_index == MOUSE_BUTTON_LEFT:  # no hand: the left button turns the camera, and a tap is a click
+			dragging = e.pressed
+			if e.pressed:
+				dragged = 0.0
+			elif dragged < 6.0:
+				_click(e.position)
 		elif e.button_index == MOUSE_BUTTON_RIGHT or e.button_index == MOUSE_BUTTON_MIDDLE:  # the camera
 			dragging = e.pressed
 	elif e is InputEventMouseMotion:
@@ -578,11 +654,22 @@ func _key(code: int) -> void:
 		_act("garden.give", {"duck": selected})
 	elif selected >= 0 and code == KEY_P:
 		_act("garden.pet", {"duck": selected})
+	elif code == KEY_D and not possessing:  # a drum, down at the mouse or taken up again (D steers a ridden duck)
+		var here = _ground(get_viewport().get_mouse_position())
+		if here != null:
+			_act("garden.drum", {"x": here.x, "y": here.y, "on": int(snap.get("drum") == null)})
 	elif code == KEY_B:  # a ball for them, where the mouse is
 		var where = _ground(get_viewport().get_mouse_position())
 		if where != null and where.x > 0 and where.y > 0 and where.x < snap.size and where.y < snap.size:
 			_act("garden.drop_ball", {"x": where.x, "y": where.y})
-	elif code == KEY_H:  # a hat, no two alike, left where the mouse is; the ducks decide who wears it
+	elif code == KEY_H:  # the hand, on and off
+		hand_mode = not hand_mode
+		if not hand_mode and gripping:
+			gripping = false
+			_let_go()
+		said = "the hand is out: hold the left button to pick things up" if hand_mode else "the hand is away"
+		said_until = Time.get_ticks_msec() / 1000.0 + 2.5
+	elif code == KEY_T:  # a hat, no two alike, left where the mouse is; the ducks decide who wears it
 		var spot = _ground(get_viewport().get_mouse_position())
 		if spot != null:
 			_act("garden.drop_hat", {"x": spot.x, "y": spot.y})

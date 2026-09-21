@@ -8,6 +8,7 @@ import socket
 
 import numpy as np
 
+MAX_DUCKS = 8
 FRAME = np.dtype([
     ("t", "<f8"), ("duck", "<i4"),
     ("x", "<f4"), ("y", "<f4"), ("heading", "<f4"),
@@ -27,9 +28,13 @@ FRAME = np.dtype([
     # A ball, to a duck's eyes: how much of each eye's view it fills (nearer is more, behind is none), whether
     # it is at the duck's feet to be kicked, and 1 on the step the duck kicked it.
     ("ball_left", "<f4"), ("ball_right", "<f4"), ("ball_near", "<f4"), ("kicked", "<f4"),
+    ("drum_left", "<f4"), ("drum_right", "<f4"), ("drum_near", "<f4"), ("drummed", "<f4"),  # and the same of a drum
     # What the ducks nearby are up to, which is most of a duck's day (brain/social.py). An id is the other
     # duck's number in this garden, or -1 for nobody. `near_*` is the nearest duck within NEAR_M and which side
     # it is on; a cry is a duck close by that is miserable, and which side; the hand is the player's, and which side.
+    # Each duck has a smell of its own, so one duck can tell another from across the garden: how strongly this
+    # duck's left and right antennae smell each of the others, by their number (its own is 0; room for MAX_DUCKS).
+    ("scent_left", "<f4", (MAX_DUCKS,)), ("scent_right", "<f4", (MAX_DUCKS,)),
     ("near_id", "<f4"), ("near_left", "<f4"), ("near_right", "<f4"),
     ("bumped_by", "<f4"), ("saw_shove_by", "<f4"), ("saw_shove_of", "<f4"),
     ("heard_alarm", "<f4"), ("heard_joy", "<f4"), ("show_by", "<f4"), ("hat_taken_by", "<f4"),
@@ -112,7 +117,7 @@ def receiver(port: int) -> socket.socket:
 # Fields that are true for one step only. A brain slower than its body skips frames, and one that is quicker
 # sees the same frame twice, so these are gathered over every frame drained and wiped from a frame seen before:
 # a bite, a shove or a song then counts once, however the two clocks fall.
-ONCE = ("bumped", "petted", "scared", "ate", "drank", "kicked", "show", "hand_fed", "heard_alarm", "heard_joy", "thrown")
+ONCE = ("bumped", "petted", "scared", "ate", "drank", "kicked", "show", "hand_fed", "heard_alarm", "heard_joy", "thrown", "drummed")
 ONCE_IDS = tuple(name for name in IDS if name != "near_id")
 
 

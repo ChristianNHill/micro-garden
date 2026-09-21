@@ -9,14 +9,15 @@ Status: the design of record. Written 2026-09-16, ledger brought up to date 2026
 | # | Decision | Status | Where |
 |---|---|---|---|
 | 1 | Where the world simulation lives | **Settled 2026-09-16: Python, beside the brain** (option A) | §6.1, `world/fields.py` |
-| 2 | Renderer and final "room" (virtual garden, physical room, or both) | **Settled 2026-09-16: both** (option C). Godot garden over the MuJoCo body now, physical room later; no Godot work before the MuJoCo gates pass | §6.2 |
+| 2 | Renderer and final "room" (virtual garden, physical room, or both) | **Settled 2026-09-21: the virtual garden only.** It was "both" (2026-09-16); Chris dropped the physical room, so there are no real robots and the simulated microduck is the final body. The Godot garden draws either body | §4, §6.2 |
 | 3 | Brain compute path | **Settled at Gate 1: PyTorch sparse on MPS**, 10 ms tick. Five ducks with eyes run at about 0.77x real time, which Phase C has to fix | §3.7, `brain/lif.py` |
 | 4 | Personalities | **Settled: Chao-style labels over continuous knob presets; Chao Doctor list plus six of ours (2026-09-16)** | §2.4 |
 | 5 | Vision | **Settled: yes, through a flyvis front end** (2026-09-17): direct photoreceptor injection never reached LPLC2. Possession is Gate 11 | §2.6, §3.4, PLAN.md Gate 6 |
 | 6 | Transport between brain and body | **Settled 2026-09-16: microduck JSON-RPC over NDJSON for intents, raw float32 over UDP for sensory frames** (option A) | §6.3, `body/contract.py`, `body/frames.py` |
 | 7 | Persistence | **Settled: catch-up on launch first, always-on brain later** | §3.8 |
 | 8 | Body contract | **Settled: microduck's own JSON-RPC**, built at Gate 3 | §1, §3.2 |
-| 9 | Look | **Settled 2026-09-16: a blend of retro looks.** A Dreamcast low-poly garden rendered as a halftone print diorama (Chris knows it is hard to pull off) | §4 |
+| 9 | Look | **Settled 2026-09-21: a Chao garden.** It began (2026-09-16) as a Dreamcast low-poly garden printed as a five-ink halftone diorama. Seen running, Chris wanted the Sonic Adventure 2 garden's forms and colours, so the halftone stayed as a light screen of shading and the five inks and the paper went | §4 |
+| 10 | What the ducks are to each other | **Settled 2026-09-21: explicit and stored**, beside the body's moods (`brain/social.py`). It was "not stored anywhere, emerging from plasticity"; that gives a duck a general liking for ducks and nothing about one duck in particular | §2.5 |
 
 ---
 
@@ -122,23 +123,41 @@ Goal #1 (`RESEARCH.md`) depends on these presets producing visibly different duc
 
 ### 2.5 Social
 
-Other ducks are world objects that smell (BLE RSSI or synthesized odor), bump (ToF, contact), loom (vision), and quack (audio, later). Relationships are not stored anywhere. They emerge from mushroom-body plasticity: a duck repeatedly fed while duck B's odor is present learns to approach that odor. A duck startled near B learns to avoid B. The psychosocial paper's "angry individual" scenario (`RESEARCH.md` §2) is the acceptance test.
+Other ducks are world objects that smell, touch, loom and make sounds. Two layers sit on that.
+
+**What the fly gives.** Mushroom-body plasticity: a duck fed or petted while it smells other ducks comes to like that smell, and one startled among them comes to avoid it. `Plasticity.fondness()` reads that learned valence and the decoder acts on it. It is a liking for ducks in general, since the brain is given one duck smell.
+
+**What is explicit** (`brain/social.py`, decided 2026-09-21 after the Chao gardens). A Chao garden is mostly who likes whom, who has been treated well, and who learned what by watching, and none of that is in a fly. So it is kept where the body's moods are kept, as slow quantities that events push about, and it reaches the legs through explicit turns in the decoder that give way to a pressing need like every other like:
+
+- `bond[i, j]`, what duck i thinks of duck j, from a grudge to a friend, and not mutual. A shove makes a grudge. Time at ease beside a duck, and more for sleeping beside it, makes a friend. A song a duck enjoyed makes a friend of the singer. A hat taken under a vain duck's beak is held against the taker. Bonds fade over about three garden days.
+- Witnesses, comfort and sharing. A kind duck that sees a shove holds it against the one who did it. A miserable or starving duck cries, a kind one goes to it, and being reached cheers it. A kind duck that is not starving leaves the food to one crying for it.
+- Catching moods: an alarm nearby frightens, a whoop nearby cheers the sociable.
+- A performance has an audience. A song, a dance or a tap on the drum is entertainment to a sociable duck, an imposition on a solitary one, and a provocation to an aggressive one.
+- Skills grow with use (swimming, running), and dancing is learned by watching as well as by doing.
+
+The body says what happened and to whom. The sensory frame carries the other duck's number for each event and which side things are on. It also carries each other duck's own smell at each antenna, so a friend or a grudge steers a duck from across the garden. What a duck makes of any of it is its knobs', which is where personality comes in.
 
 ### 2.6 Player
 
-Verbs, in order of build:
+What the player can do, all through the garden's control calls (`garden.*`), so every viewer has the same verbs:
 
-1. **Drop food.** Creates an odor source, a visual target, and a sugar contact on reach.
-2. **Pet.** ToF hand-distance plus a touch event, paired with a dopamine reward pulse. A petted duck learns the hand.
-3. **Approach.** Fast approach looms and triggers escape. Slow approach is ignored or investigated.
-4. **Possess.** Select a duck and see through its eyes. Two modes:
-   - *Ride along* (default): the brain keeps driving; you see the camera or sim view, optionally with an overlay of what the optic lobe is receiving (the hex retina) and which descending neurons are firing. Emergence stays pure.
-   - *Take the wheel*: motor output is muted and you drive with WASD or a pad, exactly what microduck's console already does. Sensory input keeps flowing, so the brain keeps seeing and learning while you steer. Releasing returns control. This is how you show someone "here's what it sees, and here's what it decides" in one breath.
-5. **Place or move environment objects.** Later.
+1. **Feed.** Shake fruit down from the tree, which is where food comes from, or hand a fruit to one duck (`garden.give`). Fruit is an orange, an apple or a banana, and each duck has a favourite.
+2. **Pet.** A touch on the head paired with a dopamine reward. Petting and fruit from the hand earn a duck's trust in the hand, a clap loses a little, and a duck comes to a hand it trusts.
+3. **Clap.** Startles every duck.
+4. **The hand.** A mode in which the cursor is a glove that picks up, carries, puts down and throws: fruit, hats, balls, the drum, the music box, and ducks. A duck that trusts the hand likes being carried; a thrown duck lands on its side and trusts the hand less. This is the Chao garden's hand.
+5. **Put things in the garden.** A duck decides for itself whether to wear a hat, by its vanity. A playful, bored duck pushes and kicks a ball and taps a drum. The music box plays the player's own music, and ducks that like music dance to it.
+6. **Possess.** Select a duck and see through its eyes. Two modes:
+   - *Ride along*: the brain keeps driving; the view carries an overlay of what the optic lobe is receiving (the hex retina) and which descending neurons are firing.
+   - *Take the wheel*: motor output is muted and the player drives with W, A, S and D. Sensory input keeps flowing, so the brain keeps seeing and learning. Getting off gives the duck its legs back.
 
 ### 2.7 Legibility
 
-Part of the architecture, not the visuals. Per duck: a mood indicator driven by body state plus recent descending activity (escape firing reads as fear, feeding-circuit firing as joy). On a physical duck, mood is head posture, mouth servo, and the synth voice pitch. Selecting a duck shows a short readout. Events that matter produce a one-line toast. Without this, the fly brain is indistinguishable from noise.
+Part of the architecture, not the visuals. Without it the fly brain is indistinguishable from noise.
+
+- A **mood shape** floats over a duck, its shape carrying the mood so it reads without colour.
+- **Emotes** (`brain/emotes.py`): every few seconds a duck may act out its strongest feeling, with its head, its voice and a word over it, the more readily the chattier it is. Strong characters have a **signature** of their own, scaled by the knob and not switched by the label: an aggressive duck stomps, a sleepy one yawns, a water lover splashes, a chatty one sings, a timid one cowers. One definition of each act serves every body: head poses on the robot's four head joints.
+- Selecting a duck shows **who it is** (label, mood, favourite fruit, what it makes of the hand, its friend and its grudge, its skills), **bars** for its needs, moods and wants, and **its brain**: 12,000 of its 139,000 neurons drawn where FlyWire has them, each flaring as it fires.
+- Events that matter produce a one-line **toast**.
 
 ### 2.8 Acceptance scenarios
 
@@ -208,9 +227,13 @@ Flies have about 750 ommatidia per eye; `flyvis` models the visual system on a h
 
 Transport size: 5 ducks × 721 columns × 2 channels × 60 Hz ≈ 430k floats/s, about 1.7 MB/s raw. Not a bottleneck on any option in §6.3, but wasteful as JSON.
 
-### 3.5 The room (physical body specifics)
+### 3.5 The viewer's pipe, and the room that was dropped
 
-Reality gives vision, touch, ToF, IMU, and BLE presence for free. It does not give an odor field or ground-truth positions. Lazy answer: **one overhead webcam and ArUco tags** on duck heads and food dishes. The tracker publishes positions at 30 Hz; the body adapter synthesizes odor from them and gives the viewer a god-view to draw the garden overlay on. Teleop over the LAN path only (BLE refuses it by design). Verified 2026-09-16: the only scripted route today is an SSH tunnel or `socat` to `/run/robotd.sock`; the WebRTC teleop data channel and the WebSocket surface are designed but deferred upstream. No non-browser camera read exists yet, so a real duck needs a small on-robot frame grabber. Most ducks ship without the ToF sensor.
+The garden publishes a **world snapshot** for a viewer in another process (`viewer/snapshot.py`): one JSON datagram a step on the loopback, about 1.5 KB, from either body. It says where everything is, and each duck's pose, posture, mood, emote and commanded head. For the simulated robots it adds their real joint angles, trunk height and lean. For the selected duck it adds its needs, its social summary and which of its shown neurons fired. For a ridden duck it adds the two retinas and the descending readouts. The player's actions come back the same way, as the garden's own `garden.*` calls. The garden reports and ignores a call it cannot take, since what comes off a socket is not the garden's to trust. Godot draws and decides nothing.
+
+A bite, a shove or a song is true for one step only. `frames.latest` gathers such events over every frame a slow brain skips and wipes them from a frame a quick brain sees twice. Each then counts once, however the two clocks fall.
+
+The physical room (real microducks on a floor, an overhead tracker) was dropped on 2026-09-21. `PLAN.md` Phase E keeps what was planned.
 
 ### 3.6 Named neuron sets needed from FlyWire
 
@@ -228,24 +251,19 @@ One seeded RNG. Fixed timestep. Brain state checkpointable. Save is physiology, 
 
 ## 4. Visual brief
 
-Built last. The 2D stub ignores all of it. Two possible final rooms (decision 2); the brief covers both.
+Built last, and changed by being looked at. The brief began (2026-09-16) as a Dreamcast low-poly garden finished as a halftone print in five inks on cream paper. On 2026-09-21 Chris saw it running beside a model of Sonic Adventure 2's Chao garden and asked for that. This section describes what the Godot garden (`viewer/godot/`) is now.
 
-**Direction (Chris, 2026-09-16): a blend of two retro looks.**
-- Chao-garden Dreamcast 3D for the forms.
-- The halftone print diorama of "a small light, room by room" (RESEARCH.md §12) for the finish: a limited ink palette (navy, cream, coral, teal, mustard), a halftone/dither screen, cream paper around the scene, and a fixed isometric-ish camera that drifts slowly.
-- Chris knows it is hard to pull off, so it gets its own spike before Gate 14.
-- The risks:
-  - the dither shimmering as the camera moves (fix: screen-space dither locked to world or object space, or render at low resolution and upscale)
-  - small ducks losing their silhouettes in the halftone (fix: flat shading plus an outline pass, and ducks screened more coarsely than the ground)
-  - mood colors fighting the limited palette (fix: mood reads by shape, as already planned)
+**The place** (`scenery.gd`). A lawn cradled in tall rounded rock with grass on top, along the two back edges; a pond in the back corner under a waterfall of pale stone columns with water on each; a fruit tree whose shade is real; a dark cave mouth and palms for scenery; a rail fence along the open front; blue sea below and a flat blue sky. Rock is made by rule, from lumps: rings of vertices pushed in and out. The cliffs stand outside the garden's square and the fence runs along it, so both draw walls the ducks already have; the waterfall's foot is rocks that are solid in the world, so nothing drawn can be walked through. A white flag on the near cliff flies the way the breeze goes. The garden people watch is 6 m a side; every gate but the soak and Gate 12 measures in a 4 m one.
 
-**Virtual garden.** A Dreamcast-era diorama the size of a coffee table, finished through the print pass above: low poly, small textures, flat Lambert, vertex colors, fog to the paper color, no PS1 jitter unless chosen. One pond with reeds, grass, a rock, a shade tree, a moving sun. Under 300 KB of assets. Isometric-ish camera with limited orbit and slow idle drift. Ducks are microduck-proportioned (they are the real thing now): round body, big head, bill, two legs, stub wings, a tuft. Personality shows in silhouette (§2.4). Procedural animation only. Mood indicator as a separate floating mesh whose shape carries state so it reads without color.
+**The finish** (`print.gdshader`). One unshaded material: flat faces from the geometry's own normals, the reference's colours, and a light halftone screen of navy for shading, fixed to the window. Blob shadows. An inside-out hull for the ink line round what needs its silhouette kept. Night is a wash of blue over the finished picture and adds no ink; as "more ink" it buried the garden in dots. From a duck's back the screen is mostly off.
 
-**Physical room.** The ducks are the visuals. The app is a companion view: the overhead tracker's god-view drawn as the garden (food dishes as ponds, tags as ducks) with mood indicators and toasts overlaid, plus the possession view from any duck's camera with the hex-retina and DN-activity overlays. Quacks come from the ducks' own speakers; the synth voice pitch carries mood.
+**The ducks** (`duck.gd`). The real microduck: Pollen Robotics' meshes (Apache 2.0), posed from the robot's MuJoCo description and simplified to about ten thousand triangles (`build_robot.py`, `robot.json`), built as the robot is, every body on its own hinge. With the MuJoCo body it is posed by the simulated robot's real joints. With the 2D body it plays the robot's own motions, recorded once from the simulator (`record_clips.py`, `clips.json`): its sit, walk, turns, kick, roll, peck, fall and getting up. Only the dance is by rule, since no robot has one. Personality shows as size, width and head size, the grey plastic takes the duck's colour, and each duck has a voice of its own. Hats are made from a style number (`hats.gd`), five shapes in six colours.
 
-**Possession view (both rooms).** Full-frame first-person, low resolution and slightly fisheye to say "not human." Toggleable overlay: hex retina as a mosaic, a strip of descending-neuron activity bars, the current intent as an arrow. "Take the wheel" shows a WASD hint and mutes the intent arrow.
+**Sound.** Quacks, the pond and the drum are synthesised; nothing is shipped. The music box plays the player's own mp3s from a folder outside the repository.
 
-**UI.** Almost none. One card on selection. One-line toasts. Reduced-motion disables idle drift and halves animation amplitude.
+**What is on screen.** A small card for the selected duck, bars for its needs, moods and wants, its brain firing, toasts in a corner, and a menu that stays collapsed until `/` opens it over the whole window. The ride view is first person, wide and a little coarse, with the hex retinas and descending-neuron bars as an overlay. A reduced-motion switch stills the camera and halves animation.
+
+**Budget.** Under 300 KB for everything Godot loads (`gates/gate_14_look.py`); the robot and its motions are most of it.
 
 **2D stub look.** Top-down pygame. Ducks are circles with heading lines and a retina fan. Mood is a halo. Food is a dot. Odor is a faint gradient. A debug column shows DN firing and drive bars per duck. Every gate through Gate 4 is judged in this view.
 

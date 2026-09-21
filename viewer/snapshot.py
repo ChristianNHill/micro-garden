@@ -45,7 +45,7 @@ _b64 = lambda a: base64.b64encode(np.asarray(a).tobytes()).decode()
 # where each of an eye's 721 columns looks, as signed bytes across the eye's field: sent with the view
 HEX = _b64(np.round(np.concatenate([HEX_AZ, HEX_EL]) / np.abs(HEX_AZ).max() * 127).astype(np.int8))
 TOAST_FORMATS = (("eaten", "{who} ate"), ("headbutts", "{who} shoved {other}"), ("pets", "{who} was petted"),
-                 ("emotes", "{who} {other}"), ("kicks", "{who} kicked the ball"), ("given", "{who} was handed a fruit"), ("throws", "{who} was thrown"), ("donned", "{who} put a hat on"), ("preened", "{who} shook its hat off"))
+                 ("emotes", "{who} {other}"), ("kicks", "{who} kicked the ball"), ("drums", "{who} plays the drum"), ("given", "{who} was handed a fruit"), ("throws", "{who} was thrown"), ("donned", "{who} put a hat on"), ("preened", "{who} shook its hat off"))
 
 
 FRUIT_NAMES = ("oranges", "apples", "bananas")
@@ -83,6 +83,7 @@ class Snapshot:
         self.blind = blind
         self.seen = {key: 0 for key, _ in TOAST_FORMATS}
         self.toasts = []
+        self.refused = set()  # calls from a viewer that this garden could not take, each reported once
         self.riding = -1  # the duck whose motor output this has muted, to give it back
         self.watched = -1  # the duck the viewer has selected, whose readout and brain go along
         self.wheel = (-1, 0.0, 0.0, -np.inf)  # duck, forward, turn, and the garden time it was last asked for
@@ -110,7 +111,7 @@ class Snapshot:
         self._gather_toasts(stub)
         n = len(stub.names)
         last = lambda events: {e[1]: e for e in events[-4 * n:]}  # each duck's latest, from the recent few
-        emotes, bites, kicks = last(stub.emotes), last(stub.eaten), last(stub.kicks)
+        emotes, bites, kicks, taps = last(stub.emotes), last(stub.eaten), last(stub.kicks), last(stub.drums)
         w = stub.world
         posture, joints, down_left = stub.posture(), stub.articulation(), stub.down_left()
         swimming = stub._swimming()
@@ -129,6 +130,7 @@ class Snapshot:
                 "head": [round(float(v), 3) for v in stub.head[i]],  # neck_pitch, head_pitch, head_yaw, head_roll, as told
                 "eating": i in bites and stub.t - bites[i][0] < EATING_S,
                 "kicking": i in kicks and stub.t - kicks[i][0] < KICKING_S,
+                "drumming": i in taps and stub.t - taps[i][0] < 0.5,
                 "mood": mood, "strength": round(strength, 2),
                 "emote": emote[2] if showing else "", "emote_t": round(emote[0], 2) if showing else -1.0,
                 "hunger": level("hunger"), "thirst": level("thirst"), "sleepy": level("sleep_pressure"),
@@ -146,6 +148,7 @@ class Snapshot:
                 "wind": None if w.wind is None else [round(float(v), 3) for v in w.wind],  # where the air is going, m/s
                 "hats": [[round(x, 3), round(y, 3), k] for x, y, k in stub.hat_items],
                 "balls": [[round(float(x), 3), round(float(y), 3)] for x, y in w.balls[:, :2]],
+                "drum": None if w.drum is None else list(w.drum),
                 "held": list(stub.held) if stub.held else None,  # what the hand is carrying: [kind, which]
                 "music": None if w.music is None else list(w.music), "music_volume": round(float(w.music_volume), 2),
                 "hand": None if w.hand is None else [float(v) for v in w.hand], "toasts": self.toasts,
@@ -180,7 +183,14 @@ class Snapshot:
             elif method == "garden.wheel":
                 self.wheel = (int(p["duck"]), float(np.clip(p["fwd"], -1, 1)), float(np.clip(p["turn"], -1, 1)), stub.t)
             elif method.startswith("garden."):  # the player's calls, and nothing else
-                stub._control_call(method, p)
+                try:
+                    stub._control_call(method, p)
+                except (KeyError, ValueError, TypeError, IndexError) as e:
+                    # A viewer newer or older than this garden asks for things it does not have, or sends them
+                    # wrong. That is the viewer's mistake and must not stop the garden: say so once, and go on.
+                    if method not in self.refused:
+                        self.refused.add(method)
+                        print(f"ignoring {method} from the viewer: {type(e).__name__} {e}")
         duck, fwd, turn, asked = self.wheel
         if server is not None:
             held = 0 <= duck < len(stub.names) and stub.t - asked < WHEEL_S
@@ -212,7 +222,7 @@ if __name__ == "__main__":
         time.sleep(0.05)  # the loopback delivers when it likes: read at once, the two calls were sometimes not there yet
         snap.step(stub)
         got = json.loads(rx.recv(65535))
-        world_fields = {"t", "size", "light", "day", "ducks", "food", "danger", "pond", "tree", "rocks", "wind", "hats", "balls", "held", "music", "music_volume", "hand",
+        world_fields = {"t", "size", "light", "day", "ducks", "food", "danger", "pond", "tree", "rocks", "wind", "hats", "balls", "drum", "held", "music", "music_volume", "hand",
                         "toasts", "sounds"}
         assert world_fields <= set(got), f"the snapshot lost {world_fields - set(got)}: Godot reads every one of these"
         duck_fields = {"name", "label", "x", "y", "h", "asleep", "sat", "down", "swimming", "hat", "hat_style", "head", "eating", "kicking",
@@ -222,6 +232,10 @@ if __name__ == "__main__":
         assert got["toasts"] == ["b looks happy"], got["toasts"]
         assert len(stub.world.food) == dishes + 1, "a player's feed reaches the garden"
         assert stub.t == t, "only garden.* calls are taken from the network"
+        tx.sendto(json.dumps({"method": "garden.no_such_thing", "params": {}}).encode(), ("127.0.0.1", ACTION_PORT))
+        tx.sendto(json.dumps({"method": "garden.pet", "params": {"duck": 99}}).encode(), ("127.0.0.1", ACTION_PORT))
+        time.sleep(0.05)
+        snap.step(stub)  # neither stops the garden
         from types import SimpleNamespace
         server = SimpleNamespace(possessed=np.zeros(3, bool), body=None)
         tx.sendto(json.dumps({"method": "garden.wheel", "params": {"duck": 1, "fwd": 1, "turn": 0}}).encode(), ("127.0.0.1", ACTION_PORT))

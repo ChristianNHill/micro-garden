@@ -128,7 +128,7 @@ class Physiology:
         put_off = np.clip(1 - 2 * k["sociability"], 0, 1)
         cross = np.clip((k["aggressiveness"] - 0.6) / 0.4, 0, 1)
         self.boredom = np.clip(self.boredom - 0.7 * AMUSED * fan * (1 - cross) * show, 0, 1)
-        kicked = f["kicked"] > 0  # a ball kicked is something happening, and to a playful duck a happy thing
+        kicked = (f["kicked"] > 0) | (f["drummed"] > 0)  # a ball kicked, a drum tapped: play, either way  # a ball kicked is something happening, and to a playful duck a happy thing
         eventful = ate | drank | bumped | escaped | touching | kicked
         self.boredom = np.clip(np.where(eventful, self.boredom - 0.2, self.boredom + dt / BORED_S * (0.5 + k["boredom_rate"])), 0, 1)
         self.alone_s = np.where(touching, 0.0, self.alone_s + dt)
