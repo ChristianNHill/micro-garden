@@ -2,3 +2,6 @@
 data/
 .venv/
 __pycache__/
+# notes kept on this machine only; the README is the public one
+*.md
+!README.md

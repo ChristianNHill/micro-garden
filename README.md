@@ -82,11 +82,11 @@ To run the ducks as simulated robots, check out [microduck](https://github.com/p
 uv run python -m body.mujoco.adapter --ducks 5 --brain --godot
 ```
 
-`PLAN.md` under Gate 10 has the setup, which runs natively on a Mac. The walking policy upstream ships does not yet track a velocity ([microduck_rl issue 46](https://github.com/pollen-robotics/microduck_rl/issues/46)), so these ducks march and pivot. Either body takes `--godot` to open the Godot garden. Add `--no-window` to publish the world only and open `viewer/godot` yourself.
+The simulator runs natively on a Mac. The walking policy upstream ships does not yet track a velocity ([microduck_rl issue 46](https://github.com/pollen-robotics/microduck_rl/issues/46)), so these ducks march and pivot. Either body takes `--godot` to open the Godot garden. Add `--no-window` to publish the world only and open `viewer/godot` yourself.
 
 ## How it is checked
 
-I build in gates. One gate is one runnable check that exits non-zero when it fails. `PLAN.md` records what each one found, including the times a gate showed that an earlier pass was luck.
+I build in gates. One gate is one runnable check that exits non-zero when it fails.
 
 ```
 uv run python -m gates # all of them, which takes hours
@@ -105,10 +105,23 @@ The fast gates pass. The last full run passed 14 of 15. The one failure was Gate
 - `viewer/` holds the debug window, the world snapshot, and the Godot garden with the scripts that build its robot and record its motions.
 - `gates/` holds one check per gate.
 
-`RESEARCH.md` has the goal and the reading behind it. `ARCHITECTURE.md` has the design and the decisions. `PLAN.md` is the build log. `ATTRIBUTION.md` lists the data, the papers to cite, and the projects this leans on.
-
 ## Credit
 
-The connectome is the work of the FlyWire Consortium (Dorkenwald et al. 2024, Schlegel et al. 2024, Matsliah et al. 2024). The visual front end is flyvis from the Turaga Lab. The body contract follows Pollen Robotics' microduck. Full details and licenses are in `ATTRIBUTION.md`.
+The connectome is the work of the FlyWire Consortium. The repo does not redistribute its data: you download it into `data/`, which git ignores. The connectivity (`proofread_connections_783.feather`, [Zenodo 10.5281/zenodo.10676866](https://doi.org/10.5281/zenodo.10676866)) is CC BY 4.0. The annotations come from [flyconnectome/flywire_annotations](https://github.com/flyconnectome/flywire_annotations), which has no licence file and asks users to cite its papers. Please cite:
 
-I direct the project and make its decisions. Claude Code wrote most of the code, as the commit history shows. The code is MIT licensed. The FlyWire data has its own terms, which `ATTRIBUTION.md` lists.
+- Dorkenwald et al. (2024), "Neuronal wiring diagram of an adult brain", *Nature*.
+- Schlegel et al. (2024), "Whole-brain annotation and multi-connectome cell typing of *Drosophila*", *Nature*.
+- Matsliah et al. (2024), "Neuronal parts list and wiring diagram for a visual system", *Nature*.
+- Berg et al. (2025), male CNS connectome and annotation updates.
+
+This project also leans on these:
+
+- [pollen-robotics/microduck](https://github.com/pollen-robotics/microduck) (Apache-2.0). The body contract follows robotd's JSON-RPC method and parameter names, and no code is copied.
+- [pollen-robotics/microduck_rl](https://github.com/pollen-robotics/microduck_rl) (Apache-2.0). `viewer/godot/robot.json` is a derived work of the microduck's own meshes, posed from its MuJoCo description and simplified to about 10,000 triangles by `viewer/godot/build_robot.py`, and `viewer/godot/clips.json` records its policies' motions. Its licence is in `viewer/godot/LICENSE-microduck`.
+- [TuragaLab/flyvis](https://github.com/TuragaLab/flyvis) (MIT) is the visual front end, installed as a dependency.
+- [snedea/flybrain](https://github.com/snedea/flybrain) (MIT) supplied starting LIF parameters and the neuron group map as a reference, and no code is copied.
+- [philshiu/Drosophila_brain_model](https://github.com/philshiu/Drosophila_brain_model) (MIT, Shiu et al. 2024) gave the idea of treating glutamate as inhibitory and of reading sugar responses from proboscis motor neurons, and no code is copied.
+
+The model also leans on Gaudry et al. (2013) on asymmetric ORN transmitter release, and on Schretter et al. (2020) and Deutsch et al. (2020) on the aIPg and pC1d/e aggression circuits. Where the model departs from them, the code says so.
+
+I direct the project and make its decisions. Claude Code wrote most of the code, as the commit history shows. The code is MIT licensed, and the FlyWire data has its own terms, listed above.
