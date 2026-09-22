@@ -184,7 +184,7 @@ class MujocoBody(Stub):
         """The pivot that turns duck i back in, if it is at the edge and heading out; else None."""
         x, y, h = self.pose[i]
         out = np.array([float(x > self.world.size - FENCE_M) - float(x < FENCE_M), float(y > self.world.size - FENCE_M) - float(y < FENCE_M)])
-        for rx, ry, r in self.world.rocks:  # a rock turns a robot back as the fence does; nothing can push one
+        for rx, ry, r in self.world.rocks:  # a rock turns a robot back like the fence does, and nothing can push one
             if math.hypot(x - rx, y - ry) < r + FENCE_M:
                 out = np.array([rx - x, ry - y])
         ahead = np.array([math.cos(h), math.sin(h)])
@@ -318,8 +318,8 @@ class MujocoBody(Stub):
         self.robots[i].notify("robot.sound", tag=p["tag"])
 
     def _do(self, i: int, p: dict) -> None:
-        """What a duck does is the garden's business (the bite, the sip, the shove, the hat) and the
-        robot's to act out, in the skills it has: a headbutt is a kick, zoomies are a roulade."""
+        """The garden decides what a duck does (the bite, the sip, the shove, the hat), and the robot
+        acts it out with the skills it has: a headbutt is a kick, zoomies are a roulade."""
         super()._do(i, p)
         if p["skill"] in ("ground_pick", "drink"):
             self.eating_until[i] = self.t + 2.0

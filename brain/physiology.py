@@ -263,15 +263,15 @@ class Physiology:
             # Whether a duck has any reason to be walking. BASE_VX used to be added unconditionally,
             # from before the ducks had eyes and anything reached DNp09, so one could never stand still:
             # fatigue only ever climbed, because resting needs speed under 0.01 (Chris, watching the
-            # sim, 2026-09-19). A duck with nothing it wants stands about instead, and boredom is what
+            # sim, 2026-09-19). A duck with nothing it wants stands around instead, and boredom is what
             # eventually gets it going again.
             # `wants` is anything else pulling at it, 0 to 1, which the server knows and the body does
             # not: music, to a duck that loves or hates it. Without it a fed, watered duck stood and
             # listened from across the garden, liking the tune or not (Gate 8b, 2026-09-20).
-            # A swim is a want too, for a duck that likes water and can tell there is some about (`damp`
+            # A swim is a want too, for a duck that likes water and can tell there is some nearby (`damp`
             # is how humid the air is): a fed, watered water lover stood on the shore until it got bored.
             # Hunger and thirst get a duck moving once they press (`pressing`), not from the first pang: a duck
-            # that is merely peckish stands about, or sits, and it is boredom that sets it wandering. At the old
+            # that is merely peckish stands around or sits, and boredom is what gets it wandering. At the old
             # ramp a half-hungry duck walked 70% of the time and never stood still (Chris, 2026-09-21).
             "restlessness": np.maximum(
                 pressing(np.maximum(self.hunger, self.thirst)),

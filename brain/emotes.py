@@ -6,7 +6,7 @@ readily. A chatty duck emotes often, a playful one turns joy into a roll, a vain
 one cowers at less. It is decided on a slow clock and never per tick, since anything rolled fifty times a
 second is a certainty (the hats at Gate 8b).
 
-What an emote looks like is the body's business: the 2D stub writes it on the screen, and a robot acts it
+The body decides what an emote looks like: the 2D stub writes it on the screen, and a robot acts it
 out with its head, its voice and the skills it has (body/mujoco/adapter.py).
 """
 import numpy as np

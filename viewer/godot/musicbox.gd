@@ -1,8 +1,8 @@
 # The music box's own music: whatever mp3s are in the player's music folder (~/.cache/micro-garden/music by
 # default, --music=DIR for another), shuffled, playing while the box is down in the garden and stopping when it
 # is picked up. The files are the player's and are never part of this project. A click on the box steps its
-# volume round, and it fades in and out rather than cutting. What the ducks hear is the garden's business, not
-# this: to them the box is a sound source with a loudness, whatever is on.
+# volume round, and it fades in and out rather than cutting. The garden decides what the ducks hear, not
+# this script: to them the box is a sound source with a loudness, whatever is on.
 extends Node
 
 const LEVELS := [0.0, 0.25, 0.5, 0.75, 1.0]

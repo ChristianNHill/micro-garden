@@ -125,7 +125,7 @@ class World:
         self.kinds = np.append(self.kinds, self.kind_rng.integers(0, FRUITS))
 
     def drop_fruit(self, rng: np.random.Generator, n: int = 1, most: int = MAX_FOOD) -> int:
-        """Fruit falls somewhere under the shade tree's canopy, while less than `most` lies about. Returns how many fell."""
+        """Fruit falls somewhere under the shade tree's canopy, while fewer than `most` pieces are on the ground. Returns how many fell."""
         fell = 0
         while fell < n and len(self.food) < most:
             a, r = rng.uniform(-np.pi, np.pi), rng.uniform(0.2, self.tree[2] + 0.2)

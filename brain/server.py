@@ -56,7 +56,7 @@ NO_SPIKES = np.empty(0, np.int64)  # every sense is graded now; nothing is injec
 SCARE_LEVEL = 0.8  # a clap, straight onto the looming detectors
 # ... for as long as a clap lasts. The body reports it on one step, 20 ms, and driven for only that the giant
 # fiber gave 2 or 3 spikes, so two claps in three startled nobody; over 200 ms it gives 7 to 9 (bench, 2026-09-20).
-WEAR_P = (0.1, 0.95)  # chance a duck puts on a hat it comes upon, at no vanity and at full
+WEAR_P = (0.1, 0.95)  # chance a duck puts on a hat it finds, at no vanity and at full
 HAT_SHY_S = 30.0
 DANCE_EVERY_S = 3.0  # a dance lasts about this long, so a duck that goes on wanting to goes on dancing
 DANCE_REST_S = (10.0, 25.0)  # between one dance and the next: back to back, five ducks danced without a pause (Chris)
@@ -363,7 +363,7 @@ class BrainServer:
 
     def _consider_hat(self, send, i, f) -> None:
         """A hat lying in the garden is the duck's to put on or walk past (Chris, 2026-09-21). It decides once,
-        as it comes upon one, and vanity is the chance: explicit, like shedding one, and a scale like it."""
+        when it finds one, and vanity is the chance: explicit, like shedding one, and a scale like it."""
         comes_upon = f["hat_near"] > 0 and not self.hat_was_near[i]
         if comes_upon and f["hat"] == 0 and self.t >= self.hat_shy_until[i]:
             if self.emote_rng.random() < WEAR_P[0] + (WEAR_P[1] - WEAR_P[0]) * float(self.body.k["vanity"][i]):

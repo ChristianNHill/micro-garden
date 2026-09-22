@@ -443,7 +443,7 @@ func _props(kind: String, items: Array, make: Callable) -> void:
 			nodes.append(n)
 		props[kind] = nodes
 	for i in items.size():
-		nodes[i].position = Vector3(items[i][0], nodes[i].position.y, -items[i][1])  # its height is the hand's business
+		nodes[i].position = Vector3(items[i][0], nodes[i].position.y, -items[i][1])  # the hand code sets its height
 
 
 func _draw_bars() -> void:

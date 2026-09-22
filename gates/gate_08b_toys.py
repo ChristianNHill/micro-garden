@@ -64,7 +64,7 @@ def hat_time(W, ann, sets, n, seed, vanity):
     def watch(stubs):
         for s in stubs:
             if not started:  # the hook runs after the first step, so t is already past zero here
-                s.hats[:] = True  # every duck starts in one; whether it stays is the duck's business
+                s.hats[:] = True  # every duck starts in one; the duck decides whether it stays on
             worn.append(s.hats.mean())
         started.append(True)
         return False

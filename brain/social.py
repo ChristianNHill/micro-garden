@@ -1,8 +1,8 @@
 """What the ducks are to each other, and to the player's hand (Chris, 2026-09-21, after the Chao gardens).
 
 A Chao garden is mostly this: who likes whom, who has been treated well, who learned what from watching. None
-of it is the fly's. It is kept here, beside the body's needs and moods and like them, as slow quantities that
-events push about, and like the other likes it reaches the legs through explicit turns in the decoder (towards
+of it is the fly's. It is kept here, beside the body's needs and moods and like them, as values that change
+slowly as things happen, and like the other likes it reaches the legs through explicit turns in the decoder (towards
 a friend, away from a grudge, towards a hand that has been kind, towards a cry). The body says what happened
 and to whom (body/frames.py: ids, and which side); this decides what a duck makes of it, by its knobs.
 
