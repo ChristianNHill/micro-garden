@@ -1,13 +1,9 @@
 """Gate 2: sugar in, feeding out; looming in, escape out. Real brain beside the shuffled control.
 
 Run: uv run python -m gates.gate_02_sugar
-Asserts on the real brain only; the shuffled brain is printed for the Gate 2 decision.
-
-2026-09-16 (Chris): the plan's "sugar raises DNp09" cannot hold. DNp09's top inputs are the visual
-LC9 and LC31a, and sugar never reaches it. Sugar now tests feeding (proboscis motor neurons, as in
-Shiu et al. 2024); walking toward food comes from vision and odor in Gate 4.
-Decision: real vs shuffled is plainly visible. Real: sugar fires proboscis MNs, looming fires the
-giant fiber in 10 ms. Shuffled: neither.
+Asserts on the real brain only; the shuffled brain is printed for comparison and does neither.
+Sugar tests feeding (proboscis motor neurons, as in Shiu et al. 2024), not walking: sugar never
+reaches DNp09, whose top inputs are visual. Walking toward food is Gate 4.
 """
 import sys
 

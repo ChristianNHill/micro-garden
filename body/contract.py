@@ -1,4 +1,4 @@
-"""microduck's JSON-RPC 2.0 over NDJSON on Unix sockets (PLAN.md Gate 3).
+"""microduck's JSON-RPC 2.0 over NDJSON on Unix sockets (Gate 3).
 
 Method and parameter names and units match robotd (duck-ipc-proto): robot.move {vx, vy m/s; vyaw
 rad/s, positive left}, robot.head {neck_pitch, head_pitch, head_yaw, head_roll rad}, robot.do {skill},

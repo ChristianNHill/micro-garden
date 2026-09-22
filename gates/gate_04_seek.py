@@ -3,39 +3,14 @@
 Run: uv run python -m gates.gate_04_seek [--episodes 20]
 Each episode: one stub duck starts START_M from a single dish, facing a random way, and has MAX_S
 to eat it. All episodes of one brain run side by side as one batch, in lockstep over the contract.
+Asserts the real brain's median time to eat is under BOUND_S; the shuffled brain is printed only.
 
-2026-09-16 record. First run (gain 0.005, no adaptation, DNa02 only): real 2/20, shuffled 0/20,
-no odor steering. Chris chose deeper model work. Changes, each measured in scratch sweeps:
-- spike-frequency adaptation (ADAPT_INC 1.0) and SYN_GAIN 0.01: activity stops after odor stops
-- ORN_CONTRA 0.3: left/right odor difference now reaches PNs, lateral horn and 41 descending neurons
-  (replicated on held-out seeds); steering readout adds DNb05 and DNp05 from that screen
-- ODOR_CONTRAST 8 in the encoder: steering DNs need about 3:1, antennae see about 1.17:1
-- escape needs 2 giant fiber spikes in 100 ms; turning gain 1.0 rad/s per Hz, wander 0.5
-Result: real 20/20, median 25.2 s; shuffled 0/20. After lockstep began waiting for each new frame
-(stale UDP frames made repeat runs differ), real 20/20, median 24.4 s, identical across runs. Caveat: the steering DNs were picked on the real
-brain. The same screen on the shuffled brain finds only 2 descending neurons that respond to odor at all
-(real: 364), so no readout choice would rescue it.
-Decision (Chris, 2026-09-16): keep the "fly brain" label for smell, with the assumptions above stated.
-
-2026-09-19: the garden has a breeze now and this gate is run in it. That 20/20 did not survive a look
-underneath (PLAN.md Gate 9b): steering is a handful of cells read over 100 ms, a food smell 4.5:1
-stronger on one side moves it 0.13 Hz against a built-in turn of 0.4, and no descending type does
-better, on two seeds in two conditions. It was a weakly biased random walk in a garden with nothing
-else in it, and it fell to 10/20 when the smell was made to carry further. A fly finds food by turning
-upwind when it smells it, and the connectome does have that: DNge091 fires on the side the wind comes
-from, thirty times more clearly than anything does for food. So each duck now starts somewhere downwind
-of the dish, within DOWNWIND_DEG of straight downwind, where there is a plume to follow; a duck upwind
-of food has nothing to smell and finding it is luck, which is not what this gate is about. The shuffled
-brain's wind neurons are silent, so the comparison still means what it did.
-Result (2026-09-19): real 19/20, median 35.4 s; shuffled 1/20. That is inside the 40 s bound set on
-2026-09-16, which is left as it was.
-2026-09-20: that 19/20 had help from a bug. A duck that had never smelled anything, or whose memory of a
-smell had faded, was scored as having lost one and searched, wide-turning and slow, for ever, which is a
-fine way to stumble back onto a dish it overshot. With the bug fixed and a 5 s smell memory: 13/20, median
-39.3 s. With the memory at 30 s, which is what a walking fly's local search lasts: 17/20, median 38.4 s,
-shuffled 2/20. Still inside the original bound, with less room than it looked.
-Later the same day the close-to-food search was removed (its threshold did not survive more than one source,
-brain/physiology.py) and this gate did better without it: 20/20, median 27.6 s, shuffled 1/20.
+The garden has a breeze. The connectome has no usable left/right steering on food smell,
+but it does steer upwind: DNge091 fires on the side the wind comes from. So each duck
+starts downwind of the dish, within DOWNWIND_DEG of straight downwind, where there is a plume to
+follow. Upwind of food there is nothing to smell. The shuffled brain's wind neurons are silent.
+Caveat: the steering DNs were picked on the real brain, but the shuffled brain has almost no
+descending neurons that respond to odor at all, so no readout choice would rescue it.
 """
 import argparse
 import sys
@@ -50,7 +25,7 @@ DISH = (2.0, 2.0)
 WIND = (0.0, -1.0)  # light air from the north, as in the demo garden
 DOWNWIND_DEG = 60.0
 START_M, MAX_S = 1.5, 120.0
-BOUND_S = 40.0  # set once from the first passing full run (real median 25.2 s), 2026-09-16
+BOUND_S = 40.0  # set once from the first passing run (median 25.2 s) and not refitted since
 
 
 def episodes(W, ann, sets, n: int, seed: int) -> np.ndarray:

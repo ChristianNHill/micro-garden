@@ -1,17 +1,14 @@
-"""A simulated microduck's head camera, as the fly's two eyes see it (PLAN.md Gate 11).
+"""A simulated microduck's head camera, as the fly's two eyes see it (Gate 11).
 
 `duck-body --cameras a` serves each camera on its own TCP port, 7901 + n: four bytes of little-endian
-length, then a 640x360 UYVY frame, at 15 fps, forever. The camera is mounted a quarter turn off, as the
-real one is, so a frame is turned upright before anything else. GStreamer is not needed to read it; that is
-for the robot's own WebRTC stream (and `scripts/duck-sim` refuses to finish without it when cameras are on:
-the body server is already up by then, so stand the ducks with `robot.enable` yourself).
+length, then a 640x360 UYVY frame, at 15 fps. The camera is mounted a quarter turn off, as on the real
+robot, so each frame is turned upright first. Reading it needs no GStreamer, but `scripts/duck-sim` refuses
+to finish without GStreamer when cameras are on; the body server is already up then, so send `robot.enable`
+yourself.
 
-One camera is a narrow window onto what two compound eyes cover. MuJoCo's default 45 degrees lies across
-the frame's short side, so upright the camera sees 45 degrees across and 73 up and down, straight ahead.
-Each fly eye looks 55 degrees to its own side and takes in 150, and the two overlap over the frontal 40: the
-camera falls inside that overlap, so both eyes get it, each in its own frontal columns. Every column that
-looks outside the camera is given the frame's own mean, not a fixed grey, so that the edge of the camera's
-view is not a contrast edge the fly's motion detectors would see for ever.
+Upright, the camera sees 45 degrees across (MuJoCo's default fovy) and 73 up and down. That falls inside the
+frontal 40-degree overlap of the fly's two eyes, so both eyes see it. Columns outside the camera get the
+frame's mean, not a fixed grey, so the camera's edge is not a standing contrast edge for the motion detectors.
 """
 import socket
 import struct
@@ -67,7 +64,7 @@ class SimCamera:
                 self.luma = upright_luma(self.sock.recv(n, socket.MSG_WAITALL))
                 self.frames += 1
         except (OSError, struct.error):
-            pass  # the simulator went away; the last frame stands
+            pass  # the simulator went away; keep the last frame
 
     def retina(self) -> np.ndarray | None:
         return None if self.luma is None else to_retina(self.luma)

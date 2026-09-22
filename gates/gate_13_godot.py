@@ -7,10 +7,9 @@ while the Godot project runs headless beside it. Godot prints how many snapshots
 told to with --feed-at, clicks food into the garden the way a player would. The gate asserts both ends:
 every full second carried at least 30 snapshots, and the garden has a dish it did not have before.
 
-Two changed bars, recorded (Claude, 2026-09-21). The plan said the MuJoCo body with its brains, for 60 s.
-What is under test is the pipe between the garden and Godot, which is the same pipe whichever body fills
-it, so this uses the 2D body with no brain: no simulator to boot, no GPU, and 20 s, which is as good a
-measure of a rate as 60. Run by number only, since it needs Godot installed.
+What is under test is the pipe, which is the same whichever body fills it, so this uses the 2D body
+with no brain: no simulator, no GPU, and 20 s is enough to measure a rate. Run by number only, since
+it needs Godot installed.
 """
 import argparse
 import os

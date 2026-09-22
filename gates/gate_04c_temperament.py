@@ -1,26 +1,12 @@
 """Gate 4c: temperament. Food defense, retaliation and stink lovers come from personality knobs.
 
 Run: uv run python -m gates.gate_04c_temperament [--episodes 20]
-Knobs are scales, not switches (Chris, 2026-09-16): the dial sweeps check in-between settings give
-in-between behavior.
+Knobs are scales, not switches: the dial sweeps check in-between settings give in-between behavior.
 Two ducks start nose to nose on a full dish, or facing each other with no food. The aggressive duck
 alternates sides across episodes. Aggressiveness feeds the pC1d/e mood (brain/physiology.py) and the
 brain's aIPg turns it into attacks (brain/decoder.py). The shuffled brain is printed beside the first
 scenario. Stink affinity is a readout knob (brain/decoder.py).
-
-STATUS 2026-09-18: PASSING, all eight.
-- The dial reads the first blow as a rate rather than a count. A count could not grade: the pair spawns
-  inside contact range, so every episode offers one opportunity and "did that land" is near-certain.
-- ATTACK_P dropped from 0.1 a tick to 0.01. Ten strikes a second is not a duck, and every setting above
-  aggression 0.2 was landing inside the ~0.7 s the touch rate needs to climb past TOUCH_HZ, which
-  squashed the top of the dial. First blow now falls at 20.0, 18.1, 15.2, 10.8 and 9.1 s across the
-  knob, and the raw count grades too at 0.0, 0.1, 0.25, 0.5, 0.6 where it had been pinned at 1.0 for
-  the top three. That the count recovered on its own says the mechanism was at fault, not the metric.
-- AGGR_FULL_HZ was re-anchored 1.0 -> 4.4 earlier in the same sitting: graded senses quadrupled aIPg's
-  rate and the decoder was still normalising against what it reached when the senses were noisy.
-- Worth an eye at the blind test: a duck at full aggressiveness now lands 0.6 headbutts in 20 s where
-  it landed 1.0, because the pair only touches 13-20% of an episode. The dial grades, but the top end
-  is a milder bully than it was.
+The aggressiveness dial is graded on how soon the first blow lands, as a rate (see main).
 """
 import argparse
 import sys
@@ -51,9 +37,7 @@ def pair(W, ann, sets, n, roles, hunger, provoked=0.0, food=True):
     headbutts given and fraction of time on the dish."""
     swap = np.arange(n) % 2 == 1
     # Every episode meets at the dish from a different angle, with the headings a little off true.
-    # They used to start identically, so the only thing separating one episode from the next was
-    # sensory noise; once the senses stopped being noisy, all 20 behaved alike and the aggressiveness
-    # dial collapsed into a switch (Gate 4c, 2026-09-18). Randomness belongs in the world.
+    # The senses are not noisy, so without this all episodes behave alike and the dial becomes a switch.
     rng = np.random.default_rng(7)
     eps = []
     for _ in range(n):
@@ -107,12 +91,9 @@ def main() -> int:
     dial_hits = [h[0] / n for h in dial_hits]
     dial_on = [o[0] for o in dial_on]
     # How soon the first blow lands, not how many land. The pair spawns inside contact range and the
-    # first shove puts them out of it for the rest of the episode, so every episode offers exactly one
-    # opportunity and a count can only ask whether that one landed: near-certain above about knob 0.2.
-    # Latency has no such ceiling (Gate 4c, measured 2026-09-18).
-    # As a rate, not a waiting time: the knob sets a chance of attacking per tick, and rate is its
-    # linear image where latency is its reciprocal. Measured latencies 20.0, 13.4, 2.8, 0.8, 0.7 s put
-    # the middle knob 89% of the way up as a speed but 22% as a rate, and a scale wants it in the middle.
+    # first shove parts them for good, so a count only asks whether one blow landed: near-certain above
+    # about knob 0.2. As a rate, not a waiting time: the knob sets a chance of attacking per tick, and
+    # rate grows linearly with it where latency is its reciprocal.
     dial_rate = [1.0 / f[0] for f in dial_first]
     dial_stink = [stink(W, ann, sets, n, a) for a in DIAL]
     print(f"aggressiveness {DIAL}: first headbutt after {np.round([f[0] for f in dial_first], 1).tolist()} s"

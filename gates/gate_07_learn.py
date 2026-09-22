@@ -3,43 +3,32 @@
 Run: uv run python -m gates.gate_07_learn
 
 Two odors, told apart the way a fly tells them apart: different glomeruli. Odor A is ORN_DM1 and
-ORN_DM2, odor B is ORN_DM4 and ORN_DM5, both drawn from the vinegar-attractive set the ducks already
-use. A is paired with sugar for TRIALS trials, B is never paired, and B is the control that says any
-change is learning rather than drift.
+ORN_DM2, odor B is ORN_DM4 and ORN_DM5, both from the vinegar-attractive set the ducks already use.
+A is paired with sugar for TRIALS trials, B is never paired, and B is the control that says any change
+is learning rather than drift.
 
-The readout is the MBON population, not a walk toward a smell. The 2D world carries one food odor
-field, so two odors cannot be put in two places until other ducks start smelling of themselves at
-Gate 8; and the MBONs are where the mechanism acts, so a null there would mean nothing downstream
-could work either. Depression at Kenyon cell -> MBON is what learning is here: after pairing, the
-paired odor should drive the MBONs less, which is how a fly stops being told to leave something alone.
+The readout is the mushroom body, not a walk toward a smell: the 2D world carries one food odor field,
+and the MBONs are where the mechanism acts, so a null there would mean nothing downstream could work.
+Learning here is depression at Kenyon cell -> MBON: after pairing, the paired odor should drive the
+MBONs less.
 
-Two brains run side by side and see exactly the same odors; only the first gets dopamine. Comparing
-them, rather than one brain before against after, is what makes the measurement mean anything: the
-first attempt did the latter and the unpaired control odor fell further than the paired one, because
-spike-frequency adaptation builds over a long run and drags every rate down with it. A yoked control
-subtracts that exactly.
+Two brains run side by side and see exactly the same odors; only the first gets dopamine. A before
+and after comparison on one brain does not work, because spike-frequency adaptation builds over a long
+run and drags every rate down. The yoked control subtracts that exactly.
 
-Specificity is read at the synapses rather than off the MBON rate. With a sparse code only about 5% of
-the 21,438 synapses belong to any one odor, so the mean weight barely moves even when exactly the right
-ones are wiped out, and 96 MBONs firing under half a hertz cannot resolve the difference either. The
-weights themselves can: odor A's own synapses should be depressed and odor B's should not.
+Specificity is read at the synapses, not off the MBON rate. With a sparse code only about 5% of the
+21,438 synapses belong to any one odor, so the mean weight barely moves, and 96 MBONs firing under half
+a hertz cannot resolve the difference. So the MBON rates are printed, not asserted, and the learning is
+not yet visible in the signal that would steer a duck.
 
-STATUS 2026-09-18: PASSING. A duck learns about one smell in particular.
-- Odor A's own synapses end at 0.526 of baseline and odor B's at 0.660, on a brain that saw exactly
-  the same odors as its yoked control and differed only in getting dopamine. The control's weights are
-  1.000 to three places, and everything climbs back to 0.983 over five minutes.
-- Two things had to be true first, and neither was.
-  1. A sparse odor code. 28% of Kenyon cells answered any odor and two odors shared 79% of their cells.
-     `plasticity.sparsen` raises their threshold until about 5% answer, the figure measured in the fly.
-  2. A repeatable one. Even sparsened, the same odor twice lit different cells (overlap 0.59) about as
-     often as two different odors did (0.44), because `encode` fires a random subset of the receptors
-     each tick. Driving them graded instead, at the same mean current, makes the same odor give the
-     same cells every time (1.00) while two odors still differ (0.48). The connectome was never the
-     problem: it drives 826 Kenyon cells from odor A alone and 532 from B alone, correlation 0.21.
-- Not yet true: the MBON rates do not show it (odor A 0.47 against its control's 0.52 Hz, odor B 0.38
-  against 0.47). 96 cells under half a hertz is a handful of spikes, which is why the checks read the
-  synapses, but it does mean the learning is not yet visible in the signal that would steer a duck.
-  Gate 8 gives ducks each other's odors and a place to walk toward, which is where that gets tested.
+Asserted: the control's weights are untouched (above 0.999), odor A's own synapses fall below 0.9 of
+baseline, odor B's stay at least 0.05 above A's, and the weights climb back once pairing stops.
+
+Two things this needs, both gotchas:
+1. A sparse odor code. `plasticity.sparsen` raises the Kenyon cell threshold until about 5% answer,
+   the figure measured in the fly. Without it two odors share most of their cells.
+2. A repeatable one. `encode` fires a random subset of receptors each tick, so the same odor twice
+   lights different cells. The odors are driven graded instead, at the same mean current.
 """
 import sys
 import time

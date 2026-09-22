@@ -1,16 +1,19 @@
-"""2D stub body: kinematic ducks on the garden plane behind the microduck contract (PLAN.md Gate 3).
+"""2D stub body: kinematic ducks on the garden plane behind the microduck contract (Gate 3).
 
 One Unix socket per duck (duck-a.sock ...), like duck-sim, plus control.sock with stub-only
 sim.step {n} and sim.state. Every body step sends each duck's sensory frame over UDP to
-frame_port + duck. robot.do ground_pick on a dish eats it; robot.do headbutt pushes a touching duck
-in front of the attacker back by PUSH_M and knocks it over for DOWN_S. robot.do drink at the pond's shore band takes a sip; past the
-shore a duck swims at SWIM_SPEED. robot.sound is logged. With fruit_every_s set, the shade tree drops fruit on that
-period; garden.shake_tree on control.sock (a player action) drops SHAKE_FRUIT at once. In the viewer,
-click the tree; Tab takes the wheel of the selected duck (W A S D drive it, Tab gives it back); P pets it, C claps, F feeds by hand at the mouse, M starts or stops
-music there, H puts a hat on the selected duck or takes it off. garden.pet {duck} is the player's hand on a duck's head: bristles, and a reward.
-garden.scare claps, startling every duck. garden.hand {x, y, feed} puts the hand in the garden, where
-the ducks can see it, and drops that many bites at it. garden.music {x, y, on} picks the music up and puts it down there, or takes it away,
-and garden.hat {duck, on} puts a hat on one; a duck shakes a hat off by grooming.
+frame_port + duck. robot.do ground_pick on a dish eats it; robot.do headbutt pushes a touching duck in
+front back by PUSH_M and knocks it over for DOWN_S; robot.do drink at the shore band takes a sip; past the
+shore a duck swims at SWIM_SPEED. robot.sound is logged. With fruit_every_s set, the tree drops fruit on
+that period.
+
+Player actions on control.sock: garden.shake_tree drops SHAKE_FRUIT at once; garden.pet {duck} pets a duck;
+garden.scare claps, startling every duck; garden.hand {x, y, feed} puts the hand in the garden, visible,
+and drops that many bites at it; garden.music {x, y, on} places or removes the music; garden.hat {duck, on}
+puts a hat on a duck or takes it off (a duck shakes a hat off by grooming).
+
+In the viewer: click the tree to shake it; Tab takes and gives back the wheel of the selected duck (W A S D
+drive it); P pets, C claps, F feeds by hand at the mouse, M toggles music there, H toggles a hat.
 
 Run free at real time with the debug window:  uv run python -m body.stub2d.stub --view --wander
 Without --wander the ducks stand still until a client sends robot.move.
@@ -30,27 +33,14 @@ from body.stub2d import retina
 from world.fields import (DAY_S, DUCK_SMELL_M, SHORE_M, SIZE_M, TREE, DUCK_R, World, contacts, daylight, duck_odor_at,
                           music_at, temperature_at, wind_on)
 
-# Light air that starts in the north and swings right round the compass every 0.7 of a day, so that no
-# hour always has the same wind: at once a day the south wind, the one that brings the pond to the ducks,
-# only ever blew at night while they slept, and the Napper never drank. From the north the
-# smell of the dish and the fruit tree lies across the garden and a duck at the pond can follow it home;
-# from the south the pond's damp air reaches the ducks that are eating. A steady wind can only do one.
-# The tree drops a fruit every 10 s. At 20 the garden ran out: the dish is gone in the first minute, the
-# tree stops dropping with four things on the ground, which is all night while the ducks sleep, and what
-# fell in their waking hours came to about 100 bites in twenty minutes against the 108 five ducks need. They
-# ate all of it and a third of them still starved, the Bully first, since its appetite asks 40% more
-# (Gate 9b; Claude's call while Chris was out, 2026-09-19, for him to ratify).
-# The garden people watch is bigger than the one the gates measure in (Chris, 2026-09-21: 4 m was cramped for
-# five ducks), and laid out after the Chao gardens of Sonic Adventure 2: a big pond tucked into the back
-# corner, where a viewer can put a waterfall and cliffs behind it, the fruit tree on the other side of the
-# back, and the lawn in front left open, with the dish and the stink on it. The rocks are
-# the foot of that waterfall, stepping up from the pond's edge into the corner: solid, so no duck walks through
-# what a viewer draws there. They stand on the shore and not in the water: the first ones reached half a metre
-# into the pond, so every duck swimming or asleep at that end looked pressed against the waterfall (2026-09-21).
+# The wind turns right round every 0.7 of a day, so each direction comes at every hour: a north wind carries
+# food smells to a duck at the pond, a south wind carries the pond's damp air to ducks that are eating.
+# A fruit every 10 s feeds five ducks; at 20 s some starved (Gate 9b). Laid out after the Chao gardens of
+# Sonic Adventure 2. The rocks are the solid foot of a waterfall a viewer draws there, on the shore.
 DEMO_GARDEN = dict(size=6.0, tree=(1.5, 4.3, 0.9), food_xy=((3.0, 2.2),), bites=10, danger_xy=((4.9, 1.3),),
                    pond=(4.5, 4.4, 1.2), rocks=((5.5, 5.47, 0.42), (5.95, 5.9, 0.55)), fruit_every_s=10.0, wind=(0.0, -1.0), wind_turns_s=0.7 * DAY_S,
-                   personal_m=0.24,  # the drawn duck's width: they stop at each other and do not merge
-                   music=None)  # the music box is the player's to put down (M), and to pick up again
+                   personal_m=0.24,  # the drawn duck's width, so they do not merge
+                   music=None)  # the player puts the music box down (M)
 
 DT = 0.02
 # ponytail: guessed limits standing in for robotd's clamps; replace with the sim's real ones at Gate 10
@@ -62,42 +52,38 @@ CONTROL_PARAMS = {"sim.step": {"n": 1}, "sim.state": {}, "garden.shake_tree": {}
                   "garden.drop_hat": {"x": 0.0, "y": 0.0}, "garden.drop_ball": {"x": 0.0, "y": 0.0}, "garden.volume": {"level": 0.75}, "garden.give": {"duck": 0}, "garden.drum": {"x": 0.0, "y": 0.0, "on": 1}, "garden.grab": {"x": 0.0, "y": 0.0}, "garden.hand_at": {"x": 0.0, "y": 0.0},
                   "garden.release": {"x": 0.0, "y": 0.0, "vx": 0.0, "vy": 0.0}}
 SHAKE_FRUIT = 2
-# The player's shake has a limit of its own. It shared the tree's (MAX_FOOD, 4), which the demo garden's tree keeps
-# the lawn at by itself, so F and a tap on the tree did nothing at all (Chris, 2026-09-21).
+# The player's shake has its own limit, above the tree's MAX_FOOD, which the tree reaches by itself.
 SHAKE_MOST = 12
 PUSH_M = 0.15
-DOWN_S = 10.0  # a kicked duck goes over, and this is about how long a microduck takes to get back on its feet
-BLOCKED_VYAW = 1.5  # rad/s a duck the fence or a rock has stopped turns back in at
+DOWN_S = 10.0  # about how long a microduck takes to get back on its feet
+BLOCKED_VYAW = 1.5  # rad/s at which a duck stopped by the fence or a rock turns back in
 SWIM_SPEED = 0.5  # fraction of commanded speed while swimming
 SOUND_TAGS = {"alarm", "greet", "inquire", "peck", "chirp", "coo", "wheee"}  # microduck's voice bank
-SIT_AFTER_S = 3.0  # a duck that has not moved for this long is drawn sitting (body/mujoco/adapter.py really sits)
+SIT_AFTER_S = 3.0  # still this long and a duck is drawn sitting (body/mujoco/adapter.py really sits)
 DRUM_REACH_M = 0.32  # how near a drum a duck has to be to tap it
-KICK_REACH_M, KICK_MS = 0.22, 1.6  # how near its feet a ball has to be for a duck to kick it, and how fast it leaves
-COOL_SEEN_M = 3.0  # the pond or the tree's shade this far from its edge is half as plain as at it
-BALL_SEEN_M = 1.5  # a ball this far off fills half what it would at a duck's feet
-NEAR_M = 1.0  # another duck nearer than this is the one a duck is with
+KICK_REACH_M, KICK_MS = 0.22, 1.6  # ball reach for a kick, and its speed after
+COOL_SEEN_M = 3.0  # pond or shade this far past its edge is half as plain
+BALL_SEEN_M = 1.5  # a ball this far off is half as plain as at the feet
+NEAR_M = 1.0  # the nearest duck within this is the one a duck is with
 EARSHOT_M = 2.0  # how far an alarm, a whoop or a cry carries
-WITNESS_M = 1.5  # how near a duck has to be to a shove, or to a hat being taken, to have seen it
-GRAB_M = 0.3  # how near the hand has to be to a thing to pick it up
-THROW_MS, THROW_MAX_MS, THROW_S = 0.8, 3.0, 0.35  # let go faster than the first and it is thrown; capped; and how long it flies
-HAND_S = 4.0  # how long the player's hand stays in the garden once it has come
-HAND_SEEN_M = 1.5  # a hand this far off is half as plain as one at a duck's beak
+WITNESS_M = 1.5  # how near a duck must be to a shove or a hat taken to see it
+GRAB_M = 0.3  # how near the hand must be to pick a thing up
+THROW_MS, THROW_MAX_MS, THROW_S = 0.8, 3.0, 0.35  # release speed that throws, the cap, and flight time
+HAND_S = 4.0  # how long the player's hand stays in the garden
+HAND_SEEN_M = 1.5  # a hand this far off is half as plain as one at the beak
 CRY_S = 6.0  # how long a cry lasts
-AUDIENCE_M = 1.5  # how near a duck has to be to a song or a dance to be its audience
+AUDIENCE_M = 1.5  # how near a duck must be to a song or dance to be its audience
 PERFORMANCES = ("sing", "dance", "singdance")
 MAX_BALLS = 3
-HAT_REACH_M = 0.25  # a hat on the ground nearer than this is one a duck could put on
+HAT_REACH_M = 0.25  # a duck can put on a hat on the ground within this
 BITE_S = 0.5  # ground_pick takes this long, so at most one bite per BITE_S
-# "headbutt", "drink", "preen" and "zoomies" are our names for what a duck does; this body acts the first three
-# out in the garden and ignores the last. "emote_<feeling>" (brain/emotes.py) it writes down for the viewer to show. body/mujoco/adapter.py maps them onto the robot's own skills.
+# "headbutt", "drink", "preen" and "zoomies" are our skill names; this body acts out the first three and ignores
+# zoomies. "emote_<feeling>" (brain/emotes.py) is recorded for the viewer. body/mujoco/adapter.py maps them to robot skills.
 
-# How a duck acts out each feeling (brain/emotes.py), in every body: a voice tag, and its head through a few poses, each
-# (seconds after the last, neck_pitch, head_pitch, head_yaw, head_roll) in radians, pitch positive down. The
-# head works sitting as well as standing, so a duck at rest still shows what it feels. Every one ends level.
-# One definition, on the robot's own four head joints: this body records the poses, the MuJoCo body forwards
-# them to the robot, and a viewer draws whatever the head was told. There were two, one here for the robot and
-# a looser one in Godot for a cartoon duck, and the same feeling looked different in each (Chris, 2026-09-21).
-# ponytail: drawn by eye on the simulated duck; a real one's neck will want these re-posed.
+# How each feeling (brain/emotes.py) is acted out in every body, as explicit code: a voice tag and head poses, each
+# (seconds after the last, neck_pitch, head_pitch, head_yaw, head_roll) in radians, pitch positive down. Works
+# sitting or standing; every one ends level. The MuJoCo body forwards the poses and viewers draw the head as told.
+# ponytail: posed by eye on the simulated duck; a real one's neck will want these re-posed.
 LEVEL = (0.0, 0.0, 0.0, 0.0)
 EMOTE_ACTS = {
     "happy": ("wheee", [(0.0, -0.1, -0.2, 0.0, 0.3), (0.3, -0.1, -0.2, 0.0, -0.3), (0.3, -0.1, -0.2, 0.0, 0.3),
@@ -113,7 +99,7 @@ EMOTE_ACTS = {
     "sleepy": ("coo", [(0.0, 0.2, 0.4, 0.0, 0.1), (0.8, 0.0, 0.0, 0.0, 0.0), (0.4, 0.3, 0.4, 0.0, 0.1), (1.0, 0.3, 0.4, 0.0, 0.1)]),
     "curious": ("chirp", [(0.0, -0.1, 0.0, 0.3, 0.4), (1.0, -0.1, 0.0, -0.3, -0.4), (1.0, -0.1, 0.0, -0.3, -0.4)]),
     "proud": ("greet", [(0.0, -0.3, -0.3, 0.0, 0.0), (0.6, -0.3, -0.3, 0.5, 0.0), (0.6, -0.3, -0.3, -0.5, 0.0), (0.6, -0.3, -0.3, 0.0, 0.0)]),
-    # the signatures (brain/emotes.py): a stamp of the head, a long yawn, dips in the water, a song, a shiver
+    # the signature emotes (brain/emotes.py)
     "stomp": ("alarm", [(0.0, -0.2, -0.2, 0.0, 0.0), (0.2, 0.35, 0.3, 0.0, 0.0), (0.2, -0.2, -0.2, 0.0, 0.0), (0.2, 0.35, 0.3, 0.0, 0.0)]),
     "yawn": ("coo", [(0.0, -0.25, -0.5, 0.0, 0.1), (1.2, -0.3, -0.6, 0.0, 0.15), (0.8, 0.2, 0.3, 0.0, 0.0)]),
     "splash": ("wheee", [(0.0, 0.4, 0.5, 0.0, 0.0), (0.2, -0.2, -0.3, 0.0, 0.0), (0.2, 0.4, 0.5, 0.0, 0.0), (0.2, -0.2, -0.3, 0.0, 0.0)]),
@@ -121,13 +107,13 @@ EMOTE_ACTS = {
                        (0.35, -0.25, -0.4, -0.35, 0.0)]),
     "cower": ("inquire", [(0.0, 0.45, 0.5, 0.0, 0.0), (0.3, 0.45, 0.5, 0.15, 0.0), (0.15, 0.45, 0.5, -0.15, 0.0),
                           (0.15, 0.45, 0.5, 0.15, 0.0), (0.15, 0.45, 0.5, -0.15, 0.0), (0.8, 0.45, 0.5, 0.0, 0.0)]),
-    # to music it likes: the head nods on the beat and swings side to side, four beats, and it says nothing
+    # to liked music: nod on the beat and swing side to side, silent
     "dance": (None, [(0.0, 0.25, 0.2, 0.4, 0.15), (0.35, -0.1, -0.2, 0.0, 0.0), (0.35, 0.25, 0.2, -0.4, -0.15), (0.35, -0.1, -0.2, 0.0, 0.0),
                      (0.35, 0.25, 0.2, 0.4, 0.15), (0.35, -0.1, -0.2, 0.0, 0.0), (0.35, 0.25, 0.2, -0.4, -0.15), (0.35, -0.1, -0.2, 0.0, 0.0)]),
-    # and the two at once, which is what a duck mostly does with music it likes
+    # both at once
     "singdance": ("chirp", [(0.0, 0.25, 0.2, 0.4, 0.15), (0.35, -0.1, -0.2, 0.0, 0.0), (0.35, 0.25, 0.2, -0.4, -0.15), (0.35, -0.1, -0.2, 0.0, 0.0),
                      (0.35, 0.25, 0.2, 0.4, 0.15), (0.35, -0.1, -0.2, 0.0, 0.0), (0.35, 0.25, 0.2, -0.4, -0.15), (0.35, -0.1, -0.2, 0.0, 0.0)]),
-    # miserable, and saying so: head down and shaking
+    # head down and shaking
     "cry": ("coo", [(0.0, 0.4, 0.5, 0.0, 0.0), (0.4, 0.4, 0.5, 0.2, 0.0), (0.4, 0.4, 0.5, -0.2, 0.0), (0.4, 0.4, 0.5, 0.2, 0.0),
                     (0.4, 0.4, 0.5, -0.2, 0.0), (0.8, 0.4, 0.5, 0.0, 0.0)]),
 }
@@ -141,7 +127,7 @@ class Stub:
         self.fruit_rng = np.random.default_rng(seed + 1)
         self.fruit_every_s = fruit_every_s
         self.world = World(food_xy, danger_xy, pond, bites, wind, wind_turns_s, music, size, tree, rocks)
-        for x, y in balls:  # toys put down before anyone is watching, for a gate
+        for x, y in balls:  # toys placed at start, for a gate
             self.world.balls = np.vstack([self.world.balls, [x, y, 0.0, 0.0]])
         self.pose = np.column_stack([rng.uniform(0.5, size - 0.5, (n, 2)), rng.uniform(-np.pi, np.pi, n)])
         if pose is not None:
@@ -156,25 +142,25 @@ class Stub:
         self.scared = np.zeros(n, bool)
         self.hats = np.zeros(n, bool)
         self.still_for = np.zeros(n)  # seconds since it last moved, for posture()
-        self.hat_style = np.full(n, -1)  # which hat each wears: a number a viewer makes a hat from; -1 for none
-        self.hat_items = []  # hats lying in the garden, as [x, y, style], for a duck to put on if it likes
+        self.hat_style = np.full(n, -1)  # a seed a viewer makes the hat from; -1 for none
+        self.hat_items = []  # hats lying in the garden, as [x, y, style]
         self.donned = []  # (t, duck) each time one puts a hat on
         self.kicks = []  # (t, duck) each time one kicks a ball
         self.kicked = np.zeros(n, bool)
         self.drums = []  # (t, duck) each tap on the drum
         self.drummed = np.zeros(n, bool)
         self.saw_show = np.zeros(n, bool)
-        # who did what to whom this step, for the ducks it happened near (-1 is nobody); sent and then cleared
+        # who did what to whom this step, for nearby ducks (-1 is nobody); cleared after sending
         self.events = {name: np.full(n, -1.0) for name in frames.IDS if name != "near_id"}
         self.heard = {"heard_alarm": np.zeros(n), "heard_joy": np.zeros(n)}
         self.hand_fed = np.zeros(n, bool)
-        self.crying_until = np.zeros(n)  # garden time until which a duck is crying, for the others to hear
+        self.crying_until = np.zeros(n)  # garden time until which a duck is crying
         self.hand_until = 0.0
-        self.held = None  # what the player's hand is carrying: ("ball" | "hat" | "food" | "music" | "duck", which one)
+        self.held = None  # what the player's hand carries: (kind, index)
         self.thrown = np.zeros(n, bool)
         self.throws = []  # (t, duck) each time the player throws one
-        self.given = []  # (t, duck) each time the player hands one a fruit  # a duck nearby has just begun to sing or dance
-        self.velocity = np.zeros((n, 2))  # metres a second over the ground, for what a duck walks into
+        self.given = []  # (t, duck) each time the player hands one a fruit
+        self.velocity = np.zeros((n, 2))  # m/s over the ground, for what a duck walks into
         self.hat_rng = np.random.default_rng(seed + 2)
         self.preened = []  # (t, duck) each time one is shaken off
         self.pets = []  # (t, duck)
@@ -187,10 +173,8 @@ class Stub:
         self.relaxed = np.zeros(n, bool)
         self.seen = None
         self.touch_m = 2 * DUCK_R  # how near two ducks' centres are when they touch
-        # How near two ducks' centres can come, or 0 for ducks that pass through each other, which is what the
-        # gates were measured with. The garden people watch draws its ducks larger than life, and there they
-        # walked through one another (Chris, 2026-09-21); with a personal space they stop at each other, and
-        # touching is that distance and a little, so a shove, company and comfort all still reach.
+        # How near two ducks' centres can come; 0 lets them pass through each other, as in the gates.
+        # Touching is a little beyond it, so shoves and company still reach.
         self.personal_m = float(personal_m)
         if self.personal_m > 0:
             self.touch_m = self.personal_m + 0.05
@@ -218,7 +202,7 @@ class Stub:
 
     def _move(self, i: int, p: dict) -> None:
         if self.t < self.down_until[i]:
-            self.cmd[i] = 0  # on the floor: whatever its brain wants, its legs are not under it
+            self.cmd[i] = 0  # on the floor: its legs ignore the brain
         elif not self.relaxed[i]:
             self.cmd[i] = np.clip([float(p["vx"]), float(p["vy"]), float(p["vyaw"])],
                                   [-MAX_V, -MAX_VY, -MAX_VYAW], [MAX_V, MAX_VY, MAX_VYAW])
@@ -238,7 +222,7 @@ class Stub:
             do(i)
 
     def _audience(self, i: int) -> None:
-        """Duck i is performing, and the ducks near it see it: what they make of it is theirs (brain/social.py)."""
+        """Duck i is performing; the ducks near it see it (brain/social.py decides the response)."""
         near = np.linalg.norm(self.pose[:, :2] - self.pose[i, :2], axis=1) < AUDIENCE_M
         near[i] = False
         self.saw_show |= near
@@ -259,8 +243,8 @@ class Stub:
             return
         self.drums.append((self.t, i))
         self.drummed[i] = True
-        self.sounds.append((self.t, i, "drum"))  # the drum's voice and not the duck's; a viewer plays it quietly
-        self._audience(i)  # and it is a performance
+        self.sounds.append((self.t, i, "drum"))  # the drum's sound, not the duck's
+        self._audience(i)  # a performance
 
     def _wear(self, i: int) -> None:
         near = [k for k, (x, y, _) in enumerate(self.hat_items) if np.hypot(x - self.pose[i, 0], y - self.pose[i, 1]) < HAT_REACH_M]
@@ -275,14 +259,13 @@ class Stub:
     def _shed(self, i: int) -> None:
         if not self.hats[i]:
             return
-        self.hats[i] = False  # shaken off, and it lands where the duck stands, for whoever wants it next
+        self.hats[i] = False  # shaken off; it lands where the duck stands
         self.hat_items.append([float(self.pose[i, 0]), float(self.pose[i, 1]), int(max(self.hat_style[i], 0))])
         self.hat_style[i] = -1
         self.preened.append((self.t, i))
 
     def _emote(self, i: int, feeling: str) -> None:
-        """Act a feeling out: say it, and queue the head's poses for step() to play. One at a time, and not
-        in its sleep."""
+        """Act a feeling out: say it, and queue the head poses for step() to play."""
         if self.acting[i] or self.relaxed[i] or self.t < self.down_until[i]:
             return  # one at a time, not in its sleep, and not from flat on the floor
         tag, poses = EMOTE_ACTS[feeling]
@@ -308,7 +291,7 @@ class Stub:
         if p["tag"] not in SOUND_TAGS:
             raise ValueError(f"unknown sound tag {p['tag']!r}; known: {sorted(SOUND_TAGS)}")
         self.sounds.append((self.t, i, p["tag"]))
-        if p["tag"] in ("alarm", "wheee"):  # a fright and a whoop both carry, and both are catching
+        if p["tag"] in ("alarm", "wheee"):  # both carry, and both are catching
             near = np.linalg.norm(self.pose[:, :2] - self.pose[i, :2], axis=1) < EARSHOT_M
             near[i] = False
             self.heard["heard_alarm" if p["tag"] == "alarm" else "heard_joy"][near] = 1.0
@@ -338,20 +321,17 @@ class Stub:
             self.last_bite[i], self.drank[i] = self.t, True
 
     def articulation(self) -> list[dict]:
-        """Per duck, what a jointed body knows of itself, for a viewer: nothing here, so a viewer poses the
-        duck by rule. The MuJoCo body gives the robot's joints, height and lean."""
+        """Per duck, joint state for a viewer: empty here; the MuJoCo body gives joints, height and lean."""
         return [{} for _ in self.names]
 
     def posture(self) -> list[str]:
-        """Per duck, "up", "sat" or "down", for a viewer to draw. A duck that has stood still for SIT_AFTER_S
-        has sat down, as the robots do. Here that is only how it is drawn: it is up and walking the step it
-        wants to be, so nothing a gate measures moves."""
+        """Per duck, "up", "sat" or "down", for a viewer. Here "sat" is only drawn: the duck can walk at
+        once, so no gate measurement changes."""
         return ["down" if self.t < until else "sat" if still > SIT_AFTER_S else "up"
                 for until, still in zip(self.down_until, self.still_for)]
 
     def down_left(self) -> np.ndarray:
-        """Seconds until each duck that is down is on its feet again, 0 for one that is up: a viewer fits the
-        fall and the getting up inside it, so that a duck is standing by the time it walks."""
+        """Seconds until each downed duck is up again, 0 if up; a viewer fits the fall and rise inside it."""
         return np.maximum(self.down_until - self.t, 0.0)
 
     def _swimming(self) -> np.ndarray:
@@ -373,8 +353,7 @@ class Stub:
             self.knock_down(j)
 
     def knock_down(self, j: int) -> None:
-        """A kick that lands puts a duck on the floor (Chris, 2026-09-21). Here that is a duck that cannot
-        move until it is up again; a body with legs falls over for real."""
+        """A kick that lands puts a duck on the floor: here it cannot move for DOWN_S."""
         self.down_until[j] = self.t + DOWN_S
         self.cmd[j] = 0
 
@@ -404,19 +383,18 @@ class Stub:
         self.world.drum = (float(p["x"]), float(p["y"])) if int(p["on"]) else None
 
     def _drop_ball(self, p):
-        """A ball for the ducks, put down where the player says. A few is plenty."""
+        """A ball put down where the player says, at most MAX_BALLS."""
         self.world.balls = np.vstack([self.world.balls, [float(p["x"]), float(p["y"]), 0.0, 0.0]])[-MAX_BALLS:]
 
     def _drop_hat(self, p):
-        """A hat left in the garden, no two alike. Whether anyone wears it is up to the ducks."""
+        """A hat left in the garden, no two alike."""
         self.hat_items.append([float(p["x"]), float(p["y"]), int(self.hat_rng.integers(1_000_000))])
 
     def _scare(self, p):
         self.scared[:] = True  # a clap: everything in the garden hears it
 
     def _keep_apart(self) -> None:
-        """Two ducks nearer than personal_m are each moved half the difference apart: solid to each other, as
-        they are to a rock. A few passes settle a huddle."""
+        """Two ducks nearer than personal_m each move half the difference apart; a few passes settle a huddle."""
         if self.personal_m <= 0 or len(self.pose) < 2:
             return
         xy = self.pose[:, :2]
@@ -432,18 +410,17 @@ class Stub:
         np.clip(xy, DUCK_R, self.world.size - DUCK_R, out=xy)
 
     def _things(self) -> list:
-        """Everything the hand could pick up, as (kind, which, x, y). Things before ducks, so a fruit beside
-        a duck is the fruit."""
+        """Everything the hand could pick up, as (kind, which, x, y). Things before ducks."""
         w = self.world
         things = [("ball", k, *b[:2]) for k, b in enumerate(w.balls)] + [("hat", k, h[0], h[1]) for k, h in enumerate(self.hat_items)]
         things += [("food", k, *xy) for k, xy in enumerate(w.food)] + ([("music", 0, *w.music)] if w.music else [])
         things += [("drum", 0, *w.drum)] if w.drum else []
         return things + [("duck", i, *xy) for i, xy in enumerate(self.pose[:, :2]) if self.can_carry_ducks]
 
-    can_carry_ducks = True  # a simulated robot is not something a cursor can lift (body/mujoco/adapter.py)
+    can_carry_ducks = True  # false for a simulated robot (body/mujoco/adapter.py)
 
     def _grab(self, p):
-        """The hand closes on whatever is nearest it, if anything is near enough (Sonic Adventure's gardens)."""
+        """The hand closes on the nearest thing within GRAB_M, if any."""
         at = np.array([float(p["x"]), float(p["y"])])
         self._hand_at(p)
         near = [(np.hypot(x - at[0], y - at[1]) + (0.1 if kind == "duck" else 0.0), kind, which) for kind, which, x, y in self._things()]
@@ -476,8 +453,8 @@ class Stub:
             self.cmd[which] = 0
 
     def _release(self, p):
-        """The hand opens. Let go gently, the thing is put down; let go on the move, it is thrown: a ball
-        rolls off, anything else lands a little way on, and a duck lands on its side and thinks less of you."""
+        """The hand opens. Gently, the thing is put down; on the move, it is thrown: a ball rolls off, anything
+        else lands a little way on, and a thrown duck is knocked down."""
         if self.held is None:
             return
         v = np.array([float(p["vx"]), float(p["vy"])])
@@ -539,14 +516,11 @@ class Stub:
         blocked = np.linalg.norm(self.pose[:, :2] - free, axis=1) > 1e-6
         self._keep_apart()
         if self.held is not None and self.held[0] == "duck" and self.world.hand is not None:
-            self.pose[self.held[1], :2] = self.world.hand  # its legs may go, and it goes nowhere
+            self.pose[self.held[1], :2] = self.world.hand  # held: it goes nowhere
         free = self.pose[:, :2].copy()
         self.world.push_out(self.pose[:, :2], DUCK_R)
         blocked |= np.linalg.norm(self.pose[:, :2] - free, axis=1) > 1e-6
-        # A duck the fence or a rock has stopped turns back in, towards the middle of the garden, as the robot
-        # body does (`fence`). It used to stay pressed there until its wander turned it, and with the pond
-        # reaching nearly to the back corner a swimmer that met the waterfall's foot looked drawn to it
-        # (Chris, 2026-09-21).
+        # explicit code: a duck stopped by the fence or a rock turns toward the middle, like the robot's `fence`
         if blocked.any():
             ahead = np.column_stack([np.cos(h), np.sin(h)])
             to_mid = self.world.size / 2 - self.pose[:, :2]
@@ -554,8 +528,8 @@ class Stub:
         self.velocity = (self.pose[:, :2] - before) / DT
         self.world.roll_balls(DT, self.pose[:, :2], self.velocity)
         if self.world.hand is not None and self.t > self.hand_until:
-            self.world.hand = None  # the hand goes away again; it used to stay where it was last put for good
-            self.held = None  # and whatever it held is where it was left
+            self.world.hand = None  # the hand goes away
+            self.held = None  # and drops what it held
         self._act()
         self.pose[:, 2] = (h + np.pi) % (2 * np.pi) - np.pi
         self.world.step(self.t)
@@ -604,16 +578,15 @@ class Stub:
             seen[1] = np.maximum(seen[1], size * (to_left < 0))
             near |= (d < KICK_REACH_M) & (ahead > 0)
         sense["ball_left"], sense["ball_right"], sense["ball_near"] = seen[0], seen[1], near.astype(float)
-        if w.drum is not None:  # the drum, as the ball is seen: which eye, how plain, and whether it is in reach
+        if w.drum is not None:  # seen like the ball: which eye, how plain, in reach
             rel = np.asarray(w.drum) - xy
             d_drum = np.linalg.norm(rel, axis=1)
             plain_drum = np.where((rel * fwd).sum(1) > -0.3 * d_drum, 1 / (1 + d_drum / BALL_SEEN_M), 0.0)
             on_left = (rel * left).sum(1) >= 0
             sense["drum_left"], sense["drum_right"] = plain_drum * on_left, plain_drum * ~on_left
             sense["drum_near"] = (d_drum < DRUM_REACH_M).astype(float)
-        # Where a hot duck can cool off (Chris, 2026-09-21): the garden is one temperature out of the shade and
-        # damp air carries half a metre, so nothing told a duck standing in the sun which way relief lay. It
-        # lives here and knows its pond and its tree by sight: which eye, and plainer the nearer.
+        # Where a hot duck can cool off, by sight: which eye, and plainer the nearer. Explicit code, since
+        # temperature and damp air give no direction from out in the sun.
         for name, place in (("pond", w.pond), ("shade", w.tree)):
             if place is not None:
                 rel = np.asarray(place[:2]) - xy
@@ -635,7 +608,7 @@ class Stub:
         sense["near_left"], sense["near_right"] = plain * side(to_near), plain * ~side(to_near)
         crying = self.crying_until > self.t
         cry = np.zeros((2, len(xy)))
-        for j in np.flatnonzero(crying):  # the nearest cry in earshot, and which side it is on
+        for j in np.flatnonzero(crying):  # the nearest cry in earshot, and its side
             loud = np.where((d[:, j] < EARSHOT_M), 1 - d[:, j] / EARSHOT_M, 0.0)
             on_left = side(xy[j] - xy)
             cry[0], cry[1] = np.maximum(cry[0], loud * on_left), np.maximum(cry[1], loud * ~on_left)
@@ -709,7 +682,7 @@ def main() -> None:
                          "ignore any save, and print who was who on exit")
     args = ap.parse_args()
     os.makedirs(args.sock_dir, exist_ok=True)
-    args.frame_port = frames.free_port_base(args.frame_port, args.ducks)  # never the ports of a garden that is up
+    args.frame_port = frames.free_port_base(args.frame_port, args.ducks)  # skip ports another garden holds
     stub = Stub(args.ducks, args.seed, args.sock_dir, frame_port=args.frame_port, **DEMO_GARDEN)
     print(f"sockets in {args.sock_dir}: {', '.join(stub.names)}, control")
     view = None
@@ -780,8 +753,8 @@ WHEEL_VX, WHEEL_VYAW = 0.2, 1.2  # what W/S and A/D ask for while the player has
 
 
 def take_the_wheel(stub, server, view) -> None:
-    """Possession (ARCHITECTURE.md 2.6): Tab hands the selected duck's legs to the player and back. The
-    brain goes on seeing, smelling and learning; only its motor output is muted."""
+    """Possession: Tab hands the selected duck's legs to the player and back. Only
+    the brain's motor output is muted."""
     if view is None or server is None:
         return
     server.possessed[:] = False

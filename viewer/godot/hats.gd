@@ -1,6 +1,5 @@
-# A hat from a number: the garden deals every hat a style number, and this makes the same hat from the same
-# number, lying on the lawn or on a head. Five shapes, six colours and a band in another, so no two dropped
-# hats are likely to match.
+# A hat from its style number: the same number always makes the same hat, on the lawn or on a head.
+# Five shapes, six colours and a band in another.
 extends RefCounted
 
 const Ink := preload("res://ink.gd")

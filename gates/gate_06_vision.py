@@ -5,49 +5,38 @@ Run: uv run python -m gates.gate_06_vision
 The LPLC2 scalar of Gate 2 is not used here: light goes into the retina, flyvis runs the optic lobe,
 and its columns drive the matching FlyWire cells as graded release (brain/vision.py).
 
-STATUS 2026-09-17: PASSING, with the eye deliberately quiet. Four fixes, each found by asking why a
-number that should have been zero, or symmetric, was not.
-1. A blank retina was firing the giant fiber about 20 times per condition. Graded cells release all
-   the time, so an empty grey world pushed the whole brain; LIF.calibrate takes the resting release
-   as the zero point. A fly is not wound up by a blank wall.
-2. flyvis's steady_state and a grey image fed through its stimulus land about 0.03 apart, so rest is
-   measured down the path the eye actually uses (brain/vision.py).
-3. The release was clipped lopsided. At VIS_TONIC 0.1 a cell could add 0.9 of release but withhold
-   only 0.1, so almost all of the disinhibiting half of graded transmission was thrown away, and
-   LPLC2 answered a receding disc more strongly than a looming one. Centring the tonic at 0.5 flips
-   it, and raising the gain had done nothing for that ratio beforehand, which is what says the
-   clipping was the cause and not the drive.
-4. The gain would not transfer between scenes: a lone disc on grey and the demo garden differ 120
-   fold in raw drive. The eye now adapts, normalising by its own drive, which brings that to 1.2
-   fold, with VIS_FLOOR as the ceiling on its own gain so a featureless field is not amplified.
+Asserted: a blank retina drives LPLC2 not at all, a loom fires the giant fiber, and LPLC2 answers a
+loom more than a static disc and more than a receding one.
+
+What the eye needs to pass, each a real gotcha:
+1. Graded cells release all the time, so LIF.calibrate takes the resting release as the zero point.
+   Otherwise a blank grey world fires the giant fiber.
+2. Rest is measured down the path the eye actually uses; flyvis's steady_state lands about 0.03 off.
+3. The tonic sits at 0.5, so a cell can withhold release as much as add it. A low tonic throws away
+   the disinhibiting half of graded transmission and LPLC2 prefers a receding disc.
+4. The eye adapts, normalising by its own drive, because a lone disc on grey and the demo garden
+   differ 120 fold in raw drive. VIS_FLOOR caps its gain so a featureless field is not amplified.
 
 Robustness over disc radius 0.15 to 0.4 m, closest approach 0.12 to 0.3 m, eye axis 35 to 70 degrees
-and a half-speed approach: seven of eight cases pass. Looming beats a retreat by 8 to 11 times
-everywhere. The exception is loom against a static scene with the eyes pointed 35 degrees forward,
-where a large static disc drives LPLC2 as hard as a looming one (0.019 against 0.017 Hz): LPLC2 here
-is not purely selective for motion, and static structure reaches it too. The committed geometry is 55
-degrees, which passes.
+and a half-speed approach: seven of eight cases pass, looming beating a retreat 8 to 11 fold. The
+exception is loom against static with the eyes 35 degrees forward, where a large static disc drives
+LPLC2 as hard as a looming one: static structure reaches LPLC2 too. The committed 55 degrees passes.
 
-Why the checks read LPLC2 and not the giant fiber: two cells firing 0 to 19 spikes cannot support a
-ratio, and half the giant fiber's drive is LC4, which flyvis does not model. It is reported, and only
-asked to fire at all.
-
-Why the gain is 0.05, four times weaker than Gate 6 alone would want: vision and odor write to the
+Why the gain is 0.05, four times weaker than this gate alone would want: vision and odor write to the
 same steering neurons, and nothing yet tells a duck that food looks like anything, so the eye is a
-distractor. At 0.2 the ducks found food in 6 of 20 episodes against 20 of 20 blind; at 0.05 they
-manage 20 of 20 again, at 29.6 s against 23.5 s blind. That is a compromise between two gates, not a
-principled value, and it is narrow: 0.025 is too weak for this gate to see anything. The durable fix
-is Gate 7, which pairs what a duck sees with sugar and gives vision a valence it can steer by.
+distractor. At 0.2 ducks found food in 6 of 20 episodes against 20 of 20 blind; at 0.05, 20 of 20.
+That is a compromise between two gates, not a principled value, and it is narrow: at 0.025 this gate
+sees nothing.
 
 Known and left alone:
-- The pathway is quiet. LPLC2 answers a loom at 0.016 Hz and Tm5f, its single biggest input at 9,580
-  synapses and a quarter of its excitation, never fires; nor does Tm8b. SYN_GAIN, the threshold and
-  the adaptation were set at Gates 1 and 4 against olfaction and may still be wrong for the optic lobe.
-- The column map places cells by rank along the retinotopic sheet, retinotopic in order but not in
-  degrees. Randomising it halves LPLC2's rate but does not move the selectivity, so the Codex Visual
-  Columns file (Gate 0) would sharpen the first and is not needed for the second.
-- Ruled out along the way: stimulus clipping, a flipped hex convention (flyvis's own BoxEye settles
-  it, image-top is positive hex y and image-left negative hex x), noise, and wrong direction labels.
+- The pathway is quiet. LPLC2 answers a loom at 0.016 Hz, and Tm5f, a quarter of its excitation, never
+  fires; nor does Tm8b. SYN_GAIN, the threshold and the adaptation were set against olfaction and may
+  still be wrong for the optic lobe.
+- The column map places cells by rank along the retinotopic sheet, in order but not in degrees.
+  Randomising it halves LPLC2's rate but does not move the selectivity, so the Codex Visual Columns
+  file would sharpen the first and is not needed for the second.
+- flyvis's hex convention: image-top is positive hex y and image-left negative hex x (its BoxEye
+  settles it).
 """
 import sys
 
@@ -65,9 +54,8 @@ STEP_S = 0.02
 TICKS_PER_STEP = 2
 DISC_R = 0.25  # metres; at the closest distance it fills 54 degrees, a proper loom
 NEAR, FAR = 0.18, 2.0
-# 1 s of the scene standing still, then 3 s of motion. A duck walks at 0.3 m/s, so closing 1.8 m in
-# 3 s is the encounter it would actually have, and the slower approach gives LPLC2 enough spikes to
-# count: at this gain it fires about 0.02 Hz, so a 1.5 s window rests on a handful.
+# 1 s still, then 3 s of motion: about a duck's walking speed, and slow enough for LPLC2 (about
+# 0.02 Hz at this gain) to give enough spikes to count.
 PRE_STEPS, MOVE_STEPS = 50, 150
 CONDITIONS = ("blank", "loom", "static", "recede")
 
@@ -125,11 +113,10 @@ def main() -> int:
 
     blank, loom, static, recede = (r["lplc2"][i, move].mean() for i in range(len(CONDITIONS)))
     gf_loom = r["gf"][1, move].sum()
-    # Selectivity is asserted on LPLC2's 210 cells, not on the giant fiber's two. Counting 0 to 11
-    # spikes from two neurons cannot support a ratio, and half the giant fiber's drive is LC4, which
-    # flyvis does not model; it is reported above but only asked to fire at all. No multiplier on the
-    # LPLC2 bars either: the orderings hold across disc size, distance, eye axis and speed, with
-    # margins of 1.4 to 3.7 over static and 1.5 to 2.6 over receding, so the ordering is the claim.
+    # Selectivity is asserted on LPLC2's 210 cells, not the giant fiber's two: 0 to 11 spikes from two
+    # neurons cannot support a ratio, and half the giant fiber's drive is LC4, which flyvis does not
+    # model. No multiplier on the LPLC2 bars: the ordering holds across disc size, distance, eye axis
+    # and speed (margins 1.4 to 3.7 over static, 1.5 to 2.6 over receding), so the ordering is the claim.
     return verdict({
         "a blank retina drives LPLC2 not at all": blank == 0,
         "looming fires the giant fiber": gf_loom > 0,

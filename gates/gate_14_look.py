@@ -1,14 +1,13 @@
-"""Gate 14: the look. Most of this gate is Chris's eye; the part a machine can hold is the size.
+"""Gate 14: the look. Most of this gate is judged by eye; the part a machine can check is the size.
 
 Run: uv run python -m gates.gate_14_look
 
-The visual brief (ARCHITECTURE.md section 4) asks for a Dreamcast-sized garden: under 300 KB of assets.
-The Godot garden is built from primitives in script and ships no textures or audio, so what counts is its
-data: the robot's meshes, its recorded motions, and anything else that is not code. Scripts and shaders do
-not count (Chris, 2026-09-21: the budget is for assets, and splitting a script into named pieces had tipped
-it over), so a texture, a model or a sound that creeps in later is still caught here.
+The visual brief asks for a Dreamcast-sized garden: under 300 KB of assets.
+The Godot garden is built from primitives in script, so what counts is its data: the robot's meshes, its
+recorded motions, and anything else that is not code. Scripts and shaders do not count, since the budget
+is for assets; a texture, model or sound that creeps in later is still caught here.
 
-Judged by eye and recorded in PLAN.md, not asserted: shimmer under the camera's drift, whether a duck keeps
+Judged by eye, not asserted: shimmer under the camera's drift, whether a duck keeps
 its silhouette in the halftone, the palette, the ride view, and the quacks.
 """
 import os

@@ -5,15 +5,14 @@ Needs five simulated ducks up, and nothing else running on the machine (the simu
     cd ~/.cache/micro-garden/spike/microduck && PATH="$HOME/.cargo/bin:$PATH" \\
         DUCK_SIM_RL=~/.cache/micro-garden/spike/microduck_rl DUCK_SIM_VIEWER=0 DUCK_SIM_DUCKS=5 scripts/duck-sim
 
-Gate 9b's soak, on robots: the demo garden, the demo's five labels, their eyes open, and a garden day on the
-wall clock, since a robot cannot be hurried. What is asked is what a garden of real robots cannot do without.
-Every duck eats and drinks. Every duck sleeps, and sleeps sitting down rather than face down with its
-motors off. Every robot's control loop holds its 50 Hz throughout, which is upstream's own measure of a
-healthy duck. Nobody walks out of the garden, which has no walls in MuJoCo. And no duck that is awake ends the day on the floor.
+Gate 9b's soak on robots: the demo garden and its five labels, for one garden day on the wall clock.
+Asserted: every duck eats, drinks and sleeps, and sleeps sitting down rather than face down with its
+motors off; every robot's control loop holds 50 Hz (upstream's measure of a healthy duck); nobody walks
+out of the garden, which has no walls in MuJoCo; and no duck that is awake ends the day on the floor.
 
-The ducks march and pivot rather than walk, because the walking policy upstream ships does not track a
-velocity (body/mujoco/adapter.py `snap`). That shapes every number here, and the 2D soak's numbers are
-printed beside these for that reason rather than compared with them.
+The ducks march and pivot rather than walk, because the upstream walking policy does not track a
+velocity (body/mujoco/adapter.py `snap`). That shapes every number here, so the 2D soak's numbers are
+printed for scale and not compared.
 """
 import argparse
 import os

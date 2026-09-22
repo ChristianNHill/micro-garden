@@ -1,4 +1,4 @@
-"""FlyWire v783 loader: signed sparse connectome plus the named neuron sets (PLAN.md Gate 0).
+"""FlyWire v783 loader: signed sparse connectome plus the named neuron sets.
 
 Reads whichever files are in data/:
   annotations  Codex classification.csv.gz + neurons.csv.gz, else the public
@@ -13,26 +13,25 @@ import pandas as pd
 from scipy import sparse
 
 DATA = Path(__file__).resolve().parent.parent / "data"
-MIN_SYN = 5  # FlyWire convention; gives the ~2.7M connected pairs ARCHITECTURE.md assumes
-# ORNs release more onto their own side than the other (Gaudry et al. 2013, about 0.7); synapse counts
-# can't show that, so contralateral ORN synapses are scaled here. 0.3 exaggerates it: at 0.7 the
-# left/right odor difference did not reach descending neurons (Gate 4 model work, 2026-09-16).
+MIN_SYN = 5  # FlyWire convention; gives the ~2.7M connected pairs
+# ORNs release more onto their own side (Gaudry et al. 2013, about 0.7); synapse counts can't show
+# that, so contralateral ORN synapses are scaled. 0.3 exaggerates it: at 0.7 the left/right odor
+# difference did not reach descending neurons.
 ORN_CONTRA = 0.3
-INHIBITORY = ["gaba", "glutamate"]  # as Shiu et al. 2024; GABA alone ran away on any sustained odor (Gate 4, 2026-09-16)
+INHIBITORY = ["gaba", "glutamate"]  # as Shiu et al. 2024; GABA alone runs away on sustained odor
 
-# ARCHITECTURE.md §3.6. Each set is (annotation column, regex matched against the whole value).
+# Each set is (annotation column, regex matched against the whole value).
 NAMED_SETS = {
     "sugar_grn": ("sub_class", r"sugar/water"),  # FlyWire lumps Gr5a/Gr64f sugar GRNs with water GRNs
     "orn_food": ("cell_type", r"ORN_(DM1|DM2|DM4|DM5|VA2)"),  # vinegar-attractive glomeruli
     "orn_danger": ("cell_type", r"ORN_(DA2|V)"),  # geosmin, CO2
-    "orn_pheromone": ("sub_class", r"pheromone"),  # other ducks' smell (Gate 8)
+    "orn_pheromone": ("sub_class", r"pheromone"),  # other ducks' smell
     "bristle": ("sub_class", r"(eye|head) bristle"),
     "heat": ("cell_type", r"TRN_VP2"),
     "cold": ("cell_type", r"TRN_VP3[ab]"),
     "moist_air": ("cell_type", r"HRN_VP5"),
     "dry_air": ("cell_type", r"HRN_VP4"),
-    # Sound is the A and B neurons. It was every JO neuron, which also played music into the wind and
-    # grooming ones (2026-09-19).
+    # sound only: the A and B neurons, not the wind or grooming ones
     "johnstons_organ": ("cell_type", r"JO-[AB].*"),
     # Wind: the E neurons answer an antenna pushed back, the C neurons one pulled forward (Yorozu et
     # al. 2009; Patella and Wilson 2018).
@@ -45,19 +44,17 @@ NAMED_SETS = {
     "DNp09": ("cell_type", r"DNp09"),
     "giant_fiber": ("cell_type", r"DNp01"),
     "moonwalker": ("cell_type", r"MDN"),
-    # ipsilateral to one-sided odor in a held-out seed screen (Gate 4, 2026-09-16); not from literature
+    # ipsilateral to one-sided odor in a held-out seed screen; not from literature
     "odor_steer": ("cell_type", r"DNb05|DNp05"),
     # fires for danger smell (0.6-0.8 Hz) and not for food, heat, cold, humidity, touch, sugar or
-    # looming, more on the danger's side, on two held-out seed sets (Gate 4b, 2026-09-16); not from literature
+    # looming, more on the danger's side, on two held-out seed sets; not from literature
     "danger_valence": ("cell_type", r"DNp32"),
-    # Fires on the side the wind comes from: 8 cells a side, +3.2 Hz at 45 degrees off the nose and half
-    # that at 15, identical on a held-out seed, silent in the shuffled brain, and almost no built-in
-    # left/right offset (-0.08 Hz; DNg07, the runner-up, carries 1.4). Food smell lateralizes no
-    # descending type a twentieth as well (PLAN.md Gate 9b, 2026-09-19); not from literature.
+    # fires on the side the wind comes from: 8 cells a side, +3.2 Hz at 45 degrees off the nose, same on
+    # a held-out seed, silent in the shuffled brain, almost no built-in left/right offset; not from literature
     "wind_steer": ("cell_type", r"DNge091"),
-    # ipsilateral to one-sided humidity on two held-out seed sets (Gate 4b); not from literature
+    # ipsilateral to one-sided humidity on two held-out seed sets; not from literature
     "moist_steer": ("cell_type", r"DNp12|DNp44"),
-    # fires for touch only, on the side opposite the touch, both sides, two held-out seed sets (Gate 4b)
+    # fires for touch only, on the side opposite the touch, two held-out seed sets
     "touch_steer": ("cell_type", r"DNg48"),
     "proboscis_mn": ("sub_class", r"proboscis_motor_neuron"),  # feeding readout; MN9 is unnamed in this release
     "kenyon_cells": ("class", r"Kenyon_Cell"),
@@ -66,9 +63,8 @@ NAMED_SETS = {
     "PPL1": ("cell_type", r"PPL1\d+"),
     "aIPg": ("hemibrain_type", r"aIPg\d"),  # female aggression (Schretter et al. 2020)
     "pC1_aggr": ("cell_type", r"pC1[de]"),  # persistent social arousal / aggression (Deutsch et al. 2020)
-    # DN types ranked highest for input from the grooming JO-F neurons and from head and eye bristles
-    # (direct plus one relay; Gate 0 review 2026-09-17). Data-derived, not literature names: FlyWire has no
-    # aBN/aDN labels, and the first guess, DNg12, ranked 38th-349th of 473 DN types.
+    # DN types ranked highest for input from the grooming JO-F neurons and head and eye bristles (direct
+    # plus one relay). Data-derived: FlyWire has no aBN/aDN labels.
     "grooming_dn": ("cell_type", r"DNg20|DNg84|DNg15|DNge133"),
 }
 
@@ -87,7 +83,7 @@ def load_annotations() -> pd.DataFrame:
         ann = pd.read_csv(
             DATA / "Supplemental_file1_neuron_annotations.tsv", sep="\t",
             usecols=["root_id", "cell_class", "cell_sub_class", "cell_type", "hemibrain_type", "side", "top_nt",
-                     "pos_x", "pos_y", "pos_z"],  # Gate 6 places the optic-lobe cells by these
+                     "pos_x", "pos_y", "pos_z"],  # brain/vision.py places optic-lobe cells by these
             dtype={"hemibrain_type": str},
         ).rename(columns={"cell_class": "class", "cell_sub_class": "sub_class", "top_nt": "nt"})
     ann["nt"] = ann["nt"].fillna("").str.lower()

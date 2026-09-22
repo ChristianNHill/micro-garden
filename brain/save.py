@@ -1,16 +1,12 @@
-"""Saving a garden and catching it up on launch (PLAN.md Gate 9).
+"""Saving a garden and catching it up on launch.
 
-What is worth keeping is what a duck cannot be given back: how hungry and tired it is, what it has
-learned, who it is, and where everything sits. The connectome is not saved; it is the same 2.7 million
-edges every time, and loading it from `data/` takes longer than everything here put together.
+Saved: physiology, learned weights, personality, and where everything sits. The connectome is not
+saved; it is the same every time and reloads from `data/`.
 
-Catching up is deliberately coarse. A duck left overnight should be hungry, thirsty and rested when
-you come back, and it should not cost eight hours of simulation to work that out: the drives are
-integrated in CATCH_UP_S steps with no body and no world, which is exact for anything that only
-decays or rises on a clock. Anything that needs the garden, hunger from actually eating or what a duck
-learns, does not happen while nobody is watching; what it had already learned fades on the two clocks
-in `brain/plasticity.py`. Three days is the cap, past which a duck is as
-hungry as it is ever going to get.
+Catching up is coarse on purpose: the drives are integrated in CATCH_UP_S steps with no body and no
+world, which is exact for anything that only rises or decays on a clock. Nothing that needs the garden
+(eating, learning) happens during the gap; learned weights fade on the clocks in `brain/plasticity.py`.
+The gap is capped at MAX_GAP_S.
 """
 import time
 
@@ -20,8 +16,8 @@ from body import frames
 from world.fields import daylight
 
 AMBIENT_C = 24.0  # the garden while nobody is watching: no sun, no shade, no pond
-CATCH_UP_S = 5.0  # sleep pressure switches too sharply for coarse steps: 60 s drifts 0.37, 5 s drifts 0.04
-MAX_GAP_S = 3 * 24 * 3600.0  # three days; longer is the same duck
+CATCH_UP_S = 5.0  # sleep pressure switches sharply: 60 s steps drift 0.37, 5 s drift 0.04
+MAX_GAP_S = 3 * 24 * 3600.0  # three days; past this the drives are saturated
 
 
 def save(path, body, plastic=None, stub=None, when=None) -> None:
@@ -29,8 +25,7 @@ def save(path, body, plastic=None, stub=None, when=None) -> None:
     state = {f"body.{k}": np.asarray(v) for k, v in vars(body).items() if isinstance(v, (np.ndarray, float, int))}
     state |= {f"knob.{k}": np.asarray(v) for k, v in body.k.items()}
     state["when"] = np.asarray(time.time() if when is None else when)
-    # the garden's own clock, so the sun is where it should be on return (this read a `t` the world
-    # never had, and every load restarted the day at dawn)
+    # the garden's own clock, so the sun is in the right place on return
     state["garden_t"] = np.asarray(float(stub.t) if stub is not None else 0.0)
     if plastic is not None:
         state["weights"] = plastic.w.detach().cpu().numpy()
@@ -65,7 +60,7 @@ def load(path, body, plastic=None, stub=None, now=None) -> float:
     if stub is not None and "pose" in z.files:
         world = stub.world
         stub.pose[:], stub.hats[:] = z["pose"], z["hats"]
-        if "hat_style" in z.files:  # saves from before hats had looks have neither
+        if "hat_style" in z.files:  # older saves lack these
             stub.hat_style[:] = z["hat_style"]
             stub.hat_items = [[float(x), float(y), int(k)] for x, y, k in z["hat_items"]]
         stub.t = since + gap
@@ -73,7 +68,7 @@ def load(path, body, plastic=None, stub=None, now=None) -> float:
         world.hand = None if np.isnan(z["hand"]).any() else tuple(z["hand"])
         world.music = None if np.isnan(z["music"]).any() else tuple(z["music"])
         world.odor[:] = 0
-        world.diffuse(2000)  # the smell of the food that is there now, not of what was there at start
+        world.diffuse(2000)  # rebuild the smell of the food that is there now
     catch_up(body, gap, plastic, since=since)
     return gap
 
@@ -81,9 +76,7 @@ def load(path, body, plastic=None, stub=None, now=None) -> float:
 def catch_up(body, gap_s: float, plastic=None, since: float = 0.0) -> None:
     """Age the drives over a gap with no garden to react to: hungrier, thirstier, and rested.
 
-    The sun still rises while nobody is watching, so each step carries its own daylight. Without that
-    a duck left alone sat in permanent darkness and got three times as sleepy as it should have, which
-    is what Gate 9 caught the first time the suite ran it over a whole day.
+    Each step carries its own daylight, or a duck left alone gets far too sleepy in the dark.
     """
     n = len(body.hunger)
     quiet = np.array([frames.blank()] * n, frames.FRAME)
@@ -93,4 +86,4 @@ def catch_up(body, gap_s: float, plastic=None, since: float = 0.0) -> None:
         quiet["light"] = daylight(since + step * CATCH_UP_S)
         body.step(CATCH_UP_S, quiet, still, nothing)
     if plastic is not None and gap_s:
-        plastic.rest(gap_s)  # the fast part of a lesson fades overnight; the consolidated part mostly stays
+        plastic.rest(gap_s)  # the fast weights fade; the consolidated ones mostly stay

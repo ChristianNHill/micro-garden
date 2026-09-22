@@ -1,4 +1,4 @@
-# The palette and the two materials everything in the garden is printed with (ARCHITECTURE.md section 4).
+# The palette and the two materials everything in the garden is printed with.
 extends RefCounted
 
 const NAVY := Color("1c2a4d")
@@ -7,8 +7,8 @@ const CORAL := Color("ee6f5c")
 const TEAL := Color("2f9c8f")
 const MUSTARD := Color("e6b54a")
 const STONE := Color("c9c2b2")  # paper in shadow: the robot's grey plastic
-const SEA := Color("bfe0d6")  # teal let down with paper, so the sea lies back and the garden stands on it
-const GRASS := Color("b9c46a")  # mustard pulled towards teal: the ground, so the five inks stay for things
+const SEA := Color("bfe0d6")  # pale teal, so the sea recedes
+const GRASS := Color("b9c46a")  # mustard towards teal, so the five inks stay for objects
 
 const PRINT := preload("res://print.gdshader")
 const OUTLINE := preload("res://outline.gdshader")
