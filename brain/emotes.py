@@ -1,13 +1,11 @@
-"""Emotes: a duck shows what it is feeling, now and then, the way a Chao or a Sim does (Chris, 2026-09-21).
+"""Emotes: explicit code, not the fly brain, that lets a duck show what it is feeling now and then.
 
-Nothing here decides what a duck does; that is the brain's. This is a duck wearing its state on its sleeve:
-every few seconds it may act out whichever of its moods and needs is strongest, and its personality sets how
-readily. A chatty duck emotes often, a playful one turns joy into a roll, a vain one shows off, a timid
-one cowers at less. It is decided on a slow clock and never per tick, since anything rolled fifty times a
-second is a certainty (the hats at Gate 8b).
+Emotes do not steer the duck; the brain does. Every few seconds a duck may act out its strongest mood
+or need, and its personality sets how readily. It is decided on a slow clock, never per tick, since a
+chance rolled fifty times a second is a certainty.
 
-What an emote looks like is the body's business: the 2D stub writes it on the screen, and a robot acts it
-out with its head, its voice and the skills it has (body/mujoco/adapter.py).
+The body decides what an emote looks like: the 2D stub writes it on screen, a robot acts it out
+(body/mujoco/adapter.py).
 """
 import numpy as np
 
@@ -17,23 +15,20 @@ FELT_AT = 0.4  # below this a feeling is not worth showing
 
 EMOTES = ("happy", "playful", "scared", "angry", "sad", "lonely", "bored", "hungry", "thirsty", "sleepy",
           "curious", "proud", "stomp", "yawn", "splash", "sing", "cower", "dance", "singdance", "cry")
-# The last five are signatures: what a duck of a strong character does that the others hardly do, the way each
-# Chao had its own trick. They are scaled by the knob and not switched by the label, so a Bully stomps because
-# it is aggressive and any aggressive duck stomps a little: stomp for aggressiveness, yawn for sleepiness, splash
-# for a love of water, sing for chattiness, cower for timidity. A vain duck's pose, a curious duck's tilt and a
-# playful duck's roll were already theirs. SIGNATURE is how far past the middle of the dial a knob has to be
-# before its trick shows at all.
+# stomp, yawn, splash, sing and cower are signature tricks, scaled by a knob (aggressiveness, sleepiness,
+# water_love, chattiness, timidity), not switched by preset label. SIGNATURE is where on the dial a knob's
+# trick starts to show.
 SIGNATURE = 0.6
 
 
 DOES = {"cry": "cries", "dance": "dances", "singdance": "sings and dances", "stomp": "stomps", "yawn": "yawns", "splash": "splashes", "sing": "sings", "cower": "cowers"}
 
 
-AMUSING = ("sing", "dance", "singdance", "playful")  # doing one of these takes the edge off boredom
+AMUSING = ("sing", "dance", "singdance", "playful")  # these relieve boredom
 
 
 def phrase(emote: str) -> str:
-    """How an emote reads after a duck's name: a feeling is how it looks, a signature is what it does."""
+    """How an emote reads after a duck's name: "looks happy", "stomps"."""
     return DOES.get(emote, f"looks {emote}")
 
 
@@ -42,7 +37,7 @@ def feelings(body, i: int) -> dict[str, float]:
     k = lambda name: float(body.k[name][i])
     v = lambda name: float(getattr(body, name)[i])
     joy = v("joy")
-    trait = lambda name: float(np.clip((k(name) - SIGNATURE) / (1 - SIGNATURE), 0, 1))  # 0 at SIGNATURE, 1 at the top of the dial
+    trait = lambda name: float(np.clip((k(name) - SIGNATURE) / (1 - SIGNATURE), 0, 1))  # 0 at SIGNATURE, 1 at the top
     return {
         "happy": joy * (1 - 0.5 * k("playfulness")),
         "playful": joy * k("playfulness") + 0.5 * v("boredom") * k("playfulness") * k("energy"),
@@ -54,16 +49,16 @@ def feelings(body, i: int) -> dict[str, float]:
         "hungry": max(v("hunger") - 0.5, 0) * 2 * (0.5 + k("appetite")),
         "thirsty": max(v("thirst") - 0.5, 0) * 2,
         "sleepy": max(v("sleep_pressure") - 0.5, 0) * 2,
-        "curious": 0.6 * k("curiosity") * (1 - max(v("hunger"), v("thirst"))),  # a content, nosy duck looks about
+        "curious": 0.6 * k("curiosity") * (1 - max(v("hunger"), v("thirst"))),
         "proud": 0.7 * k("vanity") * (1 - max(v("hunger"), v("thirst"))),
-        "stomp": trait("aggressiveness") * max(v("anger"), 0.6 * max(v("hunger") - 0.4, 0) / 0.6),  # cross, or hungry and cross
+        "stomp": trait("aggressiveness") * max(v("anger"), 0.6 * max(v("hunger") - 0.4, 0) / 0.6),
         "yawn": trait("sleepiness") * max(v("sleep_pressure"), 0.45),
         "splash": trait("water_love") * float(body.swimming[i]),
         "sing": trait("chattiness") * (1 - max(v("hunger"), v("thirst"))) * (1 - v("fear")),
         "cower": trait("timidity") * v("fear") * 1.5,
-        # a cry is for the others to hear: a duck that is miserable, or starving, says so, and a kind one comes
+        # heard by others: a miserable or starving duck cries, and a kind one comes
         "cry": max(v("sorrow"), max(v("hunger") - 0.85, 0) / 0.15) * 0.9,
-        "dance": 0.0, "singdance": 0.0,  # never a mood's: a performance, which the server starts (brain/server.py)
+        "dance": 0.0, "singdance": 0.0,  # performances, started by brain/server.py
     }
 
 
@@ -91,7 +86,7 @@ if __name__ == "__main__":
     b = Physiology(3, stack([preset(x) for x in ("Chatty", "Quiet", "Zoomer")]), hunger=0.2, thirst=0.2)
     assert all(pick(b, i, rng) in (None, "curious", "proud", "sing") for i in range(3) for _ in range(50)), "a content duck shows little"
     b.joy[:] = 1.0
-    shown = [[pick(b, i, rng) for _ in range(1500)] for i in range(3)]  # enough tries that the order is not luck
+    shown = [[pick(b, i, rng) for _ in range(1500)] for i in range(3)]
     count = [sum(x is not None for x in s) for s in shown]
     assert count[0] > 1.5 * count[1], f"a chatty duck emotes more than a quiet one: {count}"
     assert shown[2].count("playful") > shown[2].count("happy"), "a playful duck turns joy into play"

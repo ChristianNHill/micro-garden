@@ -1,107 +1,30 @@
 """Gate 5: drives and personality. Thirst, swimming, sleep, and five labels that behave differently.
 
-Run: uv run python -m gates.gate_05_personality [--minutes 10]
-Knobs and labels: brain/personality.py, ARCHITECTURE.md §2.4. Drives and emotions: brain/physiology.py.
-Blind test (manual, Chris): watch the 2D view for 5 minutes with labels hidden and guess.
-Run 2026-09-20 with `stub --view --brain --blind`, on the tree with wind seeking, meals, the content ramp,
-companionship, fondness, music in the garden and the startle fix. Not scored, on purpose. Chris: "it looks
-great", and "it matters less what every duck actually is, but they felt dynamic." So what this project is
-after is a garden that feels alive to someone watching, more than five labels a viewer can name, and the
-labels check below measures the second of those.
+Run: uv run python -m gates.gate_05_personality [--minutes 10] [--part drives|labels|all]
+Knobs and labels: brain/personality.py. Drives and emotions: brain/physiology.py.
 
-2026-09-20 record: the labels check FAILS, 3.37 for the same label across runs against 4.09 for different
-labels (1.21, bar 1.5; it was 2.29 on 09-18), in the demo garden as it now is (breeze, day-scale hunger,
-fruit every 10 s). The table is the finding, not the ratio: every label moves 0.63 to 0.70 of the time,
-sleeps 0.14 to 0.18, walks 0.06 m/s and swims under 0.05. The Napper naps 0.18 against everyone's 0.16,
-because night puts every duck to sleep and daylight cancels an ordinary duck's sleepiness, leaving the
-Napper about one extra nap in two days. Chatty quacks no more than the Napper, since most quacks are
-events (a bite, a sip) that every duck has. What still shows: the Bully headbutts (0.15 a minute against
-0.03), the Napper keeps to itself (near others 0.3 against 0.5). The likely reason is structural. Needs
-outrank likes now, which is right, nearly every knob acts through a like or a temperament, and the ducks
-are in need most of the time, so there is rarely a comfortable duck for a personality to show in. That is
-a question about the economy and about which knobs should be visible, and it is Chris's; nothing was
-tuned to move this number.
+Asserted (--part drives, the default), 10 ducks per scenario:
+- drinking: a thirsty duck at the shore lowers its thirst by more than 0.3 in 30 s.
+- water love: at a pond in the shade, so heat does not drive everyone in, water love 0.9 swims more
+  than 0.1 by 0.15.
+- heat: ducks equally bad at heat at the sunny pond, differing only in water love. One cools off by
+  wading in, the other by sitting in the shade, and the 0.9 duck must swim more by 0.1. The margin is
+  thin (0.12 on the last run). Asking whether every hot duck swims is the wrong test, because once the
+  pond is visible, shade-seeking beats cooling off.
+- sleep: the Napper sleeps more than Energetic by 0.05.
 
-2026-09-20, after making room (a find is a ten-bite meal; a need is ignored below 0.4 and total by 0.8, so
-ducks have both needs low 32% of their waking time where it was 11%): 3.53 against 4.28, the same 1.21. What
-holds across both runs: the Napper moves least (0.55, 0.54 against about 0.65) and slowest, Chatty quacks
-most (3.4 and 4.0 a minute against 2.0 to 2.9), the Bully eats most (1.8, 2.0 bites a minute). Swimming
-does not pick out Carefree because in the day's heat every duck's swim urge is at its ceiling. A knob shows
-only through a channel that moves a duck: speed, sleep, wind-following, wading, music, hats, attacks and
-voice do; steering by the smell of other ducks or of a stink is mostly noise, which is where sociability
-and stink affinity live. The blind test is the better instrument and is Chris's to run next.
+Printed, not asserted (--part labels, over an hour): an eight-number behavior row per label, averaged
+over 4 gardens (one garden is dominated by who reaches the fruit first), for two seeds, and the ratio of
+different-label distance to same-label distance. It was asserted at 1.5 and dropped: its run-to-run noise
+is as large as what it looks for. A blind test (watch `stub --view --brain --blind` with labels hidden)
+showed that a garden that feels alive matters more than labels a viewer can name. The table is still
+the place to see what each knob does.
 
-2026-09-17 record:
-- drives: thirst 1.00 -> 0.01 in 30 s at the shore; swimming in the shade, water love 0.1 vs 0.9: 0.19 vs 0.37;
-  at the sunny pond, heat tolerance 0.05 vs 0.95: 0.36 vs 0.24; asleep over 10 min, Napper 0.14 vs Energetic 0.00.
-- labels (4 gardens per run): same label across runs 1.90, different labels 4.19. Consistent traits:
-  Bully fights most, Napper sleeps and moves least, Chatty quacks most, Scaredy fastest and swims least.
-- Getting there:
-  - one garden per run was luck-dominated (ratio 1.06), so labels are averaged over 4 gardens
-  - energy's speed range was widened
-  - water love now pulls toward the pond
-  - Bully seeks company and gets hungry fast
-  - a duck at the shore reconsiders wading every 5 s
-  - a swimmer paddles nearly in place while one that chose not to walks out
-- Timidity, sociability and curiosity have little to react to until vision (Gate 6), other ducks' smell
-  (Gate 8) and novel objects (Gate 8b); re-judge Scaredy, Loner and Curious then.
-Decision (Chris, 2026-09-17): keep all 21 labels and the Bully change; re-judge the quiet labels after
-Gates 6 and 8.
-
-2026-09-17, later: the labels check now FAILS. Re-run after the clean-code pass: same label across runs
-2.78, different labels 4.10, ratio 1.47 against the 1.5 bar. Drives still pass with the recorded numbers.
-Not the refactor: the same 10-minute garden is bit-identical before and after it (trajectories, sounds,
-headbutts), and the behavior code has not changed since 0dc72a7, on the same torch and numpy. The
-recorded 1.90/4.19 does not reproduce. The rows are still luck-dominated at 4 gardens (Carefree 0.88
-bites/min in run 1, 0.00 in run 2; Chatty 0.00 then 0.38 headbutts/min), so the measure was marginal
-when it passed. Decision (Chris, 2026-09-17): leave it failing and re-judge after Gates 6 and 8, when
-timidity, sociability and curiosity have something to react to. Untried fix: average over 8 gardens,
-which is what took the ratio from 1.06 to 1.90 when gardens went 1 -> 4.
-
-Re-run with eyes open, 2026-09-17 (Gate 6 wired vision into the closed loop at VIS_GAIN 0.05):
-- **The labels check now passes.** Same label across runs 2.10, different labels 4.23, a ratio of 2.01
-  against the 1.5 bar, where blind it failed at 1.47. This is what Chris held the gate open for:
-  timidity, sociability and curiosity finally have something to react to. Still 4 gardens, so this is
-  not more averaging, it is more signal.
-- **Both swimming checks now fail, on margin and not direction.** Water love 0.1 against 0.9 swims
-  0.55 against 0.68, needing +0.15; heat tolerance 0.05 against 0.95 swims 0.35 against 0.30, needing
-  +0.10. Blind, the water-love pair read 0.19 against 0.37. So eyes roughly triple how much every duck
-  swims and the measure saturates, squeezing the knobs together rather than reversing them.
-- Why: the pond is not drawn into the retina at all (body/stub2d/retina.py renders dishes, ducks and
-  the tree, on the grounds that water is flat on the ground). A duck cannot see water, so it wanders
-  in rather than choosing it, and a knob about wanting water cannot show through. Drawing the pond is
-  the obvious next thing to try, and is a design call: a real pond is a bright reflective surface.
-
-Re-run with the pond drawn into the retina, 2026-09-18:
-- **Water lovers now pass.** Swim time 0.41 against 0.64 for water love 0.1 against 0.9, a gap of 0.23
-  against the 0.15 wanted, where a blind-to-water duck read 0.55 against 0.68. Both numbers fell: ducks
-  stopped blundering into water they could not see and started choosing it, which is what the knob means.
-- **Heat tolerance now fails the other way round**, 0.18 for an intolerant duck against 0.29 for a
-  tolerant one, where it wants the intolerant one higher. This looks like a real conflict rather than
-  noise. `physiology.sense_gains` turns a hot duck's cold sense up (`"cold": 1 + 2 * hot`) so it steers
-  toward cold to find shade, and POND sits in the sun on purpose. Now that water is visible and steering
-  can act, shade-seeking beats cooling off: the hot duck walks away from the sunny pond. Blind, it
-  wandered in regardless. SHADED_POND already exists in this file if the intent is to test the swim urge
-  without the steering fighting it.
-- The labels ratio fell from 2.01 to 1.52 against the 1.5 bar (same label 2.73, different labels 4.16).
-  Still passing, but back to the thin margin this check has always had.
-
-Re-run with graded senses, 2026-09-18: four of five pass.
-- **The labels check is comfortable at last**, 4.28 against 1.87, a ratio of 2.29 where it read 1.47
-  failing and then 1.52. Graded senses sharpened the signatures: Scaredy moves 0.87 of the time at
-  nearly twice everyone's speed and keeps the least company, Napper is the only one that sleeps,
-  Chatty quacks 6.5 a minute against Scaredy's 2.7.
-- Water lovers pass more clearly too: 0.15 against 0.43 swimming, a gap of 0.28 where 0.15 is wanted.
-- **The shade-or-water knob came out inverted** (0.21 for a water lover, 0.34 for a water-shy duck).
-  First explanation, that cold-seeking walks a duck into the pond, was wrong: `temperature_at` depends
-  only on distance from the tree, so the pond is not cold to sense and cold-seeking does steer to shade.
-  The real fault was arithmetic. `swim_urge` was `clip(water_love + hot)`, and heat alone pinned it at
-  1.00 for every duck, so one that hates water waded in exactly as readily as one that loves it. Heat
-  now multiplies the taste for water instead of standing in for it, `clip(water_love * (1 + hot))`,
-  which leaves the shade case untouched (0.10 and 0.90) and separates the sunny one (0.20 against 1.00).
-  Re-run: the drives half passes all four. A hot duck with water love 0.9 swims 0.24 against 0.12 for
-  one with 0.1, the right way round where it read 0.21 against 0.34, and the shade figures are
-  bit-identical at 0.15 and 0.43. The margin is 0.12 against a 0.10 bar, so it is thin.
+Why labels barely separate: needs outrank likes, nearly every knob acts through a like or a temperament,
+and the ducks are in need most of the time. A knob shows only through a channel that moves a duck.
+Speed, sleep, wind-following, wading, music, hats, attacks and voice do. Steering by the smell of other
+ducks or of a stink is mostly noise, and that is where sociability and stink affinity act. What holds:
+the Napper moves least and slowest, Chatty quacks most, the Bully eats and headbutts most.
 """
 import argparse
 import sys
@@ -147,8 +70,7 @@ def drinking(W, ann, sets):
 
 def swim_time(W, ann, sets, pond=POND, **kw):
     eps = [dict(food_xy=[], pond=pond, pose=p) for p in shore_poses(N, pond)]
-    # Fed as well as watered: a like is tested on a duck with nothing pressing, since likes yield to
-    # hunger now and a half-hungry duck swims about half as much whatever it thinks of water (2026-09-20).
+    # Fed and watered: likes yield to hunger, so a hungry duck swims less whatever it thinks of water.
     traj, _ = run(W, ann, sets, eps, 60.0, seed=0, thirst=0.0, hunger=0.0, **kw)
     return (np.linalg.norm(traj[:, :, :2] - pond[:2], axis=-1) < pond[2] - SHORE_M).mean()
 
@@ -217,10 +139,7 @@ def main() -> int:
         shy = swim_time(W, ann, sets, pond=SHADED_POND, water_love=0.1, body_temp=21.0)
         lover = swim_time(W, ann, sets, pond=SHADED_POND, water_love=0.9, body_temp=21.0)
         print(f"time swimming in the shade: water love 0.1 {shy:.2f}, 0.9 {lover:.2f}")
-        # Two ducks equally bad at heat, at the same sunny pond, differing only in water love: one
-        # cools off by wading in and the other by sitting in the shade. Which it picks is the knob, not
-        # the temperature (Chris, 2026-09-18). Asking instead whether every hot duck swims had it
-        # backwards, because shade-seeking beat cooling off once the water became visible.
+        # Equally bad at heat, differing only in water love: which way a duck cools off is the knob.
         waders = swim_time(W, ann, sets, pond=POND, water_love=0.9, heat_tolerance=0.05)
         shaders = swim_time(W, ann, sets, pond=POND, water_love=0.1, heat_tolerance=0.05)
         print(f"hot ducks at the sunny pond: water love 0.9 swims {waders:.2f}, 0.1 swims {shaders:.2f}")
@@ -247,11 +166,7 @@ def main() -> int:
         print(f"\nsignature distance: same label across runs {same:.2f}, different labels {different:.2f}")
         print(f"({time.perf_counter() - t0:.0f} s wall)")
 
-        # Printed, not asserted (Chris, 2026-09-20). This asks whether a viewer could tell the five labels
-        # apart by eight numbers, and after the blind test he said that matters less than the garden feeling
-        # alive, which it did. It has read 1.21 three times while the ducks visibly changed, its own
-        # run-to-run noise is as large as what it looks for, and it takes over an hour. The table above is
-        # still the place to see what each knob does.
+        # Printed, not asserted: its run-to-run noise is as large as what it looks for (see the docstring).
         print(f"  (labels against repeats: {different / same:.2f}; it was asserted at 1.5 until 2026-09-20)")
     return verdict(checks)
 

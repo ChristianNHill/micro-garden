@@ -1,26 +1,14 @@
 """Gate 4b: more senses. Danger smell, pond, touch, temperature, each real brain beside shuffled.
 
 Run: uv run python -m gates.gate_04b_senses [--episodes 20]
-Asserts danger avoidance, finding the pond and moving off a touching duck; prints shade time only,
-compares danger and touch against the same real ducks without the stimulus, because the real brain
-turns far more than the shuffled one and stays near its start either way;
-because nothing in the brain yet makes heat unpleasant (no heat-specific descending neuron, Gate 4b
-screen 2026-09-16). Heat comfort arrives with the Gate 5 drives.
-
-2026-09-16 record (20 episodes each):
-- danger: 15% of time near the stink, against 34% for the same ducks with no patch (shuffled 9%)
-- pond: found 20/20, median 17.0 s (shuffled 2/20)
-- touch: in contact 7% of the time, against 34% when touch is not felt (shuffled 48%)
-- shade: 38% (shuffled 12%)
-Gate 4 on the same build: 20/20, median 22.2 s.
-Gate 5 (2026-09-16) made ducks wander more (boredom, curiosity), so they drift off their start even
-without stink: the no-patch baseline fell from 0.34 to 0.18 and the stink run gave 0.11, just over the
-original 60% bar. The danger bar is now 70%, stated here rather than moved quietly; Gate 4c's stink
-dial (0.11 averse vs 0.83 lover) is the stronger evidence of avoidance.
-Getting there took three decoder changes:
-- escape needs 3 giant fiber spikes in 100 ms, because sun and dry air alone reached 2
-- ducks bolt from danger instead of turning hard (one noisy DNp32 per side made them circle)
-- the touch-only DNg48 joined the steering set
+Asserts danger avoidance, finding the pond and moving off a touching duck.
+Danger and touch are compared against the same real ducks without the stimulus, because the real
+brain turns far more than the shuffled one and stays near its start either way.
+Shade time is printed only: nothing in the brain makes heat unpleasant (no heat-specific
+descending neuron).
+The danger bar is 70% rather than 60% because the Gate 5 drives make ducks wander off their start
+even without stink, which shrinks the baseline. Gate 4c's stink dial is the stronger evidence of
+avoidance.
 """
 import argparse
 import sys

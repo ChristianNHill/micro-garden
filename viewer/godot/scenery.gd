@@ -1,11 +1,10 @@
-# The garden's setting, after the Chao gardens of Sonic Adventure 2 (Chris, 2026-09-21): a lawn cradled in
-# tall rounded rock with grass on top, a waterfall of pale stone columns stepping down to the pond, a dark cave
-# mouth, palms, a rail fence along the open front, blue sea and sky. Inspiration for forms, placement and
-# colour; every shape here is made by rule, from lumps.
+# The garden's setting, inspired by the Chao gardens of Sonic Adventure 2: a lawn in a bowl of rounded rock,
+# a waterfall of pale columns down to the pond, a cave mouth, palms, a rail fence, sea and sky. Every shape
+# is made by rule from lumps.
 #
-# None of it is the world's: the cliffs stand outside the garden's square and the fence runs along it, so
-# both only draw the walls the ducks already have. The waterfall is built only where the pond lies near the
-# back corner, since in any other garden it would run across the lawn (it did, in a 4 m garden: 2026-09-21).
+# None of it is in the world: the cliffs sit outside the garden's square and the fence runs along its edge,
+# so both only draw the walls the ducks already have. The waterfall is built only when the pond is near the
+# back corner; anywhere else it would run across the lawn.
 extends RefCounted
 
 const Ink := preload("res://ink.gd")
@@ -73,22 +72,21 @@ static func palm(root: Node3D, at: Vector3, height: float, rng: RandomNumberGene
 
 
 static func build(root: Node3D, snap: Dictionary, falls: Array, viewer: Vector3) -> Vector3:
-	# Returns the top of the cliff rock nearest `viewer` (where the camera starts), which is where the garden's
-	# flag goes: near enough to read.
+	# Returns the top of the cliff rock nearest `viewer` (where the camera starts), for the flag.
 	var summit := Vector3.INF
 	var size: float = snap.size
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 11
-	# the plateau: one great lump under the lawn, its top the grass, its sides falling to the sea
+	# the plateau: one big lump under the lawn
 	var under := lump(0.75 * size, 2.0, rng, 14, 3, 1.08, 0.04, 0.0)  # flat on top: the lawn is y = 0 everywhere
-	var mid := Vector3(size / 2, -2.002, -size / 2)  # a hair under the pond and the shade, which lie on it
+	var mid := Vector3(size / 2, -2.002, -size / 2)  # just under the pond and the shade, which lie on it
 	Ink.part(root, under[0], ROCK, mid, Vector3.ONE, 8.0).material_override.set_shader_parameter("lift", 0.22)
 	Ink.part(root, under[1], LAWN, mid, Vector3.ONE, 8.0, 0.97)
 	Ink.part(root, Ink.cone(60.0, 0.01, 60.0, 24), SEA, Vector3(size / 2, -2.0, -size / 2), Vector3.ONE, 10.0, 0.95)
 	for far in [[-7.0, 9.0, 1.6, 3.2], [13.0, 11.0, 2.2, 4.4], [16.0, -2.0, 1.4, 2.6]]:  # stacks out in the sea
 		place_lump(root, Vector3(far[0], -2.0, -far[1]), far[2], far[3] + 2.0, rng)
 
-	# the bowl: tall lumps shoulder to shoulder behind the north and east edges, tallest in the corner
+	# the bowl: tall lumps behind the north and east edges, tallest in the corner
 	for edge in 2:
 		var along := -0.6
 		while along < size + 1.0:
@@ -103,10 +101,10 @@ static func build(root: Node3D, snap: Dictionary, falls: Array, viewer: Vector3)
 			if rng.randf() < 0.3:
 				palm(root, at + Vector3(rng.randf_range(-0.3, 0.3), h - 0.25, rng.randf_range(-0.3, 0.3)), rng.randf_range(0.5, 0.9), rng)
 			along += r * 1.25
-	# a cave mouth in the north cliff, dark and going nowhere
+	# a cave mouth in the north cliff
 	Ink.part(root, Ink.ball(0.34, 10), Ink.NAVY, Vector3(0.3 * size, 0.2, -(size + 0.05)), Vector3(1.0, 1.4, 0.6), 7.0, 0.05)
 
-	# the rail fence along the open south and west edges: the wall the ducks already have, drawn
+	# the rail fence along the open south and west edges
 	for edge in 2:
 		var posts := int(size / 0.75)
 		for i in posts + 1:
@@ -131,12 +129,12 @@ static func build(root: Node3D, snap: Dictionary, falls: Array, viewer: Vector3)
 				Ink.part(root, Ink.cone(0.012, h, 0.008, 4), FROND, at + Vector3(0, h / 2, 0), Vector3.ONE, 7.0)
 				Ink.part(root, Ink.cone(0.016, 0.07, 0.016, 5), WOOD, at + Vector3(0, h, 0), Vector3.ONE, 7.0)
 
-	for i in int(70 * size * size / 16.0):  # grass tufts: the same ones every run
+	for i in int(70 * size * size / 16.0):  # grass tufts, the same every run
 		var at := Vector3(rng.randf_range(0.1, size - 0.1), 0.03, -rng.randf_range(0.1, size - 0.1))
 		if snap.pond == null or Vector2(at.x - snap.pond[0], -at.z - snap.pond[1]).length() > snap.pond[2] + 0.1:
 			Ink.part(root, Ink.cone(0.025, 0.07, 0.0, 4), FROND, at, Vector3.ONE, 7.0)
 
-	var tree: Array = snap.tree  # the fruit tree, the one whose shade is real
+	var tree: Array = snap.tree  # the fruit tree, whose shade is in the world
 	var trunk := Vector3(tree[0], 0, -tree[1])
 	Ink.part(root, Ink.cone(tree[2], 0.001, tree[2], 18), LAWN, trunk + Vector3(0, 0.004, 0), Vector3.ONE, 8.0, 0.55)
 	Ink.part(root, Ink.cone(0.1, 1.0, 0.07, 6), WOOD, trunk + Vector3(0, 0.5, 0), Vector3.ONE, 7.0, -1.0, true)
@@ -146,14 +144,13 @@ static func build(root: Node3D, snap: Dictionary, falls: Array, viewer: Vector3)
 
 
 static func waterfall(root: Node3D, snap: Dictionary, centre: Vector2, size: float, rng: RandomNumberGenerator, falls: Array) -> void:
-	# Pale round columns stepping down from the cliff into the pond, water on each and between them. Built only
-	# where the pond lies by the back corner.
+	# Pale columns stepping down from the cliff into the pond, with water sheets on them.
 	var p: Array = snap.pond
 	var corner := Vector2(size, size)
 	var toward := (corner - centre).normalized()
 	var side := Vector2(-toward.y, toward.x)
-	# The foot of the fall is the world's own rocks, which are solid (DEMO_GARDEN), lowest first, and it
-	# carries on up into the cliff from the last of them; a garden without rocks gets columns by rule.
+	# The lowest steps are the world's solid rocks (DEMO_GARDEN); more columns continue up into the cliff.
+	# A garden without rocks gets columns by rule.
 	var steps := []  # [x, y, radius, height]
 	for i in snap.get("rocks", []).size():
 		var rock: Array = snap.rocks[i]
@@ -170,7 +167,7 @@ static func waterfall(root: Node3D, snap: Dictionary, centre: Vector2, size: flo
 			Vector3(0.05, s[3], 0.5), 8.0, 0.97)
 		sheet.rotation.y = atan2(toward.y, toward.x)
 		falls.append(sheet)
-	for flank in [-1.0, 1.0]:  # and darker rock either side of the fall, with a palm
+	for flank in [-1.0, 1.0]:  # darker rock and a palm either side of the fall
 		var at3: Vector2 = centre + toward * (p[2] + 0.9) + side * flank * 1.25
 		place_lump(root, Vector3(at3.x, -0.2, -at3.y), 0.75, 1.5, rng)
 		palm(root, Vector3(at3.x, 1.25, -at3.y), 0.7, rng)

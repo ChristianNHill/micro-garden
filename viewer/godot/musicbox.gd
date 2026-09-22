@@ -1,8 +1,7 @@
-# The music box's own music: whatever mp3s are in the player's music folder (~/.cache/micro-garden/music by
-# default, --music=DIR for another), shuffled, playing while the box is down in the garden and stopping when it
-# is picked up. The files are the player's and are never part of this project. A click on the box steps its
-# volume round, and it fades in and out rather than cutting. What the ducks hear is the garden's business, not
-# this: to them the box is a sound source with a loudness, whatever is on.
+# The music box plays the mp3s in the player's music folder (~/.cache/micro-garden/music, or --music=DIR),
+# shuffled, while the box is down in the garden. The files are the player's, never part of this project.
+# A click steps the volume; it fades rather than cuts. The garden decides what the ducks hear: to them the
+# box is a sound source with a loudness.
 extends Node
 
 const LEVELS := [0.0, 0.25, 0.5, 0.75, 1.0]
@@ -13,7 +12,7 @@ var tracks: PackedStringArray = []
 var queue: Array = []
 var level := 3  # which of LEVELS
 var on := false
-var gain := 0.0  # what is heard now, easing towards the level
+var gain := 0.0  # eases towards the level
 var title := ""
 
 
@@ -31,7 +30,7 @@ func setup(folder: String) -> void:
 func _next() -> void:
 	if tracks.is_empty():
 		return
-	if queue.is_empty():  # a fresh shuffle each time round, every track once
+	if queue.is_empty():  # reshuffle once every track has played
 		queue = Array(tracks)
 		queue.shuffle()
 	var path: String = queue.pop_back()
@@ -40,7 +39,7 @@ func _next() -> void:
 	player.stream = stream
 	player.play()
 	title = path.get_file().get_basename()
-	var bitrate := title.rfind(" (")  # a ripped file's name ends " - uploader (128k)": neither is the song's
+	var bitrate := title.rfind(" (")  # strip a ripped file's " - uploader (128k)" suffix
 	if bitrate > 0 and title.ends_with("k)"):
 		title = title.substr(0, bitrate)
 	if title.count(" - ") >= 2:
@@ -54,8 +53,8 @@ func set_on(down: bool) -> void:
 
 
 func step_volume() -> float:
-	# The next level round, for the garden to be told: the volume is the garden's, so that off is off for
-	# the ducks as well, and this player follows what the garden says (`follow`).
+	# The next level, to send to the garden. The garden owns the volume, so off is off for the ducks too,
+	# and this player follows it (`follow`).
 	return LEVELS[(level + 1) % LEVELS.size()]
 
 

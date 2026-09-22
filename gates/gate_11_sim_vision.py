@@ -11,12 +11,11 @@ Asserted: camera frames reach the fly's retina at a usable rate, through the col
 camera looks and no others; the view is the duck's own, so it changes when the duck turns; and with the
 player at the wheel the robot does what the player asked while the brain goes on sensing and deciding.
 
-Not asserted: the giant fiber firing to something approaching, which PLAN.md asked of this gate. Vision
-runs at a twentieth of its natural gain so that it does not drown the nose, and at that gain the escape
-detector catches 14% of swooping hands in the 2D garden (brain/decoder.py). The camera also sees MuJoCo's
-world, the floor and the other ducks, and none of the garden's dishes, tree or pond, which is why a
-simulated duck sees the garden drawn from above unless asked to use its camera
-(`body/mujoco/adapter.py --cameras a`). What the camera is for is the real robot, where it is the only eye.
+Not asserted: the giant fiber firing to something approaching. Vision runs at a twentieth of its natural
+gain so it does not drown the nose, and at that gain the escape detector catches few swooping hands
+(brain/decoder.py). The camera sees only MuJoCo's world (floor and other ducks, none of the garden's
+dishes, tree or pond), so a simulated duck sees the garden drawn from above unless asked to use its
+camera (`body/mujoco/adapter.py --cameras a`). The camera is for the real robot, where it is the only eye.
 """
 import json
 import os

@@ -1,4 +1,4 @@
-"""The garden for the 2D stub: diffusing smells, temperature, a pond, food dishes, contact (PLAN.md Gates 3, 4b).
+"""The garden for the 2D stub: diffusing smells, temperature, a pond, food dishes, contact (Gates 3, 4b).
 
 Coordinates are metres, origin at a corner, x right, y up. Grid cell (i, j) covers x in [i, i+1) * CELL_M.
 Two smells diffuse on their own grids: food (from dishes) and danger (from stink patches).
@@ -9,10 +9,9 @@ SIZE_M = 4.0  # the garden every gate is measured in; a World can be another siz
 GRID = 64
 CELL_M = SIZE_M / GRID  # the same cell whatever the size, so smells spread alike in any garden
 DIFFUSION = 0.2  # per substep, stable below 0.25
-# Per substep; the decay length is sqrt(DIFFUSION / DECAY) cells. At 0.002 it was 0.62 m in a 4 m
-# garden, so a duck starting where the demo garden puts them, 1.5 to 2.5 m from the only dish, could
-# not smell it at all. A longer smell is a shallower one, so DANGER_HALF keeps a faint stink from
-# reading as alarm (audit, 2026-09-19).
+# Per substep; the decay length is sqrt(DIFFUSION / DECAY) cells. Long enough to smell a dish from
+# across the demo garden. A longer smell is a shallower one, so DANGER_HALF keeps a faint stink from
+# reading as alarm.
 DECAY = 0.0008  # about 1 m
 SUBSTEPS = 5  # per 20 ms body step
 EMIT = 1.0
@@ -29,16 +28,12 @@ DUCK_SMELL_M = 0.5  # another duck smells half as strong every 0.35 m or so
 HUMID_FALLOFF_M = 0.4  # humidity halves about every 0.3 m away from the pond edge
 SHORE_M = 0.1  # a duck whose centre is within this of the pond edge can drink
 # Damp air off the pond, carried on the wind like a smell. Per pond cell per substep, set so that two
-# metres downwind the air reads about 0.1, which is the damp sense's half level (brain/server.py
-# HUMID_HALF), as food two metres downwind reads a little under its own; in still air the pond is only
-# its own edge.
+# metres downwind the air reads about 0.1, the damp sense's half level (brain/server.py HUMID_HALF).
+# In still air there is no damp plume, only humidity near the edge.
 POND_DAMP = 0.004
 WALL_CLEAR_M = 0.6  # fruit does not land nearer a wall than this: a duck cannot search around what is against one
-# A fruit is a meal: ten bites is what takes a starving duck to full (brain/physiology.py BITE_FULLNESS).
-# At three a find never filled anyone, so nobody was ever done foraging: ducks had both needs low for 11%
-# of their waking time and spent 40 to 55% of it following a plume, and five personalities that mostly act
-# through what a duck does with its free time looked alike (Gate 5; Chris, 2026-09-20: personality should
-# show as much as possible).
+# A fruit is a meal: ten bites takes a starving duck to full (brain/physiology.py BITE_FULLNESS). Fewer,
+# and ducks never finish foraging, so they have no free time for their personalities to show in.
 FRUIT_BITES = 10
 BALL_R = 0.06  # a ball a duck can push with its chest or kick
 BALL_ROLLS_S = 1.2  # how long a rolling ball takes to lose most of its speed on grass; a third of that in water
@@ -54,12 +49,11 @@ class World:
         the air moves at, in m/s, or None for still air: it carries the smells and the pond's damp air
         downwind, so a plume reaches a long way on one side of its source and hardly at all on the
         other. wind_turns_s is how long the breeze takes to swing right round the compass, or None
-        for a steady one: in a steady wind whatever lies downwind of the ducks can never be found. music is
-        (x, y), something that plays where it has been put, a part of the garden like the pond and the
-        stink patch (Chris, 2026-09-20); the player can pick it up and put it down somewhere else."""
+        for a steady one: in a steady wind, food downwind of the ducks can never be found. music is
+        (x, y) of a speaker, part of the garden like the pond; the player can move it."""
         self.size, self.tree = float(size), tuple(tree)  # metres along a side, and the tree's (x, y, shade radius)
         self.drum = None  # (x, y) of a drum put down for the ducks, or None
-        self.balls = np.zeros((0, 4))  # x, y, vx, vy each: toys, which roll (PLAN.md Gate 8b)
+        self.balls = np.zeros((0, 4))  # x, y, vx, vy each: toys, which roll (Gate 8b)
         self.rocks = np.asarray(rocks, float).reshape(-1, 3)  # (x, y, radius) each: round, solid, and in the way
         self.grid = round(self.size / CELL_M)
         self.wind0 = self.wind = None if wind is None else np.asarray(wind, float)
@@ -71,7 +65,7 @@ class World:
         self.kinds = self.kind_rng.integers(0, FRUITS, len(self.food))  # which fruit each is: all the same food, not all as well liked
         self.danger = np.asarray(danger_xy, float).reshape(-1, 2)
         self.pond = pond
-        self.hand = None  # (x, y) while the player's hand is in the garden (PLAN.md Gate 8)
+        self.hand = None  # (x, y) while the player's hand is in the garden (Gate 8)
         self.music = None if music is None else (float(music[0]), float(music[1]))
         self.music_volume = 0.75  # 0 to 1: how loud the box plays, to the ducks as to the player
         self.odor = np.zeros((self.grid, self.grid))
@@ -95,9 +89,8 @@ class World:
                 grid += DIFFUSION * (p[:-2, 1:-1] + p[2:, 1:-1] + p[1:-1, :-2] + p[1:-1, 2:] - 4 * grid) - DECAY * grid
                 if self.wind is not None:
                     # first-order upwind: each cell takes from the neighbour the air comes from. At the
-                    # downwind wall nothing comes back, so the smell blows out of the garden.
-                    # The air that blows in is clean: padded with the wall's own value, as diffusion is,
-                    # the upwind wall kept its smell and five ducks followed it there and stayed.
+                    # downwind wall the smell blows out of the garden. Zero padding, not edge padding,
+                    # so the air blowing in at the upwind wall is clean and does not trap ducks there.
                     cx, cy = self.wind * (0.02 / SUBSTEPS) / CELL_M  # cells per substep, far below 1
                     q = np.pad(grid, 1)
                     grid -= abs(cx) * (grid - (q[:-2, 1:-1] if cx > 0 else q[2:, 1:-1]))
@@ -125,7 +118,7 @@ class World:
         self.kinds = np.append(self.kinds, self.kind_rng.integers(0, FRUITS))
 
     def drop_fruit(self, rng: np.random.Generator, n: int = 1, most: int = MAX_FOOD) -> int:
-        """Fruit falls somewhere under the shade tree's canopy, while less than `most` lies about. Returns how many fell."""
+        """Fruit falls somewhere under the shade tree's canopy, while fewer than `most` pieces are on the ground. Returns how many fell."""
         fell = 0
         while fell < n and len(self.food) < most:
             a, r = rng.uniform(-np.pi, np.pi), rng.uniform(0.2, self.tree[2] + 0.2)
@@ -217,11 +210,10 @@ def music_at(sensor_xy, source) -> np.ndarray:
 
 
 def duck_odor_at(sensor_xy, duck_xy, exclude: int) -> np.ndarray:
-    """How strongly one duck's antenna smells the others (PLAN.md Gate 8).
+    """How strongly one duck's antenna smells the others (Gate 8).
 
-    Worked out per pair rather than diffused on a grid: ducks move every step, so a grid would have to
-    rewrite its sources constantly, and a shared one would have each duck smelling its own emission
-    loudest of all. A distance kernel excludes the smeller for nothing and is exact.
+    Worked out per pair rather than diffused on a grid: ducks move every step, and a shared grid would
+    have each duck smelling itself loudest. A distance kernel excludes the smeller and is exact.
     """
     d = np.linalg.norm(np.asarray(duck_xy, float) - np.asarray(sensor_xy, float), axis=-1)
     smell = np.exp(-d / DUCK_SMELL_M)
@@ -230,10 +222,9 @@ def duck_odor_at(sensor_xy, duck_xy, exclude: int) -> np.ndarray:
 
 
 def daylight(t: float) -> float:
-    """How light the garden is, 0 at night and 1 in the day, with a dawn and a dusk (PLAN.md Gate 3).
+    """How light the garden is, 0 at night and 1 in the day, with a dawn and a dusk (Gate 3).
 
-    A flat-topped cycle rather than a sine: a garden should spend most of its day being day, not
-    forever on its way to noon.
+    A flat-topped cycle rather than a sine, so most of the day is full daylight.
     """
     phase = (t % DAY_S) / DAY_S
     if phase < 0.5 - DAWN / 2:

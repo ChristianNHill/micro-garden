@@ -1,16 +1,15 @@
 """The world snapshot: what the garden looks like this step, published for a viewer in another process.
 
-One JSON datagram a step to 127.0.0.1:SNAPSHOT_PORT, which the Godot garden (viewer/godot/) draws, and the
-player's actions come back on ACTION_PORT as the garden's own control calls (`garden.*` only). UDP on the
-loopback, like the sensory frames: a viewer that is not there costs nothing, and one that starts late picks
-up at the next step. Any body publishes the same thing, since the MuJoCo body is a Stub.
+One JSON datagram a step goes to 127.0.0.1:SNAPSHOT_PORT for the Godot garden (viewer/godot/) to draw. The
+player's actions come back on ACTION_PORT as the garden's control calls (`garden.*` only). UDP on loopback
+costs nothing with no viewer, and a late viewer picks up at the next step. Both bodies publish the
+same, since the MuJoCo body is a Stub.
 
-`garden.wheel` is the one call that is the viewer's own: the player riding a duck from Godot, which mutes that
-duck's motor output in the brain server exactly as Tab does in the 2D window, and lets go by itself if the
-viewer stops asking (it quit, or crashed, with a duck still in hand).
+`garden.wheel` is the viewer's own call: the player riding a duck mutes that duck's motor output, as Tab
+does in the 2D window, and the wheel is let go if the viewer stops sending it (quit or crashed).
 
-Knobs go along so a viewer can draw who a duck is in its outline; labels too, unless the run is blind, when
-both are withheld, as telling a Bully by its silhouette is no blind test.
+Knobs go along so a viewer can shape each duck; they and the labels are withheld in a blind run, since a
+silhouette would give the personality away.
 """
 import atexit
 import base64
@@ -31,8 +30,7 @@ from brain.personality import label_of
 from brain.physiology import pressing
 from world.fields import DAY_S, daylight
 
-# Under the sensory frames, which take 7700 and up. MICRO_GARDEN_PORT moves the pair, for a second garden
-# beside one that is being watched (Godot's --port).
+# Below the sensory frames (7700 and up). MICRO_GARDEN_PORT moves both, for a second garden (Godot's --port).
 SNAPSHOT_PORT = int(os.environ.get("MICRO_GARDEN_PORT", 7650))
 ACTION_PORT = SNAPSHOT_PORT + 1
 MOODS = ("fear", "anger", "joy", "sorrow")
@@ -40,12 +38,12 @@ SHAPE_KNOBS = ("appetite", "aggressiveness", "timidity", "vanity", "chattiness",
 EMOTE_S = 3.0  # how long an emote stays in the snapshot
 EATING_S = 1.0
 KICKING_S = 0.4  # how long a kick shows
-HEARD_S = 1.0  # quacks this recent go along, for a viewer with a voice
-WHEEL_S = 0.5  # a wheel nobody has touched for this long is let go
+HEARD_S = 1.0  # quacks this recent are sent
+WHEEL_S = 0.5  # a wheel not sent for this long is let go
 TOASTS = 6
 DN_NAMES = ("forward", "back", "steer L", "steer R", "giant fiber", "feed")  # decoder.rates, in its order
 _b64 = lambda a: base64.b64encode(np.asarray(a).tobytes()).decode()
-# where each of an eye's 721 columns looks, as signed bytes across the eye's field: sent with the view
+# where each of an eye's 721 columns looks, as signed bytes across the eye's field
 HEX = _b64(np.round(np.concatenate([HEX_AZ, HEX_EL]) / np.abs(HEX_AZ).max() * 127).astype(np.int8))
 TOAST_FORMATS = (("eaten", "{who} ate"), ("headbutts", "{who} shoved {other}"), ("pets", "{who} was petted"),
                  ("emotes", "{who} {other}"), ("kicks", "{who} kicked the ball"), ("drums", "{who} played the drum"), ("given", "{who} was handed a fruit"), ("throws", "{who} was thrown"), ("donned", "{who} put a hat on"), ("preened", "{who} shook its hat off"))
@@ -64,8 +62,8 @@ def among(body, i: int, names: list[str]) -> dict:
 
 
 def readout(body, i: int) -> list:
-    """Duck i's needs, moods and wants as [section, name, 0 to 1] rows, for a viewer's bars: what the body
-    keeps, as it keeps it. A want is a like the duck is free to act on: it gives way as a need presses."""
+    """Duck i's needs, moods and wants as [section, name, 0 to 1] rows, for a viewer's bars.
+    A want is a like scaled down as hunger or thirst presses."""
     hot, cold = (float(v[i]) for v in body.discomfort())
     k = lambda name: float(body.k[name][i])
     free = 1.0 - float(pressing(np.maximum(body.hunger, body.thirst))[i])
@@ -83,13 +81,12 @@ PROJECT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "godot")
 
 class Snapshot:
     def __init__(self, blind: bool = False, window: bool = False):
-        """window=True opens the Godot garden beside this one, and closing its window ends the garden (which is
-        what saves it): one command to open a garden and one window to close it (Chris, 2026-09-21)."""
+        """window=True opens the Godot window too; closing it ends (and saves) the garden."""
         self.window = None
         if window and os.path.exists(GODOT):
             self.window = subprocess.Popen([GODOT, "--path", PROJECT, "--", f"--port={SNAPSHOT_PORT}"],
                                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            atexit.register(self.window.terminate)  # and ending the garden closes its window
+            atexit.register(self.window.terminate)
         elif window:
             print(f"no Godot at {GODOT}: install Godot 4 or set GODOT, or open viewer/godot yourself")
         self.out = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -99,10 +96,10 @@ class Snapshot:
         self.blind = blind
         self.seen = {key: 0 for key, _ in TOAST_FORMATS}
         self.toasts = []
-        self.refused = set()  # calls from a viewer that this garden could not take, each reported once
-        self.riding = -1  # the duck whose motor output this has muted, to give it back
-        self.watched = -1  # the duck the viewer has selected, whose readout and brain go along
-        self.wheel = (-1, 0.0, 0.0, -np.inf)  # duck, forward, turn, and the garden time it was last asked for
+        self.refused = set()  # viewer calls that failed, each reported once
+        self.riding = -1  # the duck whose motor output is muted
+        self.watched = -1  # the viewer's selected duck, whose readout and brain are sent
+        self.wheel = (-1, 0.0, 0.0, -np.inf)  # duck, forward, turn, garden time last sent
 
     def close(self) -> None:
         self.out.close()
@@ -114,10 +111,10 @@ class Snapshot:
             events = getattr(stub, key)
             for e in events[self.seen[key]:]:
                 if key == "emotes" and e[2] in ("dance", "singdance"):
-                    continue  # a dance is seen, and five ducks at it would be all the news there is
+                    continue  # dances are visible, and would flood the news
                 other = phrase(e[2]) if key == "emotes" else short(e[2]) if len(e) > 2 else ""
                 line = fmt.format(who=short(e[1]), other=other)
-                if line not in self.toasts[-3:]:  # two ducks at a dish are two pieces of news, not twenty
+                if line not in self.toasts[-3:]:  # no repeats of recent news
                     self.toasts.append(line)
             self.seen[key] = len(events)
         self.toasts = self.toasts[-TOASTS:]
@@ -126,27 +123,27 @@ class Snapshot:
         """`body` is the brain's Physiology, or None when the garden runs without a brain."""
         self._gather_toasts(stub)
         n = len(stub.names)
-        last = lambda events: {e[1]: e for e in events[-4 * n:]}  # each duck's latest, from the recent few
+        last = lambda events: {e[1]: e for e in events[-4 * n:]}  # each duck's latest
         recent = dict(emotes=last(stub.emotes), bites=last(stub.eaten), kicks=last(stub.kicks), taps=last(stub.drums),
                       posture=stub.posture(), joints=stub.articulation(), down_left=stub.down_left(), swimming=stub._swimming())
         ducks = [self._duck(stub, body, i, **recent) for i in range(n)]
         w = stub.world
         return {"t": round(stub.t, 2), "size": w.size, "light": round(float(daylight(stub.t)), 3),
                 "day": round(stub.t % DAY_S / DAY_S, 4), "ducks": ducks,
-                "food": [[round(float(x), 3), round(float(y), 3), int(k)] for (x, y), k in zip(w.food, w.kinds)],  # and which fruit
+                "food": [[round(float(x), 3), round(float(y), 3), int(k)] for (x, y), k in zip(w.food, w.kinds)],  # x, y, fruit kind
                 "danger": [[float(x), float(y)] for x, y in w.danger],
                 "pond": None if w.pond is None else [float(v) for v in w.pond], "tree": list(w.tree), "rocks": w.rocks.round(3).tolist(),
-                "wind": None if w.wind is None else [round(float(v), 3) for v in w.wind],  # where the air is going, m/s
+                "wind": None if w.wind is None else [round(float(v), 3) for v in w.wind],  # m/s
                 "hats": [[round(x, 3), round(y, 3), k] for x, y, k in stub.hat_items],
                 "balls": [[round(float(x), 3), round(float(y), 3)] for x, y in w.balls[:, :2]],
                 "drum": None if w.drum is None else list(w.drum),
-                "held": list(stub.held) if stub.held else None,  # what the hand is carrying: [kind, which]
+                "held": list(stub.held) if stub.held else None,  # [kind, index]
                 "music": None if w.music is None else list(w.music), "music_volume": round(float(w.music_volume), 2),
                 "hand": None if w.hand is None else [float(v) for v in w.hand], "toasts": self.toasts,
                 "sounds": [[round(t, 2), int(i), tag] for t, i, tag in stub.sounds[-2 * n:] if stub.t - t < HEARD_S]}
 
     def _duck(self, stub, body, i, emotes, bites, kicks, taps, posture, joints, down_left, swimming) -> dict:
-        """One duck's part of the snapshot: what the body shows, and what the brain adds when there is one."""
+        """One duck's part of the snapshot: the body's state, plus the brain's when there is one."""
         emote = emotes.get(i)
         showing = emote is not None and stub.t - emote[0] < EMOTE_S
         duck = {
@@ -155,7 +152,7 @@ class Snapshot:
             "h": round(float(stub.pose[i, 2]), 3),
             "sat": posture[i] == "sat", "down": posture[i] == "down", "down_left": round(float(down_left[i]), 2),
             "swimming": bool(swimming[i]), "hat": bool(stub.hats[i]), "hat_style": int(max(stub.hat_style[i], 0)),
-            "head": [round(float(v), 3) for v in stub.head[i]],  # neck_pitch, head_pitch, head_yaw, head_roll, as told
+            "head": [round(float(v), 3) for v in stub.head[i]],  # neck_pitch, head_pitch, head_yaw, head_roll
             "eating": i in bites and stub.t - bites[i][0] < EATING_S,
             "kicking": i in kicks and stub.t - kicks[i][0] < KICKING_S,
             "drumming": i in taps and stub.t - taps[i][0] < 0.5,
@@ -173,13 +170,12 @@ class Snapshot:
                     hunger=level("hunger"), thirst=level("thirst"), sleepy=level("sleep_pressure"))
         if not self.blind:
             duck.update(label=label_of(body.k, i), knobs={k: round(float(body.k[k][i]), 2) for k in SHAPE_KNOBS})
-        if i == self.watched:  # the selected duck's only: it is 400 bytes
+        if i == self.watched:  # selected duck only: ~400 bytes
             duck.update(readout=readout(body, i), among=among(body, i, [n.replace("duck-", "") for n in stub.names]))
         return duck
 
     def ride(self, stub, server, duck: int) -> dict:
-        """What the ridden duck sees and what its brain is asking of its legs, for the ride view's overlay:
-        both hex retinas as bytes (left eye first) and the six descending readouts in Hz."""
+        """The ride view's overlay: both hex retinas as bytes (left eye first) and the six descending readouts in Hz."""
         rates = server.decoder.rates
         return {"duck": duck, "hex": HEX, "lum": _b64(np.round(np.clip(stub.seen[duck], 0, 1) * 255).astype(np.uint8)),
                 "dn": [[name, round(float(hz), 1)] for name, hz in zip(DN_NAMES, rates[duck])]}
@@ -188,7 +184,7 @@ class Snapshot:
         """Publish this step and do whatever the player asked. Call with the stub's lock held. `server` is
         the BrainServer, or None when the garden runs without a brain."""
         if self.window is not None and self.window.poll() is not None:
-            raise KeyboardInterrupt  # the window was closed: both bodies' loops end on this as on Ctrl-C, and save
+            raise KeyboardInterrupt  # window closed: end and save as on Ctrl-C
         world = self.build(stub, server.body if server else None)
         if server is not None and server.decoder is not None and self.wheel[0] >= 0 and stub.seen is not None:
             world["ride"] = self.ride(stub, server, self.wheel[0])
@@ -207,18 +203,17 @@ class Snapshot:
             except BlockingIOError:
                 return
             method, p = str(action.get("method", "")), action.get("params", {})
-            if method == "garden.watch":  # which duck the viewer has selected, or -1 for none
+            if method == "garden.watch":  # the selected duck, or -1
                 self.watched = int(p["duck"]) if 0 <= int(p["duck"]) < len(stub.names) else -1
                 if server is not None and server.brainview is not None:
                     server.brainview.duck = self.watched
             elif method == "garden.wheel":
                 self.wheel = (int(p["duck"]), float(np.clip(p["fwd"], -1, 1)), float(np.clip(p["turn"], -1, 1)), stub.t)
-            elif method.startswith("garden."):  # the player's calls, and nothing else
+            elif method.startswith("garden."):  # player calls only
                 try:
                     stub._control_call(method, p)
                 except (KeyError, ValueError, TypeError, IndexError) as e:
-                    # A viewer newer or older than this garden asks for things it does not have, or sends them
-                    # wrong. That is the viewer's mistake and must not stop the garden: say so once, and go on.
+                    # a mismatched viewer version must not stop the garden: report once and go on
                     if method not in self.refused:
                         self.refused.add(method)
                         print(f"ignoring {method} from the viewer: {type(e).__name__} {e}")
@@ -228,7 +223,7 @@ class Snapshot:
         duck, fwd, turn, asked = self.wheel
         held = 0 <= duck < len(stub.names) and stub.t - asked < WHEEL_S
         if self.riding >= 0 and (not held or duck != self.riding):
-            server.possessed[self.riding] = False  # its legs are its brain's again: getting off used to leave it muted for good
+            server.possessed[self.riding] = False
         self.riding = duck if held else -1
         if held:
             server.possessed[duck] = True
@@ -251,7 +246,7 @@ if __name__ == "__main__":
         tx.sendto(json.dumps({"method": "garden.hand", "params": {"x": 2.0, "y": 2.0, "feed": 3}}).encode(), ("127.0.0.1", ACTION_PORT))
         tx.sendto(json.dumps({"method": "sim.step", "params": {"n": 100}}).encode(), ("127.0.0.1", ACTION_PORT))
         dishes, t = len(stub.world.food), stub.t
-        time.sleep(0.05)  # the loopback delivers when it likes: read at once, the two calls were sometimes not there yet
+        time.sleep(0.05)  # loopback delivery is not instant
         snap.step(stub)
         got = json.loads(rx.recv(65535))
         world_fields = {"t", "size", "light", "day", "ducks", "food", "danger", "pond", "tree", "rocks", "wind", "hats", "balls", "drum", "held", "music", "music_volume", "hand",

@@ -1,15 +1,14 @@
 """Build the Godot garden's duck from the real microduck: robot.json, a few thousand triangles of it.
 
-Run with the simulator's Python, which has MuJoCo (PLAN.md Gate 10 for where the checkouts live):
+Run with the simulator's Python, which has MuJoCo:
     ~/.cache/micro-garden/spike/microduck_rl/.venv/bin/python viewer/godot/build_robot.py
 
-The robot's meshes are Pollen Robotics' (microduck_rl, Apache 2.0; ATTRIBUTION.md): 23 MB of STL at a
-million triangles, most of them bearings and circuit boards nobody sees. This poses the robot standing, from
-its own MuJoCo description, keeps the parts that show, snaps their vertices to a CELL_M grid (which is both
-the simplification and the low-poly look), and writes the robot as it is built: every body in its own frame, on
-its own hinge, under its parent, with each part given the nearest ink of the garden's palette. So a viewer can
-pose it from real joint angles, the simulator's or a rule's. Godot
-builds its meshes from that at start-up, so nothing needs importing and the file is the whole asset.
+The robot's meshes are Pollen Robotics' (microduck_rl, Apache 2.0; ATTRIBUTION.md): 23 MB of STL, a million
+triangles, mostly bearings and circuit boards nobody sees. This poses the robot standing from its MuJoCo
+description, keeps the visible parts, snaps their vertices to a CELL_M grid (the simplification and the
+low-poly look), and writes each body in its own frame, on its own hinge, under its parent, with each part
+given the nearest ink of the garden's palette, so a viewer can pose it from joint angles. Godot builds the
+meshes at start-up, so nothing needs importing.
 """
 import json
 import re
@@ -23,7 +22,7 @@ RL = Path.home() / ".cache/micro-garden/spike/microduck_rl"
 XML = RL / "src/mjlab_microduck/robot/microduck/robot_groundcontact.xml"
 OUT = Path(__file__).parent / "robot.json"
 CELL_M = 0.006
-UNIT_M = 0.0005  # coordinates are written as whole numbers of this, which keeps the file small
+UNIT_M = 0.0005  # coordinates are written as whole numbers of this, to keep the file small
 HIDDEN = re.compile(r"bearing|pcb|np_f970|speaker|banana|rigidity|motor_support|power_support|lens_holder")
 STAND = {"left_hip_roll": -0.0873, "right_hip_roll": 0.0873, "left_hip_pitch": -0.4579, "right_hip_pitch": 0.4579,
          "left_knee": -0.0049, "right_knee": 0.0049, "left_ankle": 0.4530, "right_ankle": -0.4530,
@@ -63,7 +62,7 @@ def main() -> int:
         world = v @ d.geom_xmat[g].reshape(3, 3).T + d.geom_xpos[g]
         lowest = min(lowest, world[:, 2].min())
         body = m.geom_bodyid[g]
-        local = (world - d.xpos[body]) @ d.xmat[body].reshape(3, 3)  # a body's parts do not move within it
+        local = (world - d.xpos[body]) @ d.xmat[body].reshape(3, 3)
         rgb = m.mat_rgba[m.geom_matid[g]][:3]
         ink = min(INKS, key=lambda name: np.sum((np.array(INKS[name]) - rgb) ** 2))
         vs, fs, n = soup.setdefault((body, ink), ([], [], [0]))
@@ -80,23 +79,23 @@ def main() -> int:
                 verts, faces = snapped(np.concatenate(vs), np.concatenate(fs))
                 triangles += len(faces)
                 parts.append({"ink": ink, "v": np.round(verts / UNIT_M).astype(int).ravel().tolist(),
-                              "i": faces[:, ::-1].ravel().tolist()})  # Godot's front faces wind clockwise, an STL's the other way
+                              "i": faces[:, ::-1].ravel().tolist()})  # Godot's front faces wind clockwise, STL's counter-clockwise
         bodies.append({"name": m.body(body).name, "parent": m.body(m.body_parentid[body]).name,
                        "pos": m.body_pos[body].round(5).tolist(), "quat": m.body_quat[body].round(6).tolist(),
                        "joint": None if not joints else {"name": m.joint(joints[0]).name, "axis": m.jnt_axis[joints[0]].round(6).tolist()},
                        "parts": parts})
-    # where a hat sits: over the middle of the head shell, and which way is up and forward there, in the head's own frame
+    # the hat seat: over the middle of the head shell, with up and forward, in the head's frame
     head = m.body("jaw_soft").id
     crown_verts = np.concatenate([np.concatenate(vs) for (owner, ink), (vs, _, _) in soup.items() if owner == head and ink == "cream"])
     to_world = d.xmat[head].reshape(3, 3)
-    shell = crown_verts @ to_world.T  # the head shell as it stands, to find its middle and its top
+    shell = crown_verts @ to_world.T
     seat = np.array([(shell[:, 0].min() + shell[:, 0].max()) / 2, (shell[:, 1].min() + shell[:, 1].max()) / 2,
-                     shell[:, 2].max() + 0.012])  # over the middle of the head, floating a little (Chris, 2026-09-21)
-    top = seat @ to_world  # back into the head's own frame
+                     shell[:, 2].max() + 0.012])  # floating a little
+    top = seat @ to_world  # back into the head's frame
     hat = {"body": "jaw_soft", "at": top.round(4).tolist(), "up": to_world.T[:, 2].round(5).tolist(),
            "forward": to_world.T[:, 0].round(5).tolist()}
-    # Everything is in MuJoCo's own frame (z up), and Godot turns the whole rig once. `stand` is the pose a
-    # duck is drawn in when nobody supplies joint angles, and `stand_z` how high the trunk rides in it.
+    # All in MuJoCo's frame (z up); Godot turns the whole rig once. `stand` is the default pose and
+    # `stand_z` the trunk height in it.
     OUT.write_text(json.dumps({"unit": UNIT_M, "bodies": bodies, "stand": STAND, "stand_z": round(float(-lowest), 4), "hat": hat},
                               separators=(",", ":")))
     print(f"{OUT.name}: {triangles} triangles on {len(bodies)} bodies, {sum(b['joint'] is not None for b in bodies)} hinges, "

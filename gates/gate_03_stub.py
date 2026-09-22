@@ -16,8 +16,7 @@ from gates.episodes import free_port_base, verdict
 from world.fields import CELL_M, SIZE_M, TREE, World
 
 N, SIM_S, HOLD_STEPS = 5, 60.0, 25
-# A free block, asked for: this was a fixed 7650, which the Godot snapshot later took, and the gate died
-# on a garden that was only being watched (2026-09-21).
+# Ask for a free block: a fixed port can clash with a running garden's Godot snapshot.
 PORT_BASE = free_port_base(7664, 12)
 
 

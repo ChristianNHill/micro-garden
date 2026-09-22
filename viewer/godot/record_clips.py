@@ -1,13 +1,12 @@
 """Record the microduck's own motions, once, for the Godot garden to replay: clips.json.
 
-Run with one simulated robot up (PLAN.md Gate 10: `DUCK_SIM_DUCKS=1 scripts/duck-sim`):
+Run with one simulated robot up (`DUCK_SIM_DUCKS=1 scripts/duck-sim`):
     uv run python viewer/godot/record_clips.py
 
-Sitting down, standing up, walking, turning, a kick, a roll, a peck, going limp and getting up are not animation
-files anywhere: they are the robot's control policies running in the simulator. With the MuJoCo body Godot
-draws them live, from the real joints. The 2D body has no robot behind it, so this plays each motion on the
-simulated robot, reads its joints, height and lean at RATE_HZ, and writes them down. Godot then shows a duck of
-the 2D body sitting the way a microduck sits. Each clip is [joints in robotd's order, trunk height, lean].
+The microduck's motions (sit, stand, walk, turn, kick, roll, peck, go limp, get up) are its control policies
+running in the simulator, not animation files. With the MuJoCo body Godot draws the live joints. The 2D
+body has no robot, so this plays each motion on the simulated robot and samples its joints, height and lean
+at RATE_HZ. Each frame is [joints in robotd's order, trunk height, lean].
 """
 import json
 import os
@@ -19,13 +18,12 @@ from body.contract import Client
 from body.mujoco.adapter import SIM_STATE, TRUTH_PORT, Truth, robot_state
 
 OUT = Path(__file__).parent / "clips.json"
-RATE_HZ = 15  # Godot eases between samples; at 20 the file put the garden over its 300 KB
-# name: (what to tell the robot, seconds to record, whether Godot loops it)
+RATE_HZ = 15  # Godot eases between samples; 20 made the file too big
 WALK, LEFT, RIGHT = dict(vx=0.30, vy=0.0, vyaw=0.0), dict(vx=0.0, vy=0.0, vyaw=2.0), dict(vx=0.30, vy=0.0, vyaw=-1.5)
 
 
 def record(truth: Truth, seconds: float, keep=None) -> list:
-    """Samples at RATE_HZ for `seconds`; `keep` is called every sample, to go on telling the robot to move."""
+    """Samples at RATE_HZ for `seconds`; `keep` is called every sample to keep the robot moving."""
     frames, next_t = [], time.monotonic()
     for _ in range(int(seconds * RATE_HZ)):
         if keep:
@@ -51,7 +49,7 @@ def main() -> int:
 
     settle(3.0)
     clips["stand"] = {"loop": True, "frames": record(truth, 2.0, stop)}
-    record(truth, 2.0, move(**WALK))  # up to pace first
+    record(truth, 2.0, move(**WALK))  # get up to speed first
     clips["walk"] = {"loop": True, "frames": record(truth, 3.0, move(**WALK))}
     settle()
     clips["turn_left"] = {"loop": True, "frames": record(truth, 2.0, move(**LEFT))}

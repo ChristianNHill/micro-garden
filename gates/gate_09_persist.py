@@ -3,42 +3,26 @@
 Run: uv run python -m gates.gate_09_persist [--minutes 10]
 
 Two things have to be true. Saving and loading must lose nothing, and the catch-up that ages a duck
-over the gap must land where actually living through the gap would have landed it. The second is the
-real check: `brain/save.py` integrates the drives in 5 s steps with no body and no garden, and
-this compares that against the same stretch lived properly in the stub.
+over the gap must land where living through the gap would have. The second is the real check:
+`brain/save.py` integrates the drives in 5 s steps with no body and no garden, and this compares that
+against the same stretch lived in the stub. Ten minutes is one whole day at DAY_S.
 
-The garden is empty on purpose. Catch-up cannot know that a duck found a dish while nobody was
-watching, so the honest comparison is a stretch where there was nothing to find. Each duck also lives
-its stretch alone, in a garden of its own: five in a row used to drift apart, but a contented duck can
-stand still now, so they dozed in a huddle and a neighbour's nudge fired a sleeper's escape and woke it
-at 537 s, which put its sleep 0.66 out against a catch-up that had no neighbour to reckon with
-(2026-09-20). Being woken is something that happens in a garden, like finding a dish.
+The garden is empty, and each duck lives its stretch alone in a garden of its own. Catch-up cannot know
+that a duck found a dish, or was woken by a neighbour's nudge, while nobody was watching, so the honest
+comparison is a stretch where nothing could happen. Ducks run blind, since none of this is about vision
+and it halves the wall time.
 
-Alone is not enough either, and why is worth knowing: the giant fiber fires at about 0.6 Hz whatever the
-duck senses, asleep and blind with nothing but dry air included, and at that rate three spikes land inside
-the decoder's 100 ms escape window by chance about once in six duck-minutes (8 escapes among 5 lone blind
-ducks in 10 minutes). Two of those woke a sleeper. So sleep is asserted on the ducks nothing disturbed, no
-escape while asleep or in the minute before dropping off, which is the stretch catch-up claims to describe;
-LIVED_DUCKS of them live it so that enough are left, and the disturbed ones are printed. The false startles
-themselves are left alone here: the escape threshold sits at the giant fiber's refractory limit, so moving
-it is a decision about the model rather than a fix to this gate.
+Sleep is asserted only on ducks nothing disturbed: no escape while asleep or in the minute before
+dropping off. The giant fiber fires at rest whatever the duck senses, so a false startle in the night is
+rare but not impossible, and it wakes a sleeper. LIVED_DUCKS live the stretch so enough are left, and the
+disturbed ones are printed.
 
-Later the same day the detector was reset from measurement (5 spikes in 300 ms, brain/decoder.py) and false
-startles fell from about 57 an hour to 3. The undisturbed-duck check stays: a startle in the night is rare
-now, not impossible. Ducks run blind here
-too, since none of this is about vision and it halves the wall time.
+Catch-up gotchas: it follows the sun across the gap (a duck alone in the dark gets three times too
+sleepy), and it needs steps of 5 s or less, because sleep pressure switches sharply between asleep and
+awake (60 s steps drifted 0.37). Three days at 5 s costs about a third of the 10 s budget.
 
-Measured 2026-09-18 over the full ten minutes, which is one whole day at DAY_S: hunger and thirst come
-back off by 0.000 and sleep pressure within tolerance. Two things had to be fixed to get there, and the
-suite runner found both the first time it ran this gate at its default length. Catch-up sat in permanent
-darkness, because an all-zero frame has no daylight in it, and a duck alone in the dark gets three times
-as sleepy as it should; it now follows the sun across the gap. And its steps were 60 s, which is far too
-coarse for a drive that switches sharply between asleep and awake: sleep pressure drifted 0.37 against a
-1 s reference at 60 s steps, 0.08 at 10 s and 0.04 at 5 s, where hunger and thirst were exact at every
-size. Three days at 5 s steps costs 3.5 s of the 10 s budget. Fatigue, boredom and temperature do not match and should not. A duck away does not walk, so it
-does not tire (0.27 lived against 0.00); nothing happens to it, so it gets thoroughly bored (0.23
-against 1.00); and it is not standing in the sun, so it sits at a neutral 24 degrees rather than the
-garden's 29. Those three are printed rather than asserted.
+Fatigue, boredom and temperature do not match and should not: a duck away does not walk, nothing
+happens to it, and it is not in the sun. Those three are printed, not asserted.
 """
 import argparse
 import sys
@@ -55,9 +39,7 @@ from gates.episodes import run, verdict
 
 # What only watches the clock, and so must come back exactly where living through it would have left it.
 CLOCK_DRIVES = ("hunger", "thirst", "sleep_pressure")
-# What needs a garden, and so cannot: a duck away does not walk, so it does not tire; nothing happens
-# to it, so it gets thoroughly bored; and there is no sun on it, so it sits at a neutral temperature.
-# These are printed and not asserted, which is the same thing brain/save.py says it does.
+# What needs a garden, and so cannot: printed and not asserted, as brain/save.py says.
 WORLD_DRIVES = ("fatigue", "boredom", "body_temp")
 DRIVES = CLOCK_DRIVES + WORLD_DRIVES
 TOLERANCE = 0.05  # per drive, on a 0-1 scale

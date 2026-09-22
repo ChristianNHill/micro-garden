@@ -1,13 +1,11 @@
 """The brain, to look at: which neurons to show, where each sits, and which of them just fired.
 
-A viewer cannot be sent 139,000 neurons fifty times a second, so it is shown SHOWN of them: the neurons the
-garden names (the senses going in, the mushroom body's cast), every descending and motor neuron, and a random
-draw of the rest, so the picture has the whole brain's shape and the cells that matter are all in it. Their
-places are written once to a file the viewer reads (front view: x across, y down, as FlyWire has them), with
-a group each for colour. After that a step's news is only the indices that spiked.
+The viewer is shown SHOWN of the 139,000 neurons: the named sets, every descending and motor neuron,
+and a random draw of the rest. Their places go once to a points file (front view: x across, y down, as
+FlyWire has them) with a colour group each; after that each step sends only the indices that spiked.
 
-The places are FlyWire's and are not redistributed: the file is made here, from the data the user downloaded,
-into ~/.cache/micro-garden.
+The places are FlyWire's and are not redistributed: the file is made locally, from the user's
+downloaded data, into ~/.cache/micro-garden.
 """
 import json
 from pathlib import Path
@@ -37,14 +35,14 @@ class BrainView:
         groups = group_of(ann)
         named = np.unique(np.concatenate([np.asarray(v).ravel() for v in sets.values()]))
         named = named[rng.permutation(len(named))][:SHOWN // 2]
-        named = np.union1d(named, np.flatnonzero(groups == 3))  # and every neuron that goes down to the legs
+        named = np.union1d(named, np.flatnonzero(groups == 3))  # plus every descending and motor neuron
         rest = np.setdiff1d(np.arange(len(ann)), named)
         self.idx = np.sort(np.concatenate([named, rng.choice(rest, SHOWN - len(named), replace=False)]))
         self.index = torch.from_numpy(self.idx).to(device)
         self.fired = torch.zeros(SHOWN, device=device)
-        self.duck = -1  # whose brain is being watched, or nobody's
+        self.duck = -1  # the duck being watched, -1 for none
         xy = ann[["pos_x", "pos_y"]].to_numpy(float)[self.idx]
-        xy = (xy - xy.min(0)) / (xy.max(0) - xy.min(0)).max()  # one scale for both, so the brain keeps its shape
+        xy = (xy - xy.min(0)) / (xy.max(0) - xy.min(0)).max()  # one scale for both axes, keeps the shape
         POINTS.parent.mkdir(parents=True, exist_ok=True)
         POINTS.write_text(json.dumps({"x": xy[:, 0].round(4).tolist(), "y": xy[:, 1].round(4).tolist(),
                                       "group": groups[self.idx].tolist(), "groups": GROUPS,

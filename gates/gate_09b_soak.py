@@ -2,12 +2,10 @@
 
 Run: uv run python -m gates.gate_09b_soak [--minutes 20] [--gardens 3] [--labels Bully,Napper,...]
 
-Every other gate proves one piece in a garden built for that piece. None of them puts a pond, a dish,
-a stink patch, a tree and five different ducks in one place, which is the only garden anyone will ever
-look at, and the first time that garden ran (2026-09-19) five hungry ducks parked at the pond because
-a sated duck still tasted the shore as food. Three more of the same shape turned up by reading: a full
-duck parks at the dish, a water lover starves in the pond, a stink lover parks in the stink. Each is a
-"stay here" state that no other need can break, and no single-piece gate can see one.
+Every other gate proves one piece in a garden built for that piece. This one puts a pond, a dish, a
+stink patch, a tree and five different ducks in one place, which is the garden anyone will look at. It
+catches "stay here" states that no other need can break, such as a sated duck that still tastes the
+shore as food and parks at the pond. No single-piece gate can see one.
 
 This is the demo garden (`body/stub2d/stub.py` DEMO_GARDEN) with the demo's five labels, eyes open,
 for two whole days at DAY_S. It asserts what a garden worth watching cannot do without:
@@ -15,27 +13,19 @@ for two whole days at DAY_S. It asserts what a garden worth watching cannot do w
 - every duck eats, drinks and sleeps at some point
 - no duck is stuck: awake, in real need (hunger or thirst over NEEDY), and going nowhere (within
   STUCK_M for STUCK_S) without a bite or a sip to show for it
-- no duck starves or parches: hunger or thirst above PINNED for more than PINNED_SHARE of the run
+- no label starves or parches: hunger or thirst above PINNED for more than PINNED_SHARE of the run
 
 and prints where each duck's time went, which is the table to read for "does anything happen".
 
 Several gardens run side by side, the same five ducks starting in different places. One garden is one
-draw from a chaotic system: between two runs that differed by a comment's worth of behaviour the sips went
-155 to 48, and nothing can be tuned against a number that loose. Eating, drinking, sleeping and being stuck
-are checked for every duck in every garden. Starving and parching are checked on each label's mean over the
-gardens, and the single ducks over the limit are printed beside it.
+draw from a chaotic system (sips have gone 155 to 48 between near-identical runs), and nothing can be
+tuned against a number that loose. Eating, drinking, sleeping and being stuck are checked for every
+duck in every garden. Starving and parching are checked on each label's mean over the gardens, because
+a "no single duck" bar gets stricter with every garden added; the single ducks over the limit are
+printed beside it. The mean still fails a label that starves as a rule.
 
-That last one is a changed bar (Claude, 2026-09-19, for Chris to ratify). It was "no single duck", which
-gets stricter with every garden added, the wrong way round for a measurement. On the run that prompted it 12
-of 15 ducks were inside the limit and the three outside were the Bully twice (starving 0.30 and 0.37 of the
-time) and one Napper (parched 0.37); by label the Bully starves 0.23 of the time and nobody else more than
-0.02. The Bully's appetite asks 40% more food than anyone's, so it is the hungriest duck in every garden,
-and its margin under the limit is thin. The mean still fails a label that starves as a rule: two runs
-earlier the Bully's three gardens read 0.28, 0.31 and 0.70.
-
-Chris ratified that bar on 2026-09-20, and decided the Bully's hunger is character rather than a fault:
-on the final tree it starves 0.30 of the time and no other label more than 0.21. It is exempt from the
-starving limit by name (HUNGRY_BY_NATURE) and still has to eat, drink and sleep like everyone else.
+The Bully is exempt from the starving limit by name (HUNGRY_BY_NATURE): its hunger is character, not a
+fault. It still has to eat, drink and sleep like everyone else.
 """
 import argparse
 import sys
@@ -52,9 +42,9 @@ LABELS = "Bully,Napper,Carefree,Chatty,Scaredy"  # the demo's
 NEEDY = 0.8
 STUCK_S, STUCK_M = 120, 0.2
 PINNED, PINNED_SHARE = 0.95, 0.25
-# The Bully goes hungry because it would rather fight than eat: it turns on a rival at the food instead of
-# eating, needs 40% more than anyone, and eats the fewest bites. Chris, 2026-09-20: that is emergent and it
-# stays. So the Bully is held to eating at all (every duck eats), not to the starving limit.
+# The Bully goes hungry because it would rather fight than eat: it turns on a rival at the food and needs
+# 40% more than anyone. That is emergent and it stays, so the Bully is held to eating at all, not to the
+# starving limit.
 HUNGRY_BY_NATURE = {"Bully"}
 MOVING_MS = 0.02
 

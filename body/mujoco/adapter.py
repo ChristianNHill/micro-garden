@@ -1,15 +1,12 @@
-"""MuJoCo microduck body: the garden of the 2D stub around real simulated robots (PLAN.md Gate 10).
+"""MuJoCo microduck body: the garden of the 2D stub around real simulated robots (Gate 10).
 
-The brain does not know the difference. It sends the same `robot.*` calls to the same socket names and
-reads the same sensory frames. Behind them, where the stub integrated a circle on a plane, a real
-`robotd` runs the robot's own 50 Hz loop and walking policy on a body in MuJoCo
-(pollen-robotics/microduck, `scripts/duck-sim`; see PLAN.md Gate 10 for how it runs on a Mac).
+The brain sees the same sockets and frames as with the stub. Behind them a real `robotd` runs the robot's
+50 Hz loop and walking policy on a body in MuJoCo (pollen-robotics/microduck, `scripts/duck-sim`,
+which runs natively on a Mac).
 
-So this is the stub with two things swapped. A duck's pose comes from the simulator's ground truth
-(the body server on TCP 7801 + n), the way an overhead tracker will give it in a real room. And what the
-brain asks of the body is passed on to that duck's robotd. Everything the garden owns stays the garden's,
-and stays in Python (ARCHITECTURE.md decision 1): smells and the wind they ride, the pond, day and night,
-what is on the ground and who ate it.
+Two things differ from the stub: a duck's pose comes from the simulator's ground truth (the body server on
+TCP 7801 + n), as an overhead tracker would give it in a real room, and the brain's requests go on to that
+duck's robotd. The garden itself (smells, wind, pond, day and night, food) stays in Python.
 
 Start the simulator first, then this, then the brain:
 
@@ -34,47 +31,37 @@ SIM_STATE = os.path.expanduser("~/.cache/duck-sim")  # where duck-sim puts each 
 TRUTH_PORT = 7801  # the first duck's body server; +1 per duck
 SPACING_M = 0.5  # duck-body sets its ducks down in a row along y, this far apart
 
-# ponytail: the walking policy upstream ships does not walk (pollen-robotics/microduck_rl issue 46, open
-# since 2026-09-10): below a command of about 0.3 the duck stands still, and turning ignores the command's
-# sign. Measured 2026-09-20, these four commands are the ones that do something, repeatably in direction:
-# forward 0.12 m/s, back 0.14 m/s, left and right 0.05 to 0.3 rad/s. So what the brain asks for is snapped
-# to the nearest of them. It is a duck that can only march or pivot, and slowly. Delete `snap` and send
-# the brain's own numbers the day upstream ships a policy that tracks a velocity.
+# ponytail: the upstream walking policy does not track velocity (pollen-robotics/microduck_rl issue 46):
+# below about 0.3 the duck stands still, and turning ignores the sign. These four commands move it
+# repeatably: forward 0.12 m/s, back 0.14 m/s, left and right 0.05 to 0.3 rad/s. The brain's intent is
+# snapped to the nearest. Delete `snap` once upstream ships a policy that tracks a velocity.
 FORWARD, BACK, LEFT, RIGHT, STAND = (0.30, 0.0), (-0.30, 0.0), (0.0, 2.0), (0.30, -1.5), (0.0, 0.0)
 WALK_AT = 0.02  # m/s the brain has to ask for before the duck means to go anywhere
-# The robot marches at one speed, and steps on the spot for every pivot, so a duck told to march or pivot
-# whenever its brain wanted any movement at all never stopped shuffling its feet, and Chris, watching, asked
-# for ducks that sit when they are not going anywhere (2026-09-21). So a duck walks in bouts. It sits by
-# default and banks what its brain asks for as distance; when it has banked a walk's worth it gets up and
-# marches it off without a break, then sits down again. Anything urgent, food on the wind, fear, a fight,
-# gets it up at once and keeps it marching. A duck ambling at 0.04 m/s sits for most of a minute between walks.
+# Walking in bouts, explicit code and not the fly brain: the robot can only march at one speed or pivot, so
+# a duck sits by default and banks what its brain asks for as distance. With a walk's worth banked it gets
+# up, marches it off, and sits again. Anything urgent gets it up at once and keeps it marching.
 MARCH_MS = 0.12  # what FORWARD actually does
 BOUT_M, BANK_M = 0.6, 1.0  # a walk is worth getting up for at this much; nothing more than BANK_M is remembered
 URGENT_MS = 0.1  # asked for this much or more, a duck does not wait to bank it
-# rad/s of smoothed turning intent before it pivots instead. Above the steering readout's built-in turn,
-# which is about 0.4 rad/s to the left whatever the duck senses (PLAN.md Gate 9b screen): at 0.5 that alone
-# had ducks pivoting a third of the time. Following the wind asks for 1 to 3.
+# rad/s of smoothed turning intent before it pivots instead. Above the steering readout's built-in ~0.4 rad/s
+# left bias; following the wind asks for 1 to 3.
 TURN_AT = 0.8
-TURN_MEMORY_S = 3.0  # the brain's turning is mostly noise from moment to moment; a pivot takes seconds
+TURN_MEMORY_S = 3.0  # the brain's turning is noisy moment to moment; a pivot takes seconds
 SIT_AFTER_S = 3.0  # on its feet with nowhere to go for this long, a duck sits down
-TOGGLE_S = 6.0  # sitting down or standing up takes about this long, and the duck is told nothing meanwhile
+TOGGLE_S = 6.0  # sitting down or standing up takes about this long; the duck is told nothing meanwhile
 
 
-# ponytail: a fence in software. The simulator's floor has no walls and the garden's smells stop at its
-# edge, so two ducks of five walked out of the garden in three minutes and had nothing to lead them back
-# (the 2D stub clamped positions and never said so). A duck this close to the edge and heading out is
-# pivoted toward the middle instead. The real fixes are walls in the MuJoCo scene, which a biped falls over,
-# or a wall the brain can sense; a room will have its own.
+# ponytail: a fence in software, not the fly brain. The simulator's floor has no walls and the smells stop at
+# the edge, so a duck this close to the edge and heading out is pivoted toward the middle. The real fix is
+# walls in the MuJoCo scene (a biped falls over them) or a wall the brain can sense.
 FENCE_M = 0.3
-# Two bipeds that bump fall over: every fall in a first day of five ducks had another duck 0.21 to 0.28 m
-# away and nothing else going on, and two that fell against each other could not get up. So a simulated
-# duck keeps the others at arm's length: it will not march at one that is this close and ahead of it, it
-# pivots away instead; and the garden counts that distance as touching, so that brushing past, keeping
-# company and the Bully's kicks all still happen, without anybody being knocked down.
+# Two bipeds that bump fall over (falls happened with another duck 0.21 to 0.28 m away). So, explicit code:
+# a duck will not march at one this close ahead, it pivots away, and the garden counts this distance as
+# touching so contact still happens without falls.
 REACH_M = 0.35
-GET_UP_EVERY_S = 12.0  # a duck that has fallen and is not asleep is helped up, this often until it is
+GET_UP_EVERY_S = 12.0  # a fallen duck that is not asleep is helped up this often
 LIMP_S = 4.0  # how long a duck on its side lies limp before it is asked to stand
-RISE_S = 12.0  # standing up takes about ten seconds, and for that long the duck is told nothing else
+RISE_S = 12.0  # standing up takes about ten seconds; the duck is told nothing else meanwhile
 
 
 ROBOT_SKILLS = {"ground_pick", "sit_toggle", "roulade", "kick_left", "kick_right"}  # what robotd will run
@@ -96,12 +83,12 @@ def robot_state(sock_path: str) -> dict:
 
 
 def snap(vx: float, turning: float, marching: bool = True) -> tuple[float, float]:
-    """The brain's intent as one of the commands the simulated duck actually obeys. `marching` is whether
-    this is one of its walking bursts; between bursts a duck that means to go forward stands and waits."""
+    """The brain's intent as one of the commands the simulated duck obeys. Between bouts (`marching`
+    false) a duck that means to go forward stands."""
     if vx < -WALK_AT:
         return BACK
     if vx <= WALK_AT or not marching:
-        return STAND  # going nowhere: it does not pivot on the spot for the sake of it either
+        return STAND  # going nowhere: no pivoting on the spot either
     if abs(turning) > TURN_AT:
         return LEFT if turning > 0 else RIGHT
     return FORWARD
@@ -122,18 +109,16 @@ class Truth:
         return json.loads(self.f.readline())
 
     def pose(self) -> tuple[float, float, float]:
-        """(x, y, heading) in the simulator's own frame. The rest of the reading is kept in `last`, for a
-        viewer that wants to draw the robot as it really stands: its joints, its height, how it leans."""
+        """(x, y, heading) in the simulator's frame. The full reading is kept in `last` for the viewer."""
         r = self.last = self._ask({"op": "read"})
         w, x, y, z = r["imu"]["quat"]
         return r["trunk"][0], r["trunk"][1], math.atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z))
 
     def articulation(self) -> dict:
-        """Joint angles in robotd's order, the trunk's height, and its lean: its orientation with the heading
-        taken out, since a viewer turns the whole duck to its heading already."""
+        """Joint angles in robotd's order, trunk height, and tilt: the orientation with the heading taken out."""
         w, x, y, z = self.last["imu"]["quat"]
         half = math.atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z)) / 2
-        c, s = math.cos(half), -math.sin(half)  # the heading's inverse, as a quaternion (c, 0, 0, s), times the whole
+        c, s = math.cos(half), -math.sin(half)  # inverse heading quaternion (c, 0, 0, s), times the whole
         tilt = (c * w - s * z, c * x - s * y, c * y + s * x, c * z + s * w)
         return {"joints": [round(v, 3) for v in self.last["positions"]], "z": round(self.last["trunk"][2], 4),
                 "tilt": [round(v, 4) for v in tilt]}
@@ -144,21 +129,19 @@ class Truth:
 
 
 class MujocoBody(Stub):
-    can_carry_ducks = False  # a cursor cannot lift a robot that physics is holding up; the things in the garden it can
+    can_carry_ducks = False  # a cursor cannot lift a physics-held robot
 
     def __init__(self, n: int, seed: int, sock_dir: str, sim_state: str = SIM_STATE, truth_port: int = TRUTH_PORT,
                  origin=None, cameras=(), **garden):
-        """cameras: which ducks see through their simulated head camera (the ones duck-sim was given in
-        DUCK_SIM_CAMERAS), by index. The rest see the garden drawn from above, as the stub's ducks do.
-        The camera sees MuJoCo's world, which has the other ducks and the floor in it and none of the
-        garden's dishes, tree or pond, so it is off unless asked for."""
+        """cameras: indices of ducks that see through their sim head camera (as given to DUCK_SIM_CAMERAS).
+        The rest see the garden drawn as on the stub. Off by default: MuJoCo's world has no dishes, tree or pond."""
         names = [f"duck-{c}" for c in "abcdefghij"[:n]]
         self.robot_paths = [os.path.join(sim_state, f"{name}.sock") for name in names]
         self.robots = [Client(path) for path in self.robot_paths]
         self.kick_foot = np.zeros(n, bool)  # which foot kicked last
         self.truth = [Truth(truth_port + i) for i in range(n)]
-        # where MuJoCo's (0, 0) sits in the garden: by default, so that the row of ducks straddles the middle
-        size = garden.get("size", SIZE_M)  # the world is not made until Stub's __init__, below
+        # where MuJoCo's (0, 0) sits in the garden; by default the row of ducks straddles the middle
+        size = garden.get("size", SIZE_M)  # the world is not made until Stub's __init__
         self.origin = np.asarray(origin if origin is not None else (size / 2, size / 2 - SPACING_M * (n - 1) / 2), float)
         self.turning = np.zeros(n)  # the brain's turning intent, smoothed
         self.banked = np.zeros(n)  # metres the brain has asked for and the duck has not walked yet
@@ -168,10 +151,10 @@ class MujocoBody(Stub):
         self.sat = np.zeros(n, bool)  # sitting because it wants nothing (asleep is `relaxed`)
         self.cameras = {i: SimCamera(FRAME_PORT + i) for i in cameras}
         self.got_up_at = np.full(n, -np.inf)
-        self.limp = np.zeros(n, bool)  # let go so as to settle flat, on the way to getting up
+        self.limp = np.zeros(n, bool)  # let go to settle flat before getting up
         self.rising_until = np.zeros(n)  # garden time until which a duck is left alone to stand up
-        self.turn = 0  # whose turn it is to be asked whether it has fallen
-        super().__init__(n, seed, sock_dir, **garden)  # serves the brain's sockets and sends the first frames
+        self.turn = 0  # which duck get_up checks next
+        super().__init__(n, seed, sock_dir, **garden)  # serves the brain's sockets, sends the first frames
         self.touch_m = REACH_M
         self._read_poses()
 
@@ -184,7 +167,7 @@ class MujocoBody(Stub):
         """The pivot that turns duck i back in, if it is at the edge and heading out; else None."""
         x, y, h = self.pose[i]
         out = np.array([float(x > self.world.size - FENCE_M) - float(x < FENCE_M), float(y > self.world.size - FENCE_M) - float(y < FENCE_M)])
-        for rx, ry, r in self.world.rocks:  # a rock turns a robot back as the fence does; nothing can push one
+        for rx, ry, r in self.world.rocks:  # a rock turns a robot back like the fence
             if math.hypot(x - rx, y - ry) < r + FENCE_M:
                 out = np.array([rx - x, ry - y])
         ahead = np.array([math.cos(h), math.sin(h)])
@@ -206,31 +189,25 @@ class MujocoBody(Stub):
         return RIGHT if ahead[0] * rel[j, 1] - ahead[1] * rel[j, 0] > 0 else LEFT  # it is on my left: turn right
 
     def get_up(self) -> None:
-        """Fallen and not asleep: stand up. How depends on how the duck went down, and both were found the
-        hard way, on ducks that lay there for most of a day.
-        - Tipped over while sitting: it is still in the sit policy, where enable and init do nothing at all.
-          The sit_toggle stands it. (A seated duck settles into a forward lean that robotd already calls
-          fallen, so a sleeper reads as fallen too; that one is left to sleep.)
-        - Over on its side: the policy that rises from the floor cannot start from there. Going limp first
-          lets the duck settle flat on its face, and from flat, `robot.enable` stands it up in ten seconds.
-        While a duck is limp or rising it is told nothing at all (see `_move`). The brain goes on asking it
-        to march and pivot every tick, and a duck half way up that is told to walk, or even to stand, goes
-        straight back over: fallen ducks spent whole days failing to get up that way (timelines, 2026-09-20)."""
-        # One duck a call, in turn: asking a robot how it is waits for its next state, up to 20 ms, which is
-        # a whole tick if all five are asked at once.
+        """Fallen and not asleep: stand up.
+        - Tipped over while sitting: still in the sit policy, where enable and init do nothing; sit_toggle
+          stands it. (A seated duck leans enough that robotd calls it fallen, so sleepers are left alone.)
+        - On its side: the rising policy cannot start there. Going limp lets it settle flat, and from flat
+          `robot.enable` stands it in about ten seconds.
+        While limp or rising a duck is told nothing (see `_move`): any command sends it back over."""
+        # one duck per call: robot_state waits up to 20 ms, a whole tick if all five are asked at once
         self.turn = (self.turn + 1) % len(self.robot_paths)
         for i, path in [(self.turn, self.robot_paths[self.turn])]:
             if self.relaxed[i] or self.sat[i] or self.t - self.got_up_at[i] < (LIMP_S if self.limp[i] else GET_UP_EVERY_S):
-                continue  # asleep or sitting on purpose (a seated duck reads as fallen), or helped a moment ago
+                continue  # asleep, sitting on purpose (reads as fallen), or helped a moment ago
             if self.limp[i]:  # it has had its moment on the floor
-                # a request, with an id: robotd answers enable, relax, init and stop, and one sent as a
-                # notification is dropped without a word, which is how ducks went limp (a request) and then
-                # never rose (a notification), all day, three days running
+                # must be a request with an id: robotd silently drops enable, relax, init and stop sent
+                # as notifications
                 self.robots[i].call("robot.enable", on=True)
                 self.limp[i], self.got_up_at[i], self.rising_until[i] = False, self.t, self.t + RISE_S
                 continue
             state = robot_state(path)
-            if state["policy"] == "held":  # let go and never picked up again: it needs no moment, only the word
+            if state["policy"] == "held":  # let go and never re-enabled: just enable it
                 self.robots[i].call("robot.enable", on=True)
                 self.got_up_at[i], self.rising_until[i] = self.t, self.t + RISE_S
             elif state["safety"]["fallen"]:
@@ -242,24 +219,22 @@ class MujocoBody(Stub):
                     self.limp[i] = True
                 self.got_up_at[i] = self.t
 
-    # what the brain asks of the body goes on to the robot; what it means for the garden stays here
+    # the brain's requests go on to the robot; their effect on the garden stays here
 
     def _move(self, i: int, p: dict) -> None:
         super()._move(i, p)  # kept for the viewer and for `relaxed`
         vx, _, vyaw = self.cmd[i]
         self.turning[i] += (vyaw - self.turning[i]) * min(DT / TURN_MEMORY_S, 1.0)
         if self.limp[i] or self.t < self.rising_until[i]:
-            # Not even "stand": any robot.move hands the robot from the policy that is getting it up to the
-            # one that walks. By hand, with nothing else talking to it, a duck flat on its face stood up in
-            # six seconds; in the garden, told to stand fifty times a second, the same duck lay there all day.
+            # not even "stand": any robot.move switches the robot from the rising policy to walking
             return
         if self.relaxed[i]:
             return
         urgent = vx >= URGENT_MS or vx < -WALK_AT
-        self.banked[i] = min(self.banked[i] + max(vx, 0.0) * DT, BANK_M) if vx > WALK_AT else 0.0  # wanting to stop is forgetting the walk
+        self.banked[i] = min(self.banked[i] + max(vx, 0.0) * DT, BANK_M) if vx > WALK_AT else 0.0  # asking to stop forgets the walk
         if self.sat[i]:
-            if urgent or self.banked[i] >= BOUT_M:  # up it gets, and nothing else until it is up
-                if self._sitting(i):  # asked, not assumed: a toggle sent to a duck that never sat would sit it
+            if urgent or self.banked[i] >= BOUT_M:  # stand, and nothing else until up
+                if self._sitting(i):  # asked, not assumed: a toggle to a duck that never sat would sit it
                     self.robots[i].notify("robot.do", skill="sit_toggle")
                 self.sat[i], self.marching[i], self.rising_until[i] = False, True, self.t + TOGGLE_S
             return
@@ -268,7 +243,7 @@ class MujocoBody(Stub):
             self.marching[i] = urgent or self.banked[i] > 0
         else:
             self.marching[i] = urgent or self.banked[i] >= BOUT_M
-        eating = self.t < self.eating_until[i]  # a duck with its beak in a dish is not at a loose end
+        eating = self.t < self.eating_until[i]  # eating is not idle
         self.idle_for[i] = 0.0 if self.marching[i] or eating else self.idle_for[i] + DT
         if self.idle_for[i] > SIT_AFTER_S:
             if not self._sitting(i):
@@ -290,13 +265,12 @@ class MujocoBody(Stub):
         return robot_state(self.robot_paths[i])["policy"] == "sit"
 
     def _relax(self, i: int, p: dict) -> None:
-        """Asleep is sitting down. `robot.relax` cuts the torque and a duck with no torque lies flat on its
-        face (trunk 0.04 m); it does get up again from that, but it is no way to treat a robot. The
-        robot's own sit_toggle folds it upright onto the floor and back (measured: 0.116 to 0.059 m)."""
+        """Asleep is sitting down via sit_toggle (trunk 0.116 to 0.059 m), not `robot.relax`, which drops
+        the duck flat on its face."""
         super()._relax(i, p)
         if not self.sat[i] and not self._sitting(i):
             self.robots[i].notify("robot.do", skill="sit_toggle")
-        self.sat[i] = False  # it is asleep now, which is its own state
+        self.sat[i] = False  # asleep is its own state
 
     def _init(self, i: int, p: dict) -> None:
         super()._init(i, p)
@@ -305,9 +279,8 @@ class MujocoBody(Stub):
             self.rising_until[i] = self.t + RISE_S
 
     def knock_down(self, j: int) -> None:
-        """A kick that lands: the duck goes limp and drops, and `get_up` has it back on its feet in ten to
-        fifteen seconds, the way it raises any duck that went over. The kicker keeps its distance
-        (`keep_apart`), so the blow is the garden's and the fall is the robot's own."""
+        """A kick that lands: the duck goes limp and `get_up` stands it in 10 to 15 s. The kicker keeps
+        its distance (`keep_apart`), so the blow is the garden's and the fall is the robot's."""
         super().knock_down(j)
         if not self.limp[j] and not self.relaxed[j]:
             self.robots[j].call("robot.relax")
@@ -318,8 +291,8 @@ class MujocoBody(Stub):
         self.robots[i].notify("robot.sound", tag=p["tag"])
 
     def _do(self, i: int, p: dict) -> None:
-        """What a duck does is the garden's business (the bite, the sip, the shove, the hat) and the
-        robot's to act out, in the skills it has: a headbutt is a kick, zoomies are a roulade."""
+        """The garden decides the effect; the robot acts it out with the skills it has (headbutt is a kick,
+        zoomies a roulade)."""
         super()._do(i, p)
         if p["skill"] in ("ground_pick", "drink"):
             self.eating_until[i] = self.t + 2.0
@@ -330,10 +303,10 @@ class MujocoBody(Stub):
         if self.sat[i]:
             return
         skill = p["skill"]
-        if skill in ("headbutt", "kick"):  # a shove and a kick at a ball are both a foot
+        if skill in ("headbutt", "kick"):  # both are a foot
             self.kick_foot[i] = not self.kick_foot[i]
             skill = "kick_left" if self.kick_foot[i] else "kick_right"
-        skill = {"zoomies": "roulade", "drum": "ground_pick"}.get(skill, skill)  # a tap on the drum is a peck at it
+        skill = {"zoomies": "roulade", "drum": "ground_pick"}.get(skill, skill)  # a drum tap is a peck
         if skill in ROBOT_SKILLS:
             self.robots[i].notify("robot.do", skill=skill)
 
@@ -341,14 +314,13 @@ class MujocoBody(Stub):
         return [t.articulation() for t in self.truth]
 
     def down_left(self) -> np.ndarray:
-        return np.zeros(len(self.names))  # the robot gets itself up, and Godot is shown its real joints
+        return np.zeros(len(self.names))  # the robot gets itself up; Godot shows its real joints
 
     def posture(self) -> list[str]:
         return ["down" if limp else "sat" if sat else "up" for limp, sat in zip(self.limp, self.sat)]
 
     def _emote(self, i: int, feeling: str) -> None:
-        """The poses and the voice are every body's (Stub); a robot that is down or getting up is left alone,
-        and a playful one on its feet rolls over instead, the one emote the legs join in."""
+        """As Stub's, but a robot that is down or rising is left alone, and a playful one on its feet rolls over."""
         if self.limp[i] or self.t < self.rising_until[i]:
             return
         if feeling == "playful" and not (self.sat[i] or self.marching[i] or self.acting[i] or self.relaxed[i]):
@@ -410,7 +382,7 @@ def main() -> None:
     os.makedirs(args.sock_dir, exist_ok=True)
     cameras = [ord(c.strip()) - ord("a") for c in args.cameras.split(",") if c.strip()]
     from body import frames
-    frame_port = frames.free_port_base(frames.FRAME_PORT, args.ducks)  # never the ports of a garden that is up
+    frame_port = frames.free_port_base(frames.FRAME_PORT, args.ducks)  # skip ports another garden holds
     body = MujocoBody(args.ducks, args.seed, args.sock_dir, cameras=cameras, frame_port=frame_port, **DEMO_GARDEN)
     view = None
     if args.view:
@@ -445,7 +417,7 @@ def main() -> None:
                     view.draw(body, server)
                 if world_out:
                     world_out.step(body, server)
-            next_t += DT  # the robots run on the wall clock, so the garden has to as well
+            next_t += DT  # the robots run on the wall clock, so the garden does too
             time.sleep(max(0.0, next_t - time.monotonic()))
     except KeyboardInterrupt:
         pass

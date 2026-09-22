@@ -1,35 +1,33 @@
-# One duck: the real microduck, simplified (build_robot.py writes robot.json from Pollen Robotics' meshes) and
-# built as the robot is, every body on its own hinge under its parent. So it is posed by joint angles: the
-# simulated robot's own, live, when the garden sends them, and otherwise the robot's own motions as recorded
-# from the simulator (clips.json: its sit, its walk, its kick, its roll, its fall and its getting up). It faces +x and stands on y = 0. Personality shows in its proportions, as far
-# as a robot's can: a big appetite is a wide one, a timid duck is small, a vain one has a big head, and the grey
-# plastic takes the duck's own colour.
-# It is told where it is and how it feels (`show_state`), and everything else here is how that looks.
+# One duck: the microduck robot, simplified (build_robot.py writes robot.json from Pollen Robotics' meshes),
+# each body on its own hinge under its parent. It is posed by joint angles: the simulated robot's live joints
+# when the garden sends them, otherwise motions recorded from the simulator (clips.json). It faces +x and
+# stands on y = 0. Personality sets proportions: appetite widens it, timidity shrinks it, vanity grows the head.
+# `show_state` tells it where it is and how it feels; the rest is drawing.
 extends Node3D
 
 const Ink := preload("res://ink.gd")
 const Hats := preload("res://hats.gd")
-const CELL := 5.0  # a finer screen than the ground's: at 9 px a duck this small came out spotted like a dalmatian
-const LOOK := 1.9  # drawn a little larger than life, so a duck reads from across the garden
+const CELL := 5.0  # halftone cell in px, finer than the ground's so a small duck is not spotty
+const LOOK := 1.9  # drawn larger than life, so a duck reads from across the garden
 const EMOTE_S := 2.8
 const RIBBONS := [Ink.CORAL, Ink.TEAL, Ink.MUSTARD, Color("7d6bd0"), Color("e58ac0")]
-const DOES := {"cry": "cries", "dance": "dances", "singdance": "sings and dances", "stomp": "stomps", "yawn": "yawns", "splash": "splashes", "sing": "sings", "cower": "cowers"}  # a signature is what it does
+const DOES := {"cry": "cries", "dance": "dances", "singdance": "sings and dances", "stomp": "stomps", "yawn": "yawns", "splash": "splashes", "sing": "sings", "cower": "cowers"}  # emote -> the word shown over the duck
 const MOOD_SHAPES := {"joy": "ball", "fear": "spike", "anger": "block", "sorrow": "drop"}
 
-var model := Node3D.new()  # everything that waddles, sits and falls over; the shadow and the signs do not
-var rig := Node3D.new()  # the robot in MuJoCo's own frame (z up), turned once to stand in Godot's
+var model := Node3D.new()  # the body; the shadow and the signs sit outside it
+var rig := Node3D.new()  # the robot in MuJoCo's frame (z up), turned once into Godot's
 var trunk := Node3D.new()
 var hinges := {}  # joint name -> [the node it turns, its axis]
 var frames := {}  # body name -> its node
 var head: Node3D  # the body the hat sits on
-var hat: Node3D  # whichever hat it wears, made from its style number
+var hat: Node3D
 var hat_style := -1
 var shadow: MeshInstance3D
 var mood := Node3D.new()
 var mood_shapes := {}
 var sign := Label3D.new()
-var tears: Array[MeshInstance3D] = []  # two, falling from a crying duck
-var zs: Array[Label3D] = []  # a sleeper's z's, streaming up from its head: zzZZ
+var tears: Array[MeshInstance3D] = []
+var zs: Array[Label3D] = []  # a sleeper's z's
 var ring: MeshInstance3D
 
 var state := {}
@@ -39,19 +37,19 @@ var emote := ""
 var emote_age := 99.0
 var emote_seen := -1.0
 var calm := 1.0  # 0.5 under reduced motion
-var sway := 0.0  # a lean an emote asks for, which the next frame's posture takes up (set, never added to the tilt)
-var lifted := false  # the player's hand has it: up off the grass, legs dangling
+var sway := 0.0  # an emote's lean, set each frame (never accumulated)
+var lifted := false  # held by the player's hand
 var heading_was := 0.0
-var clip := "stand"  # which recorded motion is playing, and how far into it
+var clip := "stand"  # the recorded motion playing, and how far into it
 var clip_t := 0.0
-var hop := 0.0  # and a lift, the same way: added to the height each frame, a hop became a hover
+var hop := 0.0  # an emote's lift, set each frame like sway; accumulating it made hops into hovers
 const WIRE := ["left_hip_yaw", "left_hip_roll", "left_hip_pitch", "left_knee", "left_ankle", "neck_pitch", "head_pitch",
 	"head_yaw", "head_roll", "mouth", "right_hip_yaw", "right_hip_roll", "right_hip_pitch", "right_knee", "right_ankle"]  # robotd's joint order
-# Motions played once through at this rate, and finished before the next begins (a knock-down interrupts any).
-# The 2D body gets a duck up, sat or walking the moment it says so, where a robot takes seconds, so these hurry.
+# Motions played once through at this rate and finished before the next begins (a knock-down interrupts).
+# Sped up because the 2D body changes posture instantly while the robot takes seconds.
 const ONCE := {"sit_down": 2.0, "stand_up": 3.0, "kick": 2.0, "roll": 1.3, "get_up": 2.5, "go_limp": 1.0}
-static var clips := {}  # clips.json: the robot's own motions, recorded
-static var robot := {}  # robot.json with its meshes made, built once and shared by every duck
+static var clips := {}  # clips.json
+static var robot := {}  # robot.json with its meshes built, shared by every duck
 
 
 static func robot_data() -> Dictionary:
@@ -65,7 +63,7 @@ static func robot_data() -> Dictionary:
 					st.add_vertex(Vector3(p.v[k], p.v[k + 1], p.v[k + 2]) * robot.unit)
 				for index in p.i:
 					st.add_index(int(index))
-				st.generate_normals()  # smooth ones, for the outline to grow along; the print shader shades flat
+				st.generate_normals()  # smooth, for the outline to grow along; the print shader shades flat
 				p["mesh"] = st.commit()
 	return robot
 
@@ -74,39 +72,38 @@ func build(index: int, knobs: Dictionary) -> void:
 	var k := func(name: String) -> float: return float(knobs.get(name, 0.5))
 	var girth: float = 0.85 + 0.3 * k.call("appetite")
 	var size: float = 0.9 + 0.25 * k.call("aggressiveness") - 0.2 * k.call("timidity")
-	# the servos are dark on the real robot; drawn dark they turned a small duck into a scribble, so they are
-	# grey here and the links between them carry the duck's own colour
+	# servos are grey (dark ones turned a small duck into a scribble); the links carry the duck's colour
 	var inks := {"cream": Ink.CREAM, "navy": Ink.STONE, "coral": Ink.CORAL, "mustard": Ink.MUSTARD,
 		"stone": RIBBONS[index % RIBBONS.size()]}
 
 	add_child(model)
 	model.scale = Vector3(1.0, 1.0, girth) * LOOK * size
 	var data := robot_data()
-	rig.rotation.x = -PI / 2  # MuJoCo's z is up and its y is to the left; Godot's y is up and its z to the right
+	rig.rotation.x = -PI / 2  # MuJoCo: z up, y left; Godot: y up, z right
 	rig.position.y = data.stand_z
 	model.add_child(rig)
 	rig.add_child(trunk)
 	for body in data.bodies:
 		var node := Node3D.new()
 		if body.parent == "world":
-			trunk.add_child(node)  # the trunk: where it is and how it leans is set on `trunk` each frame
+			trunk.add_child(node)  # its position and lean are set on `trunk` each frame
 		else:
 			node.position = Vector3(body.pos[0], body.pos[1], body.pos[2])
 			node.quaternion = Quaternion(body.quat[1], body.quat[2], body.quat[3], body.quat[0])
 			frames[body.parent].add_child(node)
-		var turns := Node3D.new()  # the hinge: everything of this body, and every body after it, turns here
+		var turns := Node3D.new()  # the hinge: this body and its children turn here
 		node.add_child(turns)
 		frames[body.name] = turns
 		if body.joint != null:
 			hinges[body.joint.name] = [turns, Vector3(body.joint.axis[0], body.joint.axis[1], body.joint.axis[2]).normalized()]
 		for part in body.parts:
-			var shell: bool = part.ink == "cream"  # the line goes round the shells; round every servo it is a blot
+			var shell: bool = part.ink == "cream"  # outline shells only; outlined servos became blots
 			var piece := Ink.part(turns, part.mesh, inks[part.ink], Vector3.ZERO, Vector3.ONE, CELL, -1.0, shell)
-			piece.material_override.set_shader_parameter("lift", 0.25)  # a duck stays bright on its shaded side
+			piece.material_override.set_shader_parameter("lift", 0.25)  # brighter shaded side
 			if shell:
 				(piece.material_override.next_pass as ShaderMaterial).set_shader_parameter("grow", 0.0025)
 	head = frames[data.hat.body]
-	frames["neck_pitch"].scale = Vector3.ONE * (0.9 + 0.3 * k.call("vanity"))  # the head and all that rides on it
+	frames["neck_pitch"].scale = Vector3.ONE * (0.9 + 0.3 * k.call("vanity"))  # the head and everything on it
 
 	shadow = Ink.part(self, Ink.cone(0.1 * LOOK * size * girth, 0.001, 0.1 * LOOK * size * girth, 12), Ink.GRASS, Vector3(0, 0.003, 0), Vector3.ONE, 7.0, 0.35)
 	ring = Ink.part(self, _torus(0.17 * LOOK, 0.19 * LOOK), Ink.CORAL, Vector3(0, 0.004, 0), Vector3(1, 0.2, 1), 7.0, 1.0)
@@ -146,7 +143,7 @@ func build(index: int, knobs: Dictionary) -> void:
 
 
 func _play(want: String, dt: float) -> Array:
-	# Advance the playing clip towards what the duck is doing and return its pose now, [joints, height, lean].
+	# Advance the clip towards `want` and return the pose now: [joints, height, lean].
 	if clips.is_empty():
 		clips = JSON.parse_string(FileAccess.get_file_as_string("res://clips.json"))
 	var hz: float = clips.hz
@@ -154,8 +151,8 @@ func _play(want: String, dt: float) -> Array:
 	var length: float = (frames_now.size() - 1) / hz
 	var finishing: bool = ONCE.has(clip) and clip_t < length and want != "go_limp"
 	if want == "go_limp":
-		# Down for a set time in the 2D body: it falls, lies, and is getting up over the last of it, so that it
-		# stands as it is freed. Getting up is placed by the time left, not played forward.
+		# The 2D body is down for a set time. Get-up is placed by the time left, not played forward,
+		# so the duck is standing when it is freed.
 		var rise: float = (clips.clips["get_up"].frames.size() - 1) / hz / ONCE["get_up"]
 		var left: float = state.get("down_left", 0.0)
 		if left < rise:
@@ -170,7 +167,7 @@ func _play(want: String, dt: float) -> Array:
 		elif sat and not (want in ["sitting", "go_limp"]):
 			next = "stand_up"
 		elif clip == "go_limp" and want != "go_limp":
-			next = "get_up"  # freed early, which the robot body can be: it still has to get up
+			next = "get_up"  # freed early (the robot body can be): still has to get up
 		if next != clip:
 			clip = next
 			clip_t = 0.0
@@ -181,7 +178,7 @@ func _play(want: String, dt: float) -> Array:
 	if clips.clips[clip].loop:
 		clip_t = fmod(clip_t, length)
 	else:
-		clip_t = min(clip_t, length)  # and held there: a duck that is down stays as it fell
+		clip_t = min(clip_t, length)  # hold the last frame
 	return _pose_at(clip, clip_t)
 
 
@@ -194,7 +191,7 @@ func _pose_at(which: String, seconds: float) -> Array:
 	var joints := []
 	for k in a[0].size():
 		joints.append(lerp(float(a[0][k]), float(b[0][k]), u))
-	var qa := Quaternion(a[2][1], a[2][2], a[2][3], a[2][0]).normalized()  # written to three places, so not quite unit
+	var qa := Quaternion(a[2][1], a[2][2], a[2][3], a[2][0]).normalized()  # stored to 3 decimals, so not quite unit
 	var qb := Quaternion(b[2][1], b[2][2], b[2][3], b[2][0]).normalized()
 	var q := qa.slerp(qb, u)
 	return [joints, lerp(float(a[1]), float(b[1]), u), [q.w, q.x, q.y, q.z]]
@@ -230,16 +227,16 @@ func _process(dt: float) -> void:
 	speed = lerp(speed, before.distance_to(position) / max(dt, 1e-4), min(1.0, 6.0 * dt))
 	emote_age += dt
 	var t := Time.get_ticks_msec() / 1000.0 + get_index()
-	var real: bool = state.has("joints")  # the simulated robot's own joints: then nothing here is by rule
+	var real: bool = state.has("joints")  # live joints from the simulated robot
 	var angle := _real_pose(dt) if real else _clip_pose(dt, t)
 	heading_was = rotation.y
-	for leg in ["yaw2roll", "bearing_roll"]:  # where each leg joins the trunk: under water they are not seen
+	for leg in ["yaw2roll", "bearing_roll"]:  # the legs, hidden while swimming
 		frames[leg].visible = real or not state.swimming
 	shadow.visible = not state.swimming
 	_wear()
 	if not real:
 		_nod(angle, t)
-	for name in hinges:  # and the pose is set: every hinge eased to its angle about its own axis
+	for name in hinges:  # ease every hinge to its angle about its own axis
 		var hinge: Array = hinges[name]
 		var node: Node3D = hinge[0]
 		node.quaternion = node.quaternion.slerp(Quaternion(hinge[1], angle.get(name, 0.0)), min(1.0, (20.0 if real else 9.0) * dt))
@@ -255,7 +252,7 @@ func _stand() -> Dictionary:
 
 
 func _real_pose(dt: float) -> Dictionary:
-	# The simulated robot's own joints, trunk height and lean, eased to.
+	# Ease to the simulated robot's joints, trunk height and lean.
 	var angle := _stand()
 	for k in WIRE.size():
 		angle[WIRE[k]] = float(state.joints[k])
@@ -267,8 +264,8 @@ func _real_pose(dt: float) -> Dictionary:
 
 
 func _wanted_clip(dt: float) -> String:
-	# Which of the robot's recorded motions fits what this duck is doing.
-	var moved_to_act: bool = emote_age < EMOTE_S and emote in ["dance", "singdance", "happy", "playful", "stomp"]  # on its feet for these
+	# The recorded motion that fits what this duck is doing.
+	var moved_to_act: bool = emote_age < EMOTE_S and emote in ["dance", "singdance", "happy", "playful", "stomp"]  # standing emotes
 	var low: bool = (state.sat and not moved_to_act) or state.asleep
 	var yaw_rate: float = angle_difference(heading_was, rotation.y) / max(dt, 1e-4)
 	if state.down:
@@ -289,28 +286,27 @@ func _wanted_clip(dt: float) -> String:
 
 
 func _clip_pose(dt: float, t: float) -> Dictionary:
-	# The robot's own motions, recorded from the simulator (record_clips.py) and played for whatever this
-	# duck is doing: it sits as a microduck sits, walks its walk, and gets up the way one gets up.
+	# Play the motions recorded from the simulator (record_clips.py) for what this duck is doing.
 	var angle := _stand()
 	var pose := _play(_wanted_clip(dt), dt)
 	for k in WIRE.size():
 		angle[WIRE[k]] = float(pose[0][k])
 	rig.position.y = lerp(rig.position.y, float(pose[1]), min(1.0, 14.0 * dt))
 	trunk.quaternion = trunk.quaternion.slerp(Quaternion(pose[2][1], pose[2][2], pose[2][3], pose[2][0]).normalized(), min(1.0, 14.0 * dt))
-	if emote in ["dance", "singdance"] and emote_age < EMOTE_S:  # no robot has a dance: steps in place, by rule
+	if emote in ["dance", "singdance"] and emote_age < EMOTE_S:  # no recorded dance: step in place
 		var step := sin(emote_age * TAU / 0.7) * 0.3
 		for side in ["left", "right"]:
 			angle[side + "_hip_pitch"] = angle.get(side + "_hip_pitch", 0.0) + step
 			angle[side + "_ankle"] = angle.get(side + "_ankle", 0.0) - step
 	var swimming: bool = state.swimming
-	var afloat := -0.05 * model.scale.y if swimming else (0.32 if lifted else 0.0)  # the pond comes up to its trunk; a hand lifts it clear
+	var afloat := -0.05 * model.scale.y if swimming else (0.32 if lifted else 0.0)  # the pond comes up to its trunk
 	model.position.y = lerp(model.position.y, afloat + hop * LOOK * calm, min(1.0, 14.0 * dt))
 	model.rotation.x = lerp(model.rotation.x, (sin(t * 1.7) * 0.05 * calm if swimming else 0.0) + sway * calm, min(1.0, 8.0 * dt))
 	return angle
 
 
 func _wear() -> void:
-	# The hat it wears, remade only when which hat changes.
+	# Rebuild the hat only when it changes.
 	var wearing: int = state.hat_style if state.hat else -1
 	if wearing == hat_style:
 		return
@@ -319,7 +315,7 @@ func _wear() -> void:
 		hat = null
 	if wearing >= 0:
 		hat = Hats.make(wearing)
-		var seat: Dictionary = robot_data().hat  # the crown of the head shell, and which way is up there, in the head's frame
+		var seat: Dictionary = robot_data().hat  # the crown of the head shell and its up, in the head's frame
 		var up := Vector3(seat.up[0], seat.up[1], seat.up[2])
 		var forward := Vector3(seat.forward[0], seat.forward[1], seat.forward[2])
 		hat.transform = Transform3D(Basis(forward, up, forward.cross(up)).scaled(Vector3.ONE * 1.25), Vector3(seat.at[0], seat.at[1], seat.at[2]))
@@ -328,9 +324,8 @@ func _wear() -> void:
 
 
 func _nod(angle: Dictionary, t: float) -> void:
-	# The head does what the body was told (`state.head`: neck_pitch, head_pitch, head_yaw, head_roll, offsets
-	# on the robot's own joints), so an emote here is the emote the robot makes. Sleeping and eating have no
-	# head commands of their own yet and are posed here; breathing fills the gaps.
+	# The head follows `state.head` (neck_pitch, head_pitch, head_yaw, head_roll offsets on the robot's
+	# joints), so it matches the robot's emote. Sleeping and eating are posed here; breathing is added on top.
 	var told: Array = state.get("head", [0.0, 0.0, 0.0, 0.0])
 	var nod: Array = [told[0], told[1] + sin(t * 0.9) * 0.03 * calm, told[2] + sin(t * 0.37) * 0.1 * calm, told[3]]
 	if state.asleep:
@@ -343,7 +338,7 @@ func _nod(angle: Dictionary, t: float) -> void:
 
 
 func _act_out(dt: float) -> void:
-	# The rest of the body joins in a little, for the feelings that would move more than a head.
+	# Body squash, hop, sway and spin for the emotes.
 	var squash := 0.0
 	sway = 0.0
 	hop = 0.0
@@ -359,7 +354,7 @@ func _act_out(dt: float) -> void:
 			"splash": hop = abs(beat) * 0.03; squash = -abs(beat) * 0.06
 			"sing": sway = beat * 0.08
 			"cower": squash = 0.24
-			"dance", "singdance":  # on the beat: down and up, a sway, a twist from side to side
+			"dance", "singdance":
 				var bar := sin(emote_age * TAU / 0.7)
 				hop = abs(bar) * 0.02
 				squash = max(-bar, 0.0) * 0.1
@@ -372,7 +367,7 @@ func _act_out(dt: float) -> void:
 
 
 func _signs(dt: float, t: float) -> void:
-	# The sign overhead: a shape for the mood, a word for the emote, tears, and z for sleep.
+	# Overhead signs: a shape for the mood, a word for the emote, tears, and z's for sleep.
 	var shape: String = MOOD_SHAPES.get(state.mood, "")
 	for name in mood_shapes:
 		mood_shapes[name].visible = name == shape and state.strength > 0.25 and not state.asleep
@@ -380,11 +375,11 @@ func _signs(dt: float, t: float) -> void:
 	mood.rotation.y += dt * (4.0 if shape == "block" else 1.0) * calm
 	mood.position.x = sin(t * 40.0) * 0.006 * calm if shape == "spike" else 0.0
 	sign.text = "" if state.asleep else (DOES.get(emote, emote) if emote_age < EMOTE_S + 0.6 else "")
-	for k in tears.size():  # a tear from each side of the head, again and again
+	for k in tears.size():  # one from each side of the head
 		tears[k].visible = state.get("crying", false)
 		var fall := fmod(t * 1.4 + 0.5 * k, 1.0)
 		tears[k].position = Vector3(0.05 * LOOK, (0.26 - 0.22 * fall) * LOOK, (0.06 if k == 0 else -0.06) * LOOK)
-	for k in zs.size():  # each z rises from the head, drifts, grows from z to Z, and fades: a stream of them
+	for k in zs.size():  # each rises, drifts, grows from z to Z and fades
 		var z := zs[k]
 		z.visible = state.asleep
 		if state.asleep:

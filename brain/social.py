@@ -1,12 +1,11 @@
-"""What the ducks are to each other, and to the player's hand (Chris, 2026-09-21, after the Chao gardens).
+"""What the ducks are to each other, and to the player's hand.
 
-A Chao garden is mostly this: who likes whom, who has been treated well, who learned what from watching. None
-of it is the fly's. It is kept here, beside the body's needs and moods and like them, as slow quantities that
-events push about, and like the other likes it reaches the legs through explicit turns in the decoder (towards
-a friend, away from a grudge, towards a hand that has been kind, towards a cry). The body says what happened
-and to whom (body/frames.py: ids, and which side); this decides what a duck makes of it, by its knobs.
+Explicit code, none of it the fly's: who likes whom, who has been treated well, who learned what from
+watching. These values change slowly and reach the legs through explicit turns in the decoder (towards a
+friend, away from a grudge, towards a kind hand, towards a cry). The body reports what happened and to
+whom (body/frames.py); this decides what a duck makes of it, by its knobs.
 
-Everything lives on the Physiology so that a saved garden keeps it (brain/save.py keeps every array there):
+Everything lives on the Physiology so a save keeps it (brain/save.py keeps every array there):
   bond[i, j]   what duck i thinks of duck j, -1 a grudge to 1 a friend; not mutual
   hand_trust   what it thinks of the player's hand, -1 to 1
   favourite    the fruit it likes best
@@ -16,11 +15,11 @@ import numpy as np
 
 from world.fields import FRUITS
 
-BOND_FADES_S = 1800.0  # a bond nobody renews is mostly gone in three days of garden time
-TOGETHER_S = 120.0  # at ease beside the same duck for this long is a full step towards friendship
-SCENT_HALF = 0.05  # the smell of a duck about a metre and a half off: half as telling as one beside it
-SCENT_CONTRAST = 8.0  # two antennae 10 cm apart differ by a few percent; this makes a side of it
-KINDLY = 0.5  # kindness past this is a duck that minds what happens to others
+BOND_FADES_S = 1800.0  # decay time of a bond nobody renews
+TOGETHER_S = 120.0  # this long at ease beside one duck adds a full step of bond
+SCENT_HALF = 0.05  # a duck about 1.5 m off counts half
+SCENT_CONTRAST = 8.0  # two antennae 10 cm apart differ by a few percent; this amplifies it
+KINDLY = 0.5  # kindness past this minds what happens to others
 
 
 def init(body, seed: int = 0) -> None:
@@ -48,25 +47,25 @@ def update(body, f: dict, dt: float, speed: np.ndarray) -> None:
 
     by, hit = who("bumped_by")  # shoved: a grudge, whoever it is
     body.bond[me[hit], by[hit]] -= 0.3
-    by, saw = who("saw_shove_by")  # saw a shove: a kind duck holds it against the one who did it, and is sorry;
-    body.bond[me[saw], by[saw]] -= 0.15 * kind[saw]  # a timid one is frightened, and the flight is the decoder's
+    by, saw = who("saw_shove_by")  # saw a shove: a kind duck blames the shover and is sorry,
+    body.bond[me[saw], by[saw]] -= 0.15 * kind[saw]  # a timid one is frightened (the decoder does the flight)
     victim, _ = who("saw_shove_of")
     body.bond[me[saw], victim[saw]] += 0.1 * kind[saw]
     body.sorrow = np.clip(body.sorrow + 0.1 * kind * saw, 0, 1)
     body.fear = np.clip(body.fear + 0.25 * body.k["timidity"] * saw, 0, 1)
-    by, show = who("show_by")  # a song or a dance: what it thought of it, it thinks of the singer
+    by, show = who("show_by")  # a song or a dance changes the bond with the performer
     body.bond[me[show], by[show]] += (0.08 * fan * (1 - cross) - 0.05 * put_off - 0.08 * cross)[show]
-    body.dance_skill = np.clip(body.dance_skill + 0.04 * fan * (1 - cross) * show, 0, 1)  # and a dance is learned by watching
+    body.dance_skill = np.clip(body.dance_skill + 0.04 * fan * (1 - cross) * show, 0, 1)  # dancing is learned by watching
     by, took = who("hat_taken_by")  # a hat taken under a vain duck's beak
     body.bond[me[took], by[took]] -= 0.2 * vain[took]
     body.anger = np.clip(body.anger + 0.3 * vain * took, 0, 1)
-    by, held = who("comforted_by")  # someone came to it while it cried
+    by, held = who("comforted_by")  # another duck came to it while it cried
     body.bond[me[held], by[held]] += 0.25
     body.bond[by[held], me[held]] += 0.1
     body.sorrow = np.clip(body.sorrow - 0.4 * held, 0, 1)
     np.add.at(body.joy, by[held], 0.1)
 
-    near, with_one = who("near_id")  # company: time at ease beside one duck, and more for sleeping beside it
+    near, with_one = who("near_id")  # time at ease beside one duck, more for sleeping beside it
     at_ease = np.maximum(body.hunger, body.thirst) < 0.6
     both_asleep = body.asleep & body.asleep[np.where(with_one, near, 0)]
     grows = dt / TOGETHER_S * (fan * at_ease + 2.0 * both_asleep) * with_one
@@ -79,12 +78,11 @@ def update(body, f: dict, dt: float, speed: np.ndarray) -> None:
     body.fear = np.clip(body.fear + 0.25 * (0.3 + body.k["timidity"]) * (f["heard_alarm"] > 0), 0, 1)
     body.joy = np.clip(body.joy + 0.1 * fan * (f["heard_joy"] > 0), 0, 1)
 
-    # the hand: petting and food from it earn trust, a clap loses a little, and it is slow to change
+    # the hand: petting and feeding earn trust, a clap loses a little
     body.hand_trust = np.clip(body.hand_trust + 0.08 * (f["petted"] > 0) + 0.15 * (f["hand_fed"] > 0) - 0.05 * (f["scared"] > 0), -1, 1)
     body.joy = np.clip(body.joy + 0.25 * (f["ate_kind"] == body.favourite), 0, 1)  # its favourite fruit
-    # Picked up (as in a Chao garden): a duck that trusts the hand likes it and trusts it more; one that does not
-    # is frightened, the timid most. Thrown, any duck is frightened, thinks a good deal less of the hand, and
-    # an aggressive one is angry about it as well.
+    # Picked up: a trusting duck enjoys it and trusts more; others are frightened, the timid most.
+    # Thrown: any duck is frightened and trusts the hand much less; an aggressive one gets angry.
     held, thrown, trusting = f["held"] > 0, f["thrown"] > 0, body.hand_trust > 0.2
     body.joy = np.clip(body.joy + dt * 0.3 * held * trusting, 0, 1)
     body.fear = np.clip(body.fear + dt * 0.5 * (0.3 + body.k["timidity"]) * held * ~trusting + 0.5 * thrown, 0, 1)
@@ -100,18 +98,17 @@ def performed(body, i: int) -> None:
 
 
 def steering(body, f: dict, scent=None) -> dict:
-    """What the decoder needs of all this, a value a duck: see brain/decoder.py for what each does. `scent` is
-    each duck's smell of every other as (n, n) left and right (BrainServer._scents); None reads the frames'
-    own columns, which is the same when every duck is in one garden."""
+    """What the decoder needs, one value per duck (see brain/decoder.py). `scent` is each duck's smell of
+    every other as (n, n) left and right (BrainServer._scents); None reads the frames' columns, which is
+    the same when every duck is in one garden."""
     n = len(body.hunger)
     near = f["near_id"].astype(int)
     with_one = f["near_id"] >= 0
     kind = trait(body, "kindness", KINDLY)
     crying = np.maximum(f["cry_left"], f["cry_right"])
     hand = np.maximum(f["hand_left"], f["hand_right"])
-    # Friends and grudges from across the garden: each duck has a smell of its own, and which antenna a duck
-    # smells it on more says which side it is on. The difference is taken as a share of the whole, as the other
-    # smells' is, so a faint duck far off still has a side; how much it matters falls off with how faint it is.
+    # Friends and grudges from afar: each duck has its own smell, and the left/right difference as a share
+    # of the total gives its side even when faint; its weight falls off with faintness.
     left, right = scent if scent is not None else (f["scent_left"][:, :n], f["scent_right"][:, :n])
     total = left + right
     side = (left - right) / np.maximum(total, 1e-9)  # +1 all on the left, -1 all on the right
@@ -125,7 +122,7 @@ def steering(body, f: dict, scent=None) -> dict:
         "comfort": kind, "cry_left": f["cry_left"], "cry_right": f["cry_right"],
         # a kind duck that is not starving leaves the food to one that is crying for it
         "sharing": (kind > 0.3) & (crying > 0.3) & (body.hunger < 0.6),
-        # and these are reasons to be walking: a cry to go to, a trusted hand to come to
+        # reasons to walk: a cry to go to, a trusted hand to come to
         "social_want": np.maximum(kind * crying, np.clip(body.hand_trust, 0, 1) * hand),
         "sleepy_together": trait(body, "sociability") * np.clip((body.sleep_pressure - 0.6) / 0.4, 0, 1),
         "swim_skill": body.swim_skill, "run_skill": body.run_skill,
@@ -170,7 +167,7 @@ if __name__ == "__main__":
     f = blank(); f["scent_left"][2, 0], f["scent_right"][2, 0] = 0.021, 0.019  # the Bully, two metres off to the Scaredy's left
     assert steering(b, f)["bond_turn"][2] < -0.05 and steering(b, f)["bond_turn"][3] == 0, "a grudge turns a duck away from far off"
     assert friends(b, 2, labels) == ("", "Bully") and friends(b, 3, labels) == ("", ""), "one shove is a grudge for the duck it landed on"
-    # One server, two gardens of two ducks: a frame names ducks by their number in its own garden
+    # one server, two gardens of two ducks
     from types import SimpleNamespace
     from brain.server import BrainServer
     two = SimpleNamespace(first=np.array([0, 0, 2, 2]), n=4)

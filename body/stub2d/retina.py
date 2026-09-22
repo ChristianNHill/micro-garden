@@ -1,4 +1,4 @@
-"""The garden rendered onto flyvis's 721-column hex lattice, one eye per side (PLAN.md Gate 6).
+"""The garden rendered onto flyvis's 721-column hex lattice, one eye per side (Gate 6).
 
 Each world object is a vertical cylinder, so a column sees it when the angle between the column's
 gaze direction and the object's bearing is under the object's angular radius atan(r / d). Approach
@@ -16,10 +16,8 @@ N_HEX = 721
 OMMATIDIUM_DEG = 5.8  # interommatidial angle, Drosophila
 EYE_AZ_DEG = 55.0  # each eye's optical axis, degrees off forward; the two overlap frontally to +-20 deg
 BACKGROUND, DISH_I, DUCK_I, TREE_I = 0.5, 1.0, 0.15, 0.0
-# A rock is pale stone in the sun, as light as the ground: drawn dark (0.3) it was a dark upright thing, which
-# a fly steers for, and being solid it held the ducks that reached it (0.04 of their time against a rock, from
-# 0.01, three gardens of five: Chris saw them gather at the waterfall, 2026-09-21). The tree is dark too, but a
-# duck can walk under a tree.
+# Rocks are as light as the ground: a fly steers for a dark upright thing, and a solid one traps the ducks
+# that reach it. The tree is dark, but a duck can walk under it.
 ROCK_I = 0.5
 BALL_I = 0.95  # a ball is a bright thing, nearly as bright as food
 HAND_I, HAND_R = 0.9, 0.12  # the player's hand, a pale thing about the size of two dishes
@@ -75,9 +73,8 @@ def luminance(duck_xy: np.ndarray, heading: np.ndarray, world, light: float = 1.
         nearest = np.where(hit, d, nearest)
 
     if world.pond is not None:
-        # Water lies flat, so it has no silhouette to loom: a column below the horizon meets the ground
-        # at EYE_H / tan(depression), and the pond is whatever of those points fall inside it. That is
-        # a ground-plane raycast, which also gives the near shore its proper perspective for free.
+        # Water lies flat, so it is a ground-plane raycast: a column below the horizon meets the ground
+        # at EYE_H / tan(depression), and sees pond where that point is inside it.
         px, py, pr = world.pond
         ground = np.full(N_HEX, 1e6)  # sky and the horizon itself never reach the ground
         below = HEX_EL < -np.radians(HORIZON_DEG)

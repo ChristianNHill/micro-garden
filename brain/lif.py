@@ -1,14 +1,11 @@
-"""Batched leaky integrate-and-fire over the connectome on torch (PLAN.md Gate 1).
+"""Batched leaky integrate-and-fire over the connectome on torch.
 
 Per-tick rule (snedea/flybrain): V = LEAK V + synaptic input + external input; spike at
-V >= THRESH + adaptation, reset to 0, refractory REFRAC ticks. Gate 1 decisions (2026-09-16): torch on
-MPS, DT_MS = 10, each excitatory synapse adds SYN_GAIN of threshold (flybrain's 0.15 * w / max|w| did
-not propagate). Glutamate became inhibitory at Gate 4.
-
-Gate 4 model work: inhibitory synapses are scaled by INH_RATIO relative to excitatory ones, and each
-spike raises that neuron's threshold by ADAPT_INC, decaying by ADAPT_DECAY per tick (spike-frequency
-adaptation, about 200 ms). The sweep that chose SYN_GAIN 0.01 and ADAPT_INC 1.0 (from 0.005 and 0):
-activity dies within 0.5 s of odor off, odor reaches steering DNs, Gate 2 still holds.
+V >= THRESH + adaptation, reset to 0, refractory REFRAC ticks. Each synapse adds SYN_GAIN of threshold
+per synapse count; inhibitory ones are scaled by INH_RATIO. Each spike raises that neuron's threshold
+by ADAPT_INC, decaying by ADAPT_DECAY per tick (spike-frequency adaptation, about 200 ms).
+SYN_GAIN and ADAPT_INC are tuned so activity dies within 0.5 s of odor off and odor still reaches the
+steering DNs.
 """
 import numpy as np
 import torch
@@ -38,20 +35,19 @@ class LIF:
         self.ref = torch.zeros((batch, n), dtype=torch.int8, device=device)
         self.n_spikes = torch.zeros((batch, n), dtype=torch.int32, device=device)
         self.rest_current = torch.zeros(n, device=device)
-        # Per-neuron threshold, above the shared one. Kenyon cells need it: in the fly each fires only
-        # when several of its few inputs coincide, and that is what keeps the odor code sparse.
+        # Per-neuron threshold above the shared one. Kenyon cells fire only when several inputs
+        # coincide, which keeps the odor code sparse.
         self.thresh_offset = torch.zeros(n, device=device)
 
     def step(self, in_b: np.ndarray, in_n: np.ndarray, graded: tuple[torch.Tensor, torch.Tensor] | None = None,
              plastic=None) -> torch.Tensor:
         """Advance one tick with a threshold-sized kick at each (in_b, in_n). Returns the (batch, n) spike mask.
 
-        graded is (neuron indices, release in [0, 1] per brain) for cells that do not spike: the optic
-        lobe's neurons are graded in the fly, and flyvis models them that way (brain/vision.py). Their
-        release replaces their spike this tick, 1.0 being as much transmitter as one spike carries.
+        graded is (neuron indices, release in [0, 1] per brain) for non-spiking cells; their release
+        replaces their spike this tick, 1.0 being one spike's worth of transmitter.
 
-        plastic is a brain.plasticity.Plasticity, whose Kenyon cell -> MBON synapses are per duck and
-        so cannot live in the shared matrix. It must own that block (see `strip`) or it counts twice.
+        plastic is a brain.plasticity.Plasticity with per-duck Kenyon cell -> MBON synapses. It must own
+        that block (see `strip`) or it counts twice.
         """
         V = self.V
         V.mul_(LEAK).add_(self.syn)
@@ -76,10 +72,8 @@ class LIF:
     def calibrate(self, indices: torch.Tensor, rest_release: float) -> None:
         """Take the current a set of graded cells delivers at rest as the zero point.
 
-        Graded cells release all the time, so a blank scene still pushed the whole brain (Gate 6: the
-        giant fiber fired as often with nothing to see as with a looming disc). A fly's brain is not
-        wound up by an empty grey world, so the resting release is subtracted and only departures
-        from it drive anything.
+        Graded cells release all the time, so without this a blank scene fires the giant fiber. Only
+        departures from rest drive anything.
         """
         rest = torch.zeros(1, self.W.shape[1], device=self.dev)
         rest[:, indices] = rest_release

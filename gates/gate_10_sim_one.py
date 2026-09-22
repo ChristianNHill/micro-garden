@@ -1,20 +1,20 @@
 """Gate 10: one simulated microduck, a real robot daemon on a body in MuJoCo, living in our garden.
 
 Run: uv run python -m gates.gate_10_sim_one [--no-brain]
-Needs the simulator up first (PLAN.md Gate 10 says how it runs on a Mac):
+Needs the simulator up first:
     cd ~/.cache/micro-garden/spike/microduck && PATH="$HOME/.cargo/bin:$PATH" \\
         DUCK_SIM_RL=~/.cache/micro-garden/spike/microduck_rl DUCK_SIM_VIEWER=0 scripts/duck-sim
 The simulator is wall-clock and has to hold 1.0x real time, so run nothing else on the machine with it.
 
-What is asserted is the plumbing, because that is what is ours: the garden's frames reach the brain at the
-robot's rate; the pose in them is where MuJoCo says the duck is; what the brain asks for reaches robotd;
-the duck walks when told to; and a duck standing on a dish that is told to eat gets its bite.
+Asserted is the plumbing, which is ours: the garden's frames reach the brain at the robot's rate; the
+pose in them is where MuJoCo says the duck is; what the brain asks for reaches robotd; the duck walks
+when told to; and a duck on a dish that is told to eat gets its bite.
 
-What is printed and not asserted is the real brain walking the duck up the wind to a dish. The walking
-policy upstream ships does not track a velocity (pollen-robotics/microduck_rl issue 46), so
-`body/mujoco/adapter.py` snaps the brain's intent to the four commands that do something: a duck that can
-only march or pivot, at 0.12 m/s and about 0.1 rad/s. Asserting an arrival on that would be asserting the
-workaround. When a policy that walks lands, delete `snap` and move this check up.
+Printed and not asserted: the real brain walking the duck upwind to a dish. The upstream walking
+policy does not track a velocity (pollen-robotics/microduck_rl issue 46), so `body/mujoco/adapter.py`
+snaps the brain's intent to the four commands that work: march or pivot, at 0.12 m/s and about 0.1
+rad/s. Asserting an arrival would test the workaround. When a policy that walks lands, delete `snap`
+and assert this.
 """
 import argparse
 import os
@@ -62,8 +62,8 @@ def main() -> int:
     checks = {}
     try:
         # frames, at the robot's rate, carrying where MuJoCo says the duck is
-        # by the frames' own clock against the wall's: counting arrivals undercounts, since a frame still
-        # in flight when the socket is read is merged with the next one
+        # rate by the frames' own clock against the wall's: counting arrivals undercounts, since a frame
+        # in flight when the socket is read merges with the next one
         run_for(body, DT)  # the first frame went out before this socket was listening
         first, w0 = frames.newer(rx), time.monotonic()
         run_for(body, 2.0)

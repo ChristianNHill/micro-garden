@@ -1,6 +1,6 @@
-# The selected duck's brain, front on: 12,000 of its 139,000 neurons where FlyWire has them, each a dot in its
-# group's colour that flares when it fires and fades over a third of a second. The garden picks the neurons,
-# writes their places to a file once (brain/brainview.py) and then sends only which ones spiked.
+# The selected duck's brain, front view: 12,000 of its 139,000 neurons at their FlyWire positions, each a dot
+# in its group's colour that flares on a spike and fades over a third of a second. The garden writes their
+# positions once (brain/brainview.py), then sends only which ones spiked.
 extends Control
 
 const Ink := preload("res://ink.gd")
@@ -13,7 +13,7 @@ var dots := MultiMeshInstance2D.new()
 var title := Label.new()
 var names: Array = []
 var group: Array = []
-var glow := {}  # dot -> how lit, 1 down to 0
+var glow := {}  # dot -> brightness, 1 down to 0
 var loaded := ""
 var height := 200.0
 
@@ -62,7 +62,7 @@ func show_brain(brain: Dictionary, duck_name: String) -> void:
 
 func _draw() -> void:
 	draw_rect(Rect2(Vector2.ZERO, Vector2(WIDTH, height)), Color(Ink.NAVY, 0.92))
-	var x := 12.0  # the legend, each group's name in its own colour
+	var x := 12.0  # the legend
 	for k in names.size():
 		var word: String = names[k]
 		draw_string(ThemeDB.fallback_font, Vector2(x, height - 12.0), word, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, LIT[k].lerp(DIM[k], 0.35))

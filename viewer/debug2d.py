@@ -1,15 +1,14 @@
-"""pygame debug window for the 2D stub (ARCHITECTURE.md 4).
+"""pygame debug window for the 2D stub.
 
-The garden on the left: food-odor haze, shade tree, pond, stink patches, the music, dishes, the player's hand,
-and the ducks as circles with a heading line, a retina fan and a mood halo. The night draws in as the
-sun goes down. A panel on the right for whichever duck is selected: its drives, its descending
-neurons, and a running list of what has just happened to anyone.
+The garden on the left: food-odor haze, shade tree, pond, stink patches, music, dishes, the player's hand,
+and the ducks as circles with a heading line, a retina fan and a mood halo; it darkens at night. The panel
+on the right shows the selected duck's drives and descending neurons, and a list of recent events.
 
-Debug only, never a gate check. Click a duck to follow it, click the tree to shake it; the keys
-are the player's verbs: Tab take the wheel of the selected duck (W A S D drive, Tab gives it back), P pet, C clap, F feed at the mouse, M music at the mouse, H hat.
+Debug only, never a gate check. Click a duck to follow it, click the tree to shake it. Keys: Tab take the
+wheel of the selected duck (W A S D drive, Tab gives it back), P pet, C clap, F feed at the mouse, M music at
+the mouse, H hat.
 
-With a brain attached (`stub --view --brain`) the panel has something to show; without one the ducks
-stand still and only the garden is worth looking at.
+The panel needs a brain attached (`stub --view --brain`); without one the ducks stand still.
 """
 import numpy as np
 import pygame
@@ -25,14 +24,14 @@ DRIVES = ("hunger", "thirst", "fatigue", "sleep_pressure", "boredom")
 MOODS = (("fear", (140, 180, 255)), ("anger", (240, 90, 70)), ("joy", (255, 220, 90)),
          ("sorrow", (130, 140, 170)))
 TOASTS = 9
-BUBBLE_S = 3.0  # how long the word for an emote hangs over the duck
+BUBBLE_S = 3.0  # how long an emote's word shows over the duck
 RETINA_DEG = 75.0  # half-width of one eye's view, matching body/stub2d/retina.py
 EYE_DEG = 55.0
 
 
 class Viewer:
     def __init__(self, world=None):
-        """`world` is the garden to be drawn, for its size and where its tree is; the gates' garden without one."""
+        """`world` gives the garden's size and tree; None means the gates' garden."""
         self.size, self.tree = (world.size, world.tree) if world is not None else (SIZE_M, TREE)
         self.px = WINDOW_PX / self.size  # pixels per metre
         pygame.init()
@@ -44,7 +43,7 @@ class Viewer:
         self.click = None
         self.possessing = False  # the player has the selected duck's wheel
         self.seen = {"eaten": 0, "headbutts": 0, "pets": 0, "sounds": 0, "emotes": 0}
-        self.bubbles = {}  # duck: (until, feeling), the word over an emoting duck
+        self.bubbles = {}  # duck: (until, feeling)
         self.toasts = []
 
     def alive(self, on_click=None, on_key=None) -> bool:
@@ -117,7 +116,7 @@ class Viewer:
         odor = stub.world.odor
         haze = (255 * np.sqrt(odor / max(odor.max(), 1e-9))).astype(np.uint8)
         rgb = np.stack([haze // 3, haze // 2 + 40, haze // 3 + 30], axis=-1)[:, ::-1]  # y up
-        rgb = (rgb * (0.25 + 0.75 * light)).astype(np.uint8)  # night draws in
+        rgb = (rgb * (0.25 + 0.75 * light)).astype(np.uint8)  # darker at night
         surf = pygame.transform.smoothscale(pygame.surfarray.make_surface(rgb),
                                             (int(self.size * self.px), int(self.size * self.px)))
         self.screen.blit(surf, (0, 0))
@@ -133,7 +132,7 @@ class Viewer:
             pygame.draw.circle(self.screen, (120, 80, 40), self._px(d), int(DISH_R * self.px))
         for f in stub.world.food:
             pygame.draw.circle(self.screen, (250, 250, 250), self._px(f), int(DISH_R * self.px))
-        if stub.world.music is not None:  # the music, and how far it carries
+        if stub.world.music is not None:  # the music and its range
             at = self._px(stub.world.music)
             for ring, alpha in ((0.25, 140), (0.6, 70), (1.2, 35)):
                 halo = pygame.Surface((int(2 * ring * self.px) + 4,) * 2, pygame.SRCALPHA)
@@ -146,7 +145,7 @@ class Viewer:
     def _duck(self, i, pose, body) -> None:
         x, y, h = pose
         c = COLORS[i % len(COLORS)]
-        if body is not None:  # a halo in the colour of whatever it is feeling most
+        if body is not None:  # a halo in the colour of the strongest mood
             name, tint = max(MOODS, key=lambda m: float(np.atleast_1d(getattr(body, m[0]))[i]))
             strength = float(np.atleast_1d(getattr(body, name))[i])
             if strength > 0.05:

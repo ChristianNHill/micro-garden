@@ -1,13 +1,8 @@
-"""Sensory encoder: scalar levels on named sets -> input drive for one tick (PLAN.md Gate 2).
+"""Sensory encoder: scalar levels on named sets -> input drive for one tick.
 
-Two ways to deliver the same mean drive. `encode` fires a random subset of a set each tick, which is
-what the senses used through Gate 5. `graded` releases steadily instead, the way the optic lobe does
-(brain/vision.py), and carries the same average current with none of the sampling noise.
-
-That matters where the code has to be repeatable. At Gate 7 a Poisson odor lit a different 40% of the
-Kenyon cells on every presentation (same odor twice overlapping 0.59, two different odors 0.44), so
-there was no "this odor's cells" to teach anything about. Graded, the same odor gives the same cells
-every time (1.00) while two odors still differ (0.48).
+Two ways to deliver the same mean drive. `encode` fires a random subset of a set each tick. `graded`
+releases steadily, like the optic lobe (brain/vision.py), with none of the sampling noise, so the same
+odor lights the same Kenyon cells every time. The server uses `graded`.
 """
 import numpy as np
 
@@ -24,11 +19,9 @@ def graded(sets: dict[str, np.ndarray], levels: dict[str, np.ndarray | float], b
     Release is the spike probability `encode` would have used, so the mean current is unchanged.
     Sets must not overlap: release is assigned, not summed.
 
-    `noise` mixes back in the shot noise a spiking receptor would have: 0 releases the mean exactly,
-    1 is the all-or-nothing draw `encode` made, and in between each neuron is pulled that fraction of
-    the way toward its own coin flip. Receptors are noisy, and without any of it every duck in a
-    scenario behaves identically and a knob that should grade turns into a switch (Gate 4c). Too much
-    and a smell stops being recognisable from one whiff to the next (Gate 7).
+    `noise` mixes back a spiking receptor's shot noise: 0 releases the mean exactly, 1 is `encode`'s
+    all-or-nothing draw. With none, every duck behaves identically and graded knobs act as switches;
+    with too much, a smell is no longer recognisable from one whiff to the next.
     """
     import torch
 
@@ -60,7 +53,7 @@ def encode(rng: np.random.Generator, sets: dict[str, np.ndarray], levels: dict[s
 
 
 def demo() -> None:
-    """A level may be one number or one per duck, and both must land the same way (Gate 7)."""
+    """A level may be one number or one per duck, and both must land the same way."""
     sets = {"a": np.arange(3), "b": np.arange(3, 7)}
     idx, rel = graded(sets, {"a": 0.5, "b": 0.1}, 2, "cpu")
     assert idx.tolist() == list(range(7)), idx
