@@ -10,6 +10,8 @@
 #   --keys=MBT                  press these keys after three seconds, to check they reach the garden
 #   --port=N                    listen there, for a garden started with MICRO_GARDEN_PORT=N
 #   --shot=file.png             save the window after --shot-after=S seconds (6 by default)
+#   --record=DIR                save the window to DIR as numbered pngs, --record-fps=N a second (10), from
+#                               --record-after=S seconds (6) for --record-for=S (20): frames for a gif
 #   --feed-at=x,y               drop food there once snapshots arrive, and --quit-after=S: both for Gate 13
 extends Node3D
 
@@ -177,6 +179,18 @@ func _ready() -> void:
 	if args.has("shot"):
 		get_tree().create_timer(float(args.get("shot-after", "6"))).timeout.connect(
 			func() -> void: get_viewport().get_texture().get_image().save_png(args["shot"]))
+	if args.has("record"):  # on the wall clock, so the garden plays at its own pace in what is saved
+		var shots := Timer.new()
+		var taken := [0]
+		var last := int(float(args.get("record-for", "20")) * float(args.get("record-fps", "10")))
+		shots.timeout.connect(func() -> void:
+			get_viewport().get_texture().get_image().save_png(args["record"].path_join("%04d.png" % taken[0]))
+			taken[0] += 1
+			if taken[0] >= last:
+				shots.stop())
+		add_child(shots)
+		get_tree().create_timer(float(args.get("record-after", "6"))).timeout.connect(
+			func() -> void: shots.start(1.0 / float(args.get("record-fps", "10"))))
 	if args.has("keys"):  # press these as a player would, with the mouse over the middle of the window: a check of the keys
 		get_tree().create_timer(3.0).timeout.connect(func() -> void:
 			get_viewport().warp_mouse(get_viewport().get_visible_rect().size / 2)

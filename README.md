@@ -1,5 +1,7 @@
 # Micro Garden
 
+![Five microducks in the Godot garden: one sings, one yawns, one takes fright, and a ball, a drum, hats and fruit lie on the lawn](docs/garden.gif)
+
 Micro Garden is five small ducks in a garden, and each duck runs on its own live copy of a real fruit fly brain. I built it to ask whether a wiring diagram, a body with needs, and a place to live are enough to get behaviour nobody scripted. The brain is the FlyWire connectome, about 139,000 neurons and 2.7 million connections, simulated as spiking neurons. Each duck smells, sees, hears, gets hungry, thirsty, hot and sleepy, learns, makes friends and grudges, and has a personality.
 
 The ducks are modelled on the [microduck](https://github.com/pollen-robotics/microduck), a real open-source robot, and the brain talks to the body through that robot's own command protocol. There are two bodies. One is a 2D body in Python. The other is the microduck's own MuJoCo simulation, where the real robot daemon runs the real walking policy and five simulated ducks live a garden day on five fly brains. A low-poly garden in Godot draws either body. The project is simulation only, and I do not plan real ducks on a floor.
@@ -22,6 +24,14 @@ That starts five ducks on five brains and opens the Godot window over them. Clos
 ## The garden
 
 The garden is laid out after the Chao gardens of Sonic Adventure 2. A lawn sits in a bowl of rock, with a pond under a waterfall, a fruit tree, and a rail fence over the sea. The ducks are the real microduck, built from Pollen Robotics' own meshes and posed joint by joint. They sit, walk, kick and get up with the robot's own recorded motions. A halftone screen of ink shades everything, and night is a wash of blue. A flag on the near cliff shows the breeze, which is how the ducks find food.
+
+![The garden from the open front of the lawn, with ducks at the pond, hats on two of them, a ball and a drum on the grass](docs/garden.webp)
+
+Select a duck and you see who it is, what it needs and feels, and its fly brain firing:
+
+![The Bully selected, sorrowful and cold, with its needs, moods and wants as bars and its brain in the corner](docs/selected-duck.webp)
+
+![The Carefree duck selected under the fruit tree, happy, with its favourite fruit and its skills on its card](docs/under-the-tree.webp)
 
 Godot only draws. The garden publishes its world over UDP, and what you do goes back as the same control calls the 2D window uses. Press `/` to see every control:
 
