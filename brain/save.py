@@ -37,6 +37,7 @@ def save(path, body, plastic=None, stub=None, when=None) -> None:
         state["hat_items"] = np.asarray(stub.hat_items, float).reshape(-1, 3)
         state["food"] = np.asarray(world.food, float).reshape(-1, 2)
         state["bites"] = np.asarray(world.bites).reshape(-1)
+        state["kinds"] = np.asarray(world.kinds).reshape(-1)
         state["hand"] = np.asarray(world.hand if world.hand is not None else nowhere, float)
         state["music"] = np.asarray(world.music if world.music is not None else nowhere, float)
     np.savez(path, **state)
@@ -64,7 +65,7 @@ def load(path, body, plastic=None, stub=None, now=None) -> float:
             stub.hat_style[:] = z["hat_style"]
             stub.hat_items = [[float(x), float(y), int(k)] for x, y, k in z["hat_items"]]
         stub.t = since + gap
-        world.food, world.bites = z["food"].copy(), z["bites"].copy()
+        world.set_food(z["food"], z["bites"], z["kinds"] if "kinds" in z.files else None)  # saves from before fruit had kinds have none
         world.hand = None if np.isnan(z["hand"]).any() else tuple(z["hand"])
         world.music = None if np.isnan(z["music"]).any() else tuple(z["music"])
         world.odor[:] = 0

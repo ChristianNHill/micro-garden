@@ -99,8 +99,7 @@ def follows_the_hand(W, ann, sets, n, seed):
             step = int(s.t / (HAND_S / (HAND_FEEDS + 2)))
             if step < HAND_FEEDS and s.world.hand != spots[step]:
                 s.world.hand = spots[step]
-                s.world.food = np.vstack([s.world.food, [spots[step]]])
-                s.world.bites = np.append(s.world.bites, 3)
+                s.world.add_food(spots[step], 3)
             elif step >= HAND_FEEDS:
                 s.world.hand = (2.0, 2.6)  # the hand shows itself, empty, between the two of them
         return False

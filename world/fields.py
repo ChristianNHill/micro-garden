@@ -59,10 +59,8 @@ class World:
         self.wind0 = self.wind = None if wind is None else np.asarray(wind, float)
         self.wind_turns_s = wind_turns_s
         self.damp = np.zeros((self.grid, self.grid))
-        self.food = np.asarray(food_xy, float).reshape(-1, 2)
-        self.bites = np.full(len(self.food), bites)
-        self.kind_rng = np.random.default_rng(len(self.food) + 17)
-        self.kinds = self.kind_rng.integers(0, FRUITS, len(self.food))  # which fruit each is: all the same food, not all as well liked
+        self.kind_rng = np.random.default_rng(len(np.asarray(food_xy, float).reshape(-1, 2)) + 17)
+        self.set_food(food_xy, bites)
         self.danger = np.asarray(danger_xy, float).reshape(-1, 2)
         self.pond = pond
         self.hand = None  # (x, y) while the player's hand is in the garden (Gate 8)
@@ -102,6 +100,14 @@ class World:
             a = 2 * np.pi * t / self.wind_turns_s
             self.wind = np.array([[np.cos(a), -np.sin(a)], [np.sin(a), np.cos(a)]]) @ self.wind0
         self.diffuse(SUBSTEPS)
+
+    def set_food(self, food_xy, bites, kinds=None) -> None:
+        """Replace all the food: where each is, how many bites (one number for all, or one each), and which fruit
+        (drawn as it comes when not given). The three go together, so nothing sets them one at a time."""
+        self.food = np.asarray(food_xy, float).reshape(-1, 2)
+        self.bites = np.broadcast_to(np.asarray(bites), len(self.food)).copy()
+        # which fruit each is: all the same food, not all as well liked
+        self.kinds = self.kind_rng.integers(0, FRUITS, len(self.food)) if kinds is None else np.asarray(kinds).copy()
 
     def eat(self, dish: int) -> None:
         """One bite; an empty dish is gone and its odor fades with DECAY."""

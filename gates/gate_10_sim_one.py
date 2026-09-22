@@ -95,8 +95,7 @@ def main() -> int:
 
         # a bite: a dish under the duck, and the brain's ground_pick
         with body.lock:
-            body.world.food = body.pose[:1, :2].copy()
-            body.world.bites = np.array([3])
+            body.world.set_food(body.pose[:1, :2], 3)
         ours.call("robot.do", skill="ground_pick")
         run_for(body, 0.1)
         print(f"a dish under the duck and a ground_pick: {len(body.eaten)} bite, {int(body.world.bites.sum())} left in the dish")
@@ -110,8 +109,7 @@ def main() -> int:
             with body.lock:
                 body._read_poses()
                 px, py, _ = body.pose[0]
-                body.world.food = np.array([[px, py + DISH_UPWIND_M]])  # the wind blows toward -y, so this is upwind
-                body.world.bites = np.array([10])
+                body.world.set_food([[px, py + DISH_UPWIND_M]], 10)  # the wind blows toward -y, so this is upwind
                 body.world.odor[:] = 0
                 body.world.diffuse(2000)
             server = BrainServer(W, ann, named_sets(ann), [(f"{d}/duck-a.sock", port)], 0, hunger=0.9)
