@@ -104,7 +104,7 @@ static func build(root: Node3D, snap: Dictionary, falls: Array, viewer: Vector3)
 				palm(root, at + Vector3(rng.randf_range(-0.3, 0.3), h - 0.25, rng.randf_range(-0.3, 0.3)), rng.randf_range(0.5, 0.9), rng)
 			along += r * 1.25
 	# a cave mouth in the north cliff, dark and going nowhere
-	var cave := Ink.part(root, Ink.ball(0.34, 10), Ink.NAVY, Vector3(0.3 * size, 0.2, -(size + 0.05)), Vector3(1.0, 1.4, 0.6), 7.0, 0.05)
+	Ink.part(root, Ink.ball(0.34, 10), Ink.NAVY, Vector3(0.3 * size, 0.2, -(size + 0.05)), Vector3(1.0, 1.4, 0.6), 7.0, 0.05)
 
 	# the rail fence along the open south and west edges: the wall the ducks already have, drawn
 	for edge in 2:
@@ -114,40 +114,15 @@ static func build(root: Node3D, snap: Dictionary, falls: Array, viewer: Vector3)
 			var at := Vector3(t, 0, 0.06) if edge == 0 else Vector3(-0.06, 0, -t)
 			Ink.part(root, Ink.cone(0.035, 0.34, 0.03, 5), WOOD, at + Vector3(0, 0.17, 0), Vector3.ONE, 7.0)
 		for rail in [0.14, 0.27]:
-			var bar := Ink.part(root, BoxMesh.new(), WOOD, Vector3(size / 2, rail, 0.06) if edge == 0 else Vector3(-0.06, rail, -size / 2),
+			Ink.part(root, BoxMesh.new(), WOOD, Vector3(size / 2, rail, 0.06) if edge == 0 else Vector3(-0.06, rail, -size / 2),
 				Vector3(size, 0.035, 0.03) if edge == 0 else Vector3(0.03, 0.035, size), 7.0)
 
 	if snap.pond != null:
 		var p: Array = snap.pond
 		var centre := Vector2(p[0], p[1])
 		Ink.part(root, Ink.cone(p[2], 0.004, p[2], 28), WATER, Vector3(p[0], 0.003, -p[1]), Vector3.ONE, 8.0, 0.9)
-		var corner := Vector2(size, size)
-		if centre.distance_to(corner) < p[2] + 2.4:
-			# pale round columns stepping down from the cliff into the pond, water on each and between them
-			var toward := (corner - centre).normalized()
-			var side := Vector2(-toward.y, toward.x)
-			# The foot of the fall is the world's own rocks, which are solid (DEMO_GARDEN), lowest first, and it
-			# carries on up into the cliff from the last of them; a garden without rocks gets columns by rule.
-			var steps := []  # [x, y, radius, height]
-			for i in snap.get("rocks", []).size():
-				var rock: Array = snap.rocks[i]
-				steps.append([rock[0], rock[1], rock[2], 0.35 + 0.5 * i])
-			if steps.is_empty():
-				steps.append([centre.x + toward.x * (p[2] + 0.1), centre.y + toward.y * (p[2] + 0.1), 0.55, 0.35])
-			while steps.size() < 5:
-				var last: Array = steps[-1]
-				steps.append([last[0] + toward.x * 0.6, last[1] + toward.y * 0.6, last[2] + 0.12, last[3] + 0.65])
-			for i in steps.size():
-				var s: Array = steps[i]
-				place_lump(root, Vector3(s[0], -0.2, -s[1]), s[2], s[3] + 0.2, rng, PALE_ROCK, WATER, 10, 0.9)
-				var sheet := Ink.part(root, BoxMesh.new(), WATER, Vector3(s[0], s[3] / 2, -s[1]) - Vector3(toward.x, 0, -toward.y) * (s[2] * 0.93),
-					Vector3(0.05, s[3], 0.5), 8.0, 0.97)
-				sheet.rotation.y = atan2(toward.y, toward.x)
-				falls.append(sheet)
-			for flank in [-1.0, 1.0]:  # and darker rock either side of the fall, with a palm
-				var at3: Vector2 = centre + toward * (p[2] + 0.9) + side * flank * 1.25
-				place_lump(root, Vector3(at3.x, -0.2, -at3.y), 0.75, 1.5, rng)
-				palm(root, Vector3(at3.x, 1.25, -at3.y), 0.7, rng)
+		if centre.distance_to(Vector2(size, size)) < p[2] + 2.4:
+			waterfall(root, snap, centre, size, rng, falls)
 		for i in int(10 * p[2] / 0.35):  # reeds round the open shore
 			var a := rng.randf_range(0.0, TAU)
 			var at := Vector3(p[0] + cos(a) * (p[2] + 0.05), 0.0, -p[1] - sin(a) * (p[2] + 0.05))
@@ -168,3 +143,34 @@ static func build(root: Node3D, snap: Dictionary, falls: Array, viewer: Vector3)
 	for blob in [[0.0, 1.2, 0.0, 0.6], [0.32, 1.05, 0.14, 0.42], [-0.3, 1.1, -0.18, 0.45], [0.03, 1.6, 0.04, 0.38]]:
 		Ink.part(root, Ink.ball(blob[3], 7), FROND, trunk + Vector3(blob[0], blob[1], blob[2]), Vector3(1, 0.8, 1), 8.0, -1.0, true).material_override.set_shader_parameter("lift", 0.15)
 	return summit
+
+
+static func waterfall(root: Node3D, snap: Dictionary, centre: Vector2, size: float, rng: RandomNumberGenerator, falls: Array) -> void:
+	# Pale round columns stepping down from the cliff into the pond, water on each and between them. Built only
+	# where the pond lies by the back corner.
+	var p: Array = snap.pond
+	var corner := Vector2(size, size)
+	var toward := (corner - centre).normalized()
+	var side := Vector2(-toward.y, toward.x)
+	# The foot of the fall is the world's own rocks, which are solid (DEMO_GARDEN), lowest first, and it
+	# carries on up into the cliff from the last of them; a garden without rocks gets columns by rule.
+	var steps := []  # [x, y, radius, height]
+	for i in snap.get("rocks", []).size():
+		var rock: Array = snap.rocks[i]
+		steps.append([rock[0], rock[1], rock[2], 0.35 + 0.5 * i])
+	if steps.is_empty():
+		steps.append([centre.x + toward.x * (p[2] + 0.1), centre.y + toward.y * (p[2] + 0.1), 0.55, 0.35])
+	while steps.size() < 5:
+		var last: Array = steps[-1]
+		steps.append([last[0] + toward.x * 0.6, last[1] + toward.y * 0.6, last[2] + 0.12, last[3] + 0.65])
+	for i in steps.size():
+		var s: Array = steps[i]
+		place_lump(root, Vector3(s[0], -0.2, -s[1]), s[2], s[3] + 0.2, rng, PALE_ROCK, WATER, 10, 0.9)
+		var sheet := Ink.part(root, BoxMesh.new(), WATER, Vector3(s[0], s[3] / 2, -s[1]) - Vector3(toward.x, 0, -toward.y) * (s[2] * 0.93),
+			Vector3(0.05, s[3], 0.5), 8.0, 0.97)
+		sheet.rotation.y = atan2(toward.y, toward.x)
+		falls.append(sheet)
+	for flank in [-1.0, 1.0]:  # and darker rock either side of the fall, with a palm
+		var at3: Vector2 = centre + toward * (p[2] + 0.9) + side * flank * 1.25
+		place_lump(root, Vector3(at3.x, -0.2, -at3.y), 0.75, 1.5, rng)
+		palm(root, Vector3(at3.x, 1.25, -at3.y), 0.7, rng)

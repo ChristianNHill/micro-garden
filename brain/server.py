@@ -176,44 +176,7 @@ class BrainServer:
         among = social.steering(body, f)
 
         levels = self._levels(f)
-        # Music is in the garden all day now, so it is a like that gives way to a need as the others do:
-        # a duck that loved it and could always hear it would otherwise sit by it and starve.
-        at_ease = 1 - pressing(np.maximum(body.hunger, body.thirst))
-        tune = np.abs(2 * body.k["music_affinity"] - 1) * levels["johnstons_organ"] * at_ease  # strong taste, loud music
-        # How much a duck feels like dancing: it likes music (past the middle of the dial), it can hear some,
-        # and nothing is pressing. A duck that dislikes music never dances to it.
-        self.dancing = np.clip(2 * body.k["music_affinity"] - 1, 0, 1) * np.clip(levels["johnstons_organ"] / DANCE_LOUD, 0, 1) * at_ease
-        # And a duck with no music makes its own when it is bored (Chris, 2026-09-21): a song or a dance is
-        # something to do, the more so for a chatty or a playful duck, and doing it takes the edge off.
-        bored = np.clip((body.boredom - PERFORM_BORED) / (1 - PERFORM_BORED), 0, 1) * at_ease
-        self.performing = np.maximum(self.dancing, 0.6 * bored * np.maximum(body.k["chattiness"], body.k["playfulness"]))
-        # A ball is wanted as far as the duck wants to play and can see one: that gets it walking, and the
-        # decoder turns it towards the eye the ball is in. Explicit, as music is, and for the same reason.
-        self.playing = body.play() * at_ease
-        toy_left, toy_right = np.maximum(f["ball_left"], f["drum_left"]), np.maximum(f["ball_right"], f["drum_right"])
-        ball = self.playing * np.maximum(toy_left, toy_right)  # a ball or a drum: whichever it sees plainer
-        to_pond, to_shade = body.cooling()
-        cool_left, cool_right = (to_pond * f[f"pond_{s}"] + to_shade * f[f"shade_{s}"] for s in ("left", "right"))
-        wants = np.maximum.reduce([tune, ball, among.pop("social_want") * at_ease, to_pond + to_shade])
-        self.decoder.body = {**body.motor(wants=wants, damp=(f["humidity_left"] + f["humidity_right"]) / 2), **among,
-                             "cool_left": cool_left, "cool_right": cool_right,
-                             "play": self.playing, "ball_left": toy_left, "ball_right": toy_right,
-                             "surge": self.following, "swimming": f["swimming"] > 0, "at_shore": f["water"] > 0,
-                             "thirst": body.thirst, "hatted": f["hat"] > 0, "fear": body.fear,
-                             "hunger": pressing(body.hunger),  # how far hunger outranks a smell it likes
-                             "tasting": (f["sugar"] > 0) | (f["water"] > 0),
-                             # the ears get the contrast the antennae get: raw, two ears 10 cm apart differ
-                             # by 0.01 of full loudness, a 0.01 rad/s turn under 1.5 of steering noise, and
-                             # music never steered a duck (Gate 8b's old pass was two paths diverging)
-                             **dict(zip(("music_left", "music_right"),
-                                        (at_ease * m for m in bilateral(f["music_left"], f["music_right"], MUSIC_HALF)))),
-                             # where the other ducks are, by smell, for company, flight and pursuit; company
-                             # gives way to a pressing need (`at_ease`), fear and a fight do not
-                             **dict(zip(("duck_left", "duck_right"), bilateral(f["duck_left"], f["duck_right"], DUCK_HALF))),
-                             "at_ease": at_ease,
-                             "sociability": body.k["sociability"],
-                             "fondness": self.plastic.fondness() if self.plastic is not None else 0.0,
-                             "music_affinity": body.k["music_affinity"], "vanity": body.k["vanity"]}
+        self.decoder.body = self._decoder_input(f, levels, among)
         # Senses release steadily rather than firing a random subset of each set per tick: the same
         # mean current with none of the sampling noise, which is what makes a smell recognisable from
         # one whiff to the next (Gate 7). Vision already worked this way, so the two just concatenate.
@@ -239,6 +202,49 @@ class BrainServer:
                 continue
             self._send(robot.call if lockstep else robot.notify, i, it, f[i], falls_asleep[i], wakes[i])
         return intents
+
+    def _decoder_input(self, f, levels, among) -> dict:
+        """What the body and the garden tell the decoder this step, beside the spikes: the likes and wants that
+        get a duck walking and turning (see brain/decoder.py for what each does)."""
+        body = self.body
+        # Music is in the garden all day now, so it is a like that gives way to a need as the others do:
+        # a duck that loved it and could always hear it would otherwise sit by it and starve.
+        at_ease = 1 - pressing(np.maximum(body.hunger, body.thirst))
+        tune = np.abs(2 * body.k["music_affinity"] - 1) * levels["johnstons_organ"] * at_ease  # strong taste, loud music
+        # How much a duck feels like dancing: it likes music (past the middle of the dial), it can hear some,
+        # and nothing is pressing. A duck that dislikes music never dances to it.
+        self.dancing = np.clip(2 * body.k["music_affinity"] - 1, 0, 1) * np.clip(levels["johnstons_organ"] / DANCE_LOUD, 0, 1) * at_ease
+        # And a duck with no music makes its own when it is bored (Chris, 2026-09-21): a song or a dance is
+        # something to do, the more so for a chatty or a playful duck, and doing it takes the edge off.
+        bored = np.clip((body.boredom - PERFORM_BORED) / (1 - PERFORM_BORED), 0, 1) * at_ease
+        self.performing = np.maximum(self.dancing, 0.6 * bored * np.maximum(body.k["chattiness"], body.k["playfulness"]))
+        # A ball is wanted as far as the duck wants to play and can see one: that gets it walking, and the
+        # decoder turns it towards the eye the ball is in. Explicit, as music is, and for the same reason.
+        self.playing = body.play() * at_ease
+        toy_left, toy_right = np.maximum(f["ball_left"], f["drum_left"]), np.maximum(f["ball_right"], f["drum_right"])
+        ball = self.playing * np.maximum(toy_left, toy_right)  # a ball or a drum: whichever it sees plainer
+        to_pond, to_shade = body.cooling()
+        cool_left, cool_right = (to_pond * f[f"pond_{s}"] + to_shade * f[f"shade_{s}"] for s in ("left", "right"))
+        wants = np.maximum.reduce([tune, ball, among.pop("social_want") * at_ease, to_pond + to_shade])
+        return {**body.motor(wants=wants, damp=(f["humidity_left"] + f["humidity_right"]) / 2), **among,
+                "cool_left": cool_left, "cool_right": cool_right,
+                "play": self.playing, "ball_left": toy_left, "ball_right": toy_right,
+                "surge": self.following, "swimming": f["swimming"] > 0, "at_shore": f["water"] > 0,
+                "thirst": body.thirst, "hatted": f["hat"] > 0, "fear": body.fear,
+                "hunger": pressing(body.hunger),  # how far hunger outranks a smell it likes
+                "tasting": (f["sugar"] > 0) | (f["water"] > 0),
+                # the ears get the contrast the antennae get: raw, two ears 10 cm apart differ
+                # by 0.01 of full loudness, a 0.01 rad/s turn under 1.5 of steering noise, and
+                # music never steered a duck (Gate 8b's old pass was two paths diverging)
+                **dict(zip(("music_left", "music_right"),
+                           (at_ease * m for m in bilateral(f["music_left"], f["music_right"], MUSIC_HALF)))),
+                # where the other ducks are, by smell, for company, flight and pursuit; company
+                # gives way to a pressing need (`at_ease`), fear and a fight do not
+                **dict(zip(("duck_left", "duck_right"), bilateral(f["duck_left"], f["duck_right"], DUCK_HALF))),
+                "at_ease": at_ease,
+                "sociability": body.k["sociability"],
+                "fondness": self.plastic.fondness() if self.plastic is not None else 0.0,
+                "music_affinity": body.k["music_affinity"], "vanity": body.k["vanity"]}
 
     def _levels(self, f) -> dict:
         """Encoder levels for this step's frames, shaped by the body."""

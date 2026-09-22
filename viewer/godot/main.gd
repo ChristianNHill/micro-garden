@@ -241,7 +241,7 @@ func _build() -> void:
 	var eye := Vector3(size / 2, 0, -size / 2) + Vector3(cos(orbit.x), 0, sin(orbit.x)) * orbit.z
 	var summit := Scenery.build(self, snap, falls, eye)
 	# a white flag on the cliff rock nearest the viewer, flying the way the breeze goes (it is the breeze the ducks smell by)
-	var pole := Ink.part(self, Ink.cone(0.035, 1.5, 0.028, 5), Scenery.WOOD, summit + Vector3(0, 0.7, 0), Vector3.ONE, 7.0)
+	Ink.part(self, Ink.cone(0.035, 1.5, 0.028, 5), Scenery.WOOD, summit + Vector3(0, 0.7, 0), Vector3.ONE, 7.0)
 	flag.position = summit + Vector3(0, 1.22, 0)
 	add_child(flag)
 	Ink.part(flag, BoxMesh.new(), Color.WHITE, Vector3(0.42, 0, 0), Vector3(0.84, 0.46, 0.02), 7.0, 1.0, true)  # no screen on it: a white flag is white
@@ -270,6 +270,25 @@ func _show(first: bool) -> void:
 	for i in ducks.size():
 		ducks[i].show_state(snap.ducks[i], first)
 		ducks[i].ring.visible = i == selected and not possessing
+		ducks[i].model.visible = not (possessing and i == selected)
+	_show_props()
+	_show_weather()
+	_show_held()
+	_ask_for_brain()
+	music.set_on(snap.music != null)
+	music.follow(snap.get("music_volume", 0.75))
+	for q in snap.get("sounds", []):  # [t, duck, tag], oldest first
+		if q[0] > heard:
+			heard = q[0]
+			_quack(int(q[1]), q[2])
+	if possessing:
+		_act("garden.wheel", {"duck": selected, "fwd": int(Input.is_key_pressed(KEY_W)) - int(Input.is_key_pressed(KEY_S)),
+			"turn": int(Input.is_key_pressed(KEY_A)) - int(Input.is_key_pressed(KEY_D))})
+	_show_words()
+
+
+func _show_props() -> void:
+	# Everything lying in the garden, each kind made by its own recipe.
 	_props("food", snap.food, _fruit)
 	_props("hats", snap.get("hats", []), func(n: Node3D, h: Array) -> void:
 		var lying := Hats.make(int(h[2]))
@@ -295,6 +314,12 @@ func _show(first: bool) -> void:
 	_props("music", [snap.music] if snap.music != null else [], func(n: Node3D, f: Array) -> void:
 		Ink.part(n, BoxMesh.new(), Ink.CORAL, Vector3(0, 0.05, 0), Vector3(0.14, 0.1, 0.14), 7.0, -1.0, true)
 		Ink.part(n, Ink.cone(0.02, 0.16, 0.1, 8), Ink.MUSTARD, Vector3(0.03, 0.18, 0), Vector3.ONE, 7.0, -1.0, true).rotation.z = -0.5)
+	for n in props.get("music", []):
+		n.scale = Vector3.ONE * (1.0 + 0.06 * calm * sin(Time.get_ticks_msec() / 90.0))  # it plays
+
+
+func _show_weather() -> void:
+	# The flag flies the way the breeze goes and hangs without one; the waterfall shimmers.
 	var wind = snap.get("wind")
 	var blowing: bool = wind != null and Vector2(wind[0], wind[1]).length() > 0.05
 	var flutter := sin(Time.get_ticks_msec() / 160.0) * 0.14 * calm
@@ -302,17 +327,22 @@ func _show(first: bool) -> void:
 	flag.rotation.z = lerp(flag.rotation.z, 0.0 if blowing else -1.35, 0.05)  # no wind, and it hangs
 	for i in falls.size():
 		falls[i].scale.z = 0.5 * (1.0 + 0.12 * calm * sin(Time.get_ticks_msec() / 130.0 + i * 1.7))
+
+
+func _show_held() -> void:
+	# What the hand holds rides up in it.
 	var held = snap.get("held")
-	for kind in ["balls", "hats", "food", "music", "drum"]:  # what the hand holds rides up in it
+	for kind in ["balls", "hats", "food", "music", "drum"]:
 		var nodes: Array = props.get(kind, [])
 		for k in nodes.size():
 			var up: bool = held != null and held[0] + ("s" if held[0] in ["ball", "hat"] else "") == kind and int(held[1]) == k
 			nodes[k].position.y = lerp(nodes[k].position.y, 0.3 if up else 0.0, 0.3)
 	for i in ducks.size():
 		ducks[i].lifted = held != null and held[0] == "duck" and int(held[1]) == i
-	for n in props.get("music", []):
-		n.scale = Vector3.ONE * (1.0 + 0.06 * calm * sin(Time.get_ticks_msec() / 90.0))  # it plays
-	# ask for the selected duck's brain, and again every second in case the garden was restarted
+
+
+func _ask_for_brain() -> void:
+	# Ask for the selected duck's brain, and again every second in case the garden was restarted.
 	asked += 0.02
 	if watching != selected or asked > 1.0:
 		watching = selected
@@ -322,10 +352,13 @@ func _show(first: bool) -> void:
 	if brain.visible:
 		brain.show_brain(snap.brain, snap.ducks[selected].name)
 		brain.position = Vector2(get_viewport().get_visible_rect().size.x - brain.size.x - 20.0, 20.0)
+
+
+func _show_words() -> void:
+	# The card, the bars, the news and the help: all the writing on the window.
 	bars.position = card.position + Vector2(0, card.size.y + 8.0)
 	bars.queue_redraw()
-	music.set_on(snap.music != null)
-	music.follow(snap.get("music_volume", 0.75))
+	overlay.queue_redraw()
 	var lines: Array = snap.toasts.duplicate()
 	if Time.get_ticks_msec() / 1000.0 < said_until:
 		lines.append(said)
@@ -333,16 +366,6 @@ func _show(first: bool) -> void:
 		lines.append("♪ " + music.title)
 	toasts.text = "\n".join(lines)
 	toasts.visible = not lines.is_empty()
-	overlay.queue_redraw()
-	for q in snap.get("sounds", []):  # [t, duck, tag], oldest first
-		if q[0] > heard:
-			heard = q[0]
-			_quack(int(q[1]), q[2])
-	for i in ducks.size():
-		ducks[i].model.visible = not (possessing and i == selected)
-	if possessing:
-		_act("garden.wheel", {"duck": selected, "fwd": int(Input.is_key_pressed(KEY_W)) - int(Input.is_key_pressed(KEY_S)),
-			"turn": int(Input.is_key_pressed(KEY_A)) - int(Input.is_key_pressed(KEY_D))})
 	card.visible = selected >= 0
 	help.visible = true
 	help.text = HELP_RIDING if possessing else (HELP if help_on else HELP_HINT)
@@ -353,22 +376,26 @@ func _show(first: bool) -> void:
 	for other in [card, bars, toasts, brain]:  # the menu is the whole window while it is open
 		other.modulate.a = 0.0 if open else 1.0
 	if selected >= 0:
-		var d: Dictionary = snap.ducks[selected]
-		card.text = "%s   %s\n%s" % [d.name, d.label, ("asleep" if d.asleep else ("crying" if d.get("crying", false) else d.mood))]
-		var a: Dictionary = d.get("among", {})
-		if not a.is_empty():
-			card.text += "\n\nlikes %s best\n%s" % [a.favourite, a.hand]
-			if a.friend != "":
-				card.text += "\nfriend: %s" % a.friend
-			if a.grudge != "":
-				card.text += "\ngrudge against: %s" % a.grudge
-			card.text += "\nswimmer %d%%   runner %d%%   dancer %d%%" % [a.skills[0] * 100, a.skills[1] * 100, a.skills[2] * 100]
+		card.text = _card_text(snap.ducks[selected])
+
+
+func _card_text(d: Dictionary) -> String:
+	var text := "%s   %s\n%s" % [d.name, d.label, ("asleep" if d.asleep else ("crying" if d.get("crying", false) else d.mood))]
+	var a: Dictionary = d.get("among", {})
+	if a.is_empty():
+		return text
+	text += "\n\nlikes %s best\n%s" % [a.favourite, a.hand]
+	if a.friend != "":
+		text += "\nfriend: %s" % a.friend
+	if a.grudge != "":
+		text += "\ngrudge against: %s" % a.grudge
+	return text + "\nswimmer %d%%   runner %d%%   dancer %d%%" % [a.skills[0] * 100, a.skills[1] * 100, a.skills[2] * 100]
 
 
 func _fruit(n: Node3D, f: Array) -> void:
 	# An orange, an apple or a banana (Chris, 2026-09-21), as the garden dealt it. All of them are the same food,
 	# and each duck has one it likes best.
-	var kind: int = int(f[2]) if f.size() > 2 else int(abs(f[0] * 731.0 + f[1] * 389.0) * 10.0) % 3  # the garden says which
+	var kind: int = int(f[2])  # the garden says which
 	var leaf := Color("2f8f4a")
 	if kind == 0:
 		Ink.part(n, Ink.ball(0.075, 8), Color("f39a2b"), Vector3(0, 0.072, 0), Vector3.ONE, 6.0, -1.0, true).material_override.set_shader_parameter("lift", 0.3)
@@ -466,16 +493,8 @@ func _quack(duck: int, tag: String) -> void:
 	# A quack is a buzz whose pitch moves, shaped by the tag and voiced by the duck. Each duck has its own
 	# voice, made from its number so it is the same every day: how high, how reedy, how much it wobbles and
 	# how fast it speaks. Synthesised here; the garden ships no audio files.
-	if tag == "drum":  # not a voice: a small soft thump, the same from any duck, and quiet (Chris)
-		var skin: AudioStreamGeneratorPlayback = voice.get_stream_playback()
-		var turn := 0.0
-		for k in int(0.14 * 22050.0):
-			if skin.get_frames_available() < 1:
-				return
-			var u := float(k) / (0.14 * 22050.0)
-			turn += lerp(150.0, 80.0, u) / 22050.0
-			var thump: float = sin(TAU * turn) * exp(-5.0 * u) * 0.09
-			skin.push_frame(Vector2(thump, thump))
+	if tag == "drum":
+		_thump()
 		return
 	var shape: Array = {"alarm": [900.0, 0.5, 0.12, 3], "greet": [520.0, 0.8, 0.16, 2], "inquire": [480.0, 1.3, 0.22, 1],
 		"peck": [700.0, 0.9, 0.05, 2], "chirp": [1100.0, 1.1, 0.07, 2], "coo": [330.0, 0.9, 0.4, 1],
@@ -502,6 +521,19 @@ func _quack(duck: int, tag: String) -> void:
 			playback.push_frame(Vector2(v, v))
 
 
+func _thump() -> void:
+	# The drum is not a voice: a small soft thump, the same from any duck, and quiet (Chris).
+	var skin: AudioStreamGeneratorPlayback = voice.get_stream_playback()
+	var turn := 0.0
+	for k in int(0.14 * 22050.0):
+		if skin.get_frames_available() < 1:
+			return
+		var u := float(k) / (0.14 * 22050.0)
+		turn += lerp(150.0, 80.0, u) / 22050.0
+		var thump: float = sin(TAU * turn) * exp(-5.0 * u) * 0.09
+		skin.push_frame(Vector2(thump, thump))
+
+
 func _hand(_dt: float) -> void:
 	# The glove rides over the lawn under the mouse, lower when it is closed. While it is closed the garden is
 	# told where it is, so what it holds goes with it and the ducks can see it coming.
@@ -509,7 +541,7 @@ func _hand(_dt: float) -> void:
 	if snap.is_empty() or possessing or not hand_mode or not mouse_inside:
 		glove.visible = false
 		return
-	var xy = _ground(get_viewport().get_mouse_position())
+	var xy = _mouse_ground()
 	glove.visible = xy != null
 	if xy == null:
 		return
@@ -624,8 +656,7 @@ func _click(screen: Vector2) -> void:
 	if snap.music != null and xy.distance_to(Vector2(snap.music[0], snap.music[1])) < 0.4:  # the box: its volume, a step a click
 		var volume: float = music.step_volume()
 		_act("garden.volume", {"level": volume})
-		said = "music off" if volume == 0.0 else "music volume %d%%" % int(volume * 100)
-		said_until = Time.get_ticks_msec() / 1000.0 + 2.5
+		_say("music off" if volume == 0.0 else "music volume %d%%" % int(volume * 100))
 		return
 	if xy.distance_to(Vector2(snap.tree[0], snap.tree[1])) < 0.3:
 		_act("garden.shake_tree", {})
@@ -647,7 +678,7 @@ func _key(code: int) -> void:
 	elif code == KEY_F:  # fruit falls from the tree, as it does by itself: an orange, an apple or a banana, under the canopy
 		_act("garden.shake_tree", {})
 	elif code == KEY_M:
-		var xy = _ground(get_viewport().get_mouse_position())
+		var xy = _mouse_ground()
 		if xy != null:
 			_act("garden.music", {"x": xy.x, "y": xy.y, "on": int(snap.music == null)})
 	elif selected >= 0 and code == KEY_G:  # a fruit held out to this duck: it learns your hand is a good thing
@@ -655,11 +686,11 @@ func _key(code: int) -> void:
 	elif selected >= 0 and code == KEY_P:
 		_act("garden.pet", {"duck": selected})
 	elif code == KEY_D and not possessing:  # a drum, down at the mouse or taken up again (D steers a ridden duck)
-		var here = _ground(get_viewport().get_mouse_position())
+		var here = _mouse_ground()
 		if here != null:
 			_act("garden.drum", {"x": here.x, "y": here.y, "on": int(snap.get("drum") == null)})
 	elif code == KEY_B:  # a ball for them, where the mouse is
-		var where = _ground(get_viewport().get_mouse_position())
+		var where = _mouse_ground()
 		if where != null and where.x > 0 and where.y > 0 and where.x < snap.size and where.y < snap.size:
 			_act("garden.drop_ball", {"x": where.x, "y": where.y})
 	elif code == KEY_H:  # the hand, on and off
@@ -667,12 +698,22 @@ func _key(code: int) -> void:
 		if not hand_mode and gripping:
 			gripping = false
 			_let_go()
-		said = "the hand is out: hold the left button to pick things up" if hand_mode else "the hand is away"
-		said_until = Time.get_ticks_msec() / 1000.0 + 2.5
+		_say("the hand is out: hold the left button to pick things up" if hand_mode else "the hand is away")
 	elif code == KEY_T:  # a hat, no two alike, left where the mouse is; the ducks decide who wears it
-		var spot = _ground(get_viewport().get_mouse_position())
+		var spot = _mouse_ground()
 		if spot != null:
 			_act("garden.drop_hat", {"x": spot.x, "y": spot.y})
+
+
+func _mouse_ground():
+	return _ground(get_viewport().get_mouse_position())
+
+
+func _say(line: String) -> void:
+	# a line from this window, shown with the garden's toasts for a moment
+	said = line
+	said_until = Time.get_ticks_msec() / 1000.0 + 2.5
+
 
 func _act(method: String, params: Dictionary) -> void:
 	out.put_packet(JSON.stringify({"method": method, "params": params}).to_utf8_buffer())
