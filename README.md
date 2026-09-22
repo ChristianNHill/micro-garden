@@ -124,4 +124,4 @@ This project also builds on:
 
 The model also draws on Gaudry et al. (2013) on asymmetric ORN transmitter release, and on Schretter et al. (2020) and Deutsch et al. (2020) on the aIPg and pC1d/e aggression circuits. Where the model departs from them, the code says so.
 
-I direct the project and make its decisions. Claude Code wrote most of the code, as the commit history shows. The code is MIT licensed, and the FlyWire data has its own terms, listed above.
+The code is MIT licensed, and the FlyWire data has its own terms, listed above.
