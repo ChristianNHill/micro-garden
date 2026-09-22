@@ -128,6 +128,11 @@ class BrainServer:
             for s in ("left", "right"):
                 self.sets[f"{name}_{s}"] = sets[name][side[sets[name]] == s]
         self.n = len(bodies)
+        # One server can drive several gardens at once (the gates run many small ones), and a frame names other
+        # ducks by their number in its own garden. A garden's ducks share a socket directory, so each duck's
+        # garden starts at the first duck with its directory, and that is added to every number it is told.
+        dirs = [os.path.dirname(path) for path, _ in bodies]
+        self.first = np.array([dirs.index(d) for d in dirs])
         knobs = {**(personality or {}), **knobs}
         self.brain = LIF(strip(W, sets) if learns else W, self.n)
         sparsen(self.brain, sets)  # a sparse odor code, as in the fly (Gate 7)
@@ -172,8 +177,9 @@ class BrainServer:
         body = self.body
         self.t += BODY_DT_MS / 1000
         falls_asleep, wakes = body.step(BODY_DT_MS / 1000, f, self.escaped, self.last_vx)
+        f = self._in_all_gardens(f)
         social.update(body, f, BODY_DT_MS / 1000, self.last_vx)
-        among = social.steering(body, f)
+        among = social.steering(body, f, self._scents(f))
 
         levels = self._levels(f)
         self.decoder.body = self._decoder_input(f, levels, among)
@@ -202,6 +208,24 @@ class BrainServer:
                 continue
             self._send(robot.call if lockstep else robot.notify, i, it, f[i], falls_asleep[i], wakes[i])
         return intents
+
+    def _in_all_gardens(self, f):
+        """The frames with every duck named by its number among all the ducks this server drives."""
+        f = f.copy()
+        for name in frames.IDS:
+            if name != "ate_kind":  # a fruit, not a duck
+                f[name] = np.where(f[name] >= 0, f[name] + self.first, -1)
+        return f
+
+    def _scents(self, f) -> tuple[np.ndarray, np.ndarray]:
+        """Each duck's smell of each other duck, (n, n) for left and right, from the per-garden columns."""
+        j = self.first[:, None] + np.arange(frames.MAX_DUCKS)[None]  # which duck each column is, among all
+        same = (j < self.n) & (self.first[np.minimum(j, self.n - 1)] == self.first[:, None])
+        rows = np.broadcast_to(np.arange(self.n)[:, None], j.shape)
+        left, right = np.zeros((self.n, self.n)), np.zeros((self.n, self.n))
+        left[rows[same], j[same]] = f["scent_left"][same]
+        right[rows[same], j[same]] = f["scent_right"][same]
+        return left, right
 
     def _decoder_input(self, f, levels, among) -> dict:
         """What the body and the garden tell the decoder this step, beside the spikes: the likes and wants that

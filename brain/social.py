@@ -99,8 +99,10 @@ def performed(body, i: int) -> None:
     body.dance_skill[i] = min(body.dance_skill[i] + 0.02, 1.0)
 
 
-def steering(body, f: dict) -> dict:
-    """What the decoder needs of all this, a value a duck: see brain/decoder.py for what each does."""
+def steering(body, f: dict, scent=None) -> dict:
+    """What the decoder needs of all this, a value a duck: see brain/decoder.py for what each does. `scent` is
+    each duck's smell of every other as (n, n) left and right (BrainServer._scents); None reads the frames'
+    own columns, which is the same when every duck is in one garden."""
     n = len(body.hunger)
     near = f["near_id"].astype(int)
     with_one = f["near_id"] >= 0
@@ -110,7 +112,7 @@ def steering(body, f: dict) -> dict:
     # Friends and grudges from across the garden: each duck has a smell of its own, and which antenna a duck
     # smells it on more says which side it is on. The difference is taken as a share of the whole, as the other
     # smells' is, so a faint duck far off still has a side; how much it matters falls off with how faint it is.
-    left, right = f["scent_left"][:, :n], f["scent_right"][:, :n]
+    left, right = scent if scent is not None else (f["scent_left"][:, :n], f["scent_right"][:, :n])
     total = left + right
     side = (left - right) / np.maximum(total, 1e-9)  # +1 all on the left, -1 all on the right
     plain = total / (total + SCENT_HALF)
@@ -168,5 +170,15 @@ if __name__ == "__main__":
     f = blank(); f["scent_left"][2, 0], f["scent_right"][2, 0] = 0.021, 0.019  # the Bully, two metres off to the Scaredy's left
     assert steering(b, f)["bond_turn"][2] < -0.05 and steering(b, f)["bond_turn"][3] == 0, "a grudge turns a duck away from far off"
     assert friends(b, 2, labels) == ("", "Bully") and friends(b, 3, labels) == ("", ""), "one shove is a grudge for the duck it landed on"
+    # One server, two gardens of two ducks: a frame names ducks by their number in its own garden
+    from types import SimpleNamespace
+    from brain.server import BrainServer
+    two = SimpleNamespace(first=np.array([0, 0, 2, 2]), n=4)
+    f2 = np.array([frames.blank() for _ in range(4)], frames.FRAME)
+    f2["bumped_by"][3], f2["ate_kind"][1] = 0, 0  # the second garden's first duck shoves its other one
+    f2["scent_left"][2, 1], f2["scent_left"][0, 3] = 0.5, 0.75
+    g = BrainServer._in_all_gardens(two, f2)
+    L, _ = BrainServer._scents(two, g)
+    assert g["bumped_by"][3] == 2 and g["ate_kind"][1] == 0 and L[2, 3] == 0.5 and L[0, 3] == 0, "ids and smells stay in their garden"
     print("ok  a shove makes a grudge and kind witnesses take sides; a song makes a friend of the Gentle and an "
           f"enemy of the Bully; the hand is trusted by the duck it fed ({b.hand_trust[1]:+.2f}) and not by the rest")
