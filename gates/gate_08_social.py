@@ -94,13 +94,20 @@ def follows_the_hand(W, ann, sets, n, seed):
     poses = [[[1.2, 2.0, 0.0], [2.8, 2.0, np.pi]] for _ in range(n)]
     spots = [(1.2 + 0.35 * np.cos(a), 2.0 + 0.35 * np.sin(a)) for a in np.linspace(0, 2 * np.pi, HAND_FEEDS)]
 
+    fed_at = {}  # garden -> the last spot it was fed at
+
     def feed(stubs):
-        for s in stubs:
+        # The hand is put back every step, since a hand leaves the garden by itself after a few seconds, and
+        # each spot is fed once: judged by where the hand was, a hand that had left looked new every step and
+        # the gate put down a fruit a step, thousands of them (2026-09-22).
+        for g, s in enumerate(stubs):
             step = int(s.t / (HAND_S / (HAND_FEEDS + 2)))
-            if step < HAND_FEEDS and s.world.hand != spots[step]:
+            if step < HAND_FEEDS:
                 s.world.hand = spots[step]
-                s.world.add_food(spots[step], 3)
-            elif step >= HAND_FEEDS:
+                if fed_at.get(g) != step:
+                    fed_at[g] = step
+                    s.world.add_food(spots[step], 3)
+            else:
                 s.world.hand = (2.0, 2.6)  # the hand shows itself, empty, between the two of them
         return False
 
