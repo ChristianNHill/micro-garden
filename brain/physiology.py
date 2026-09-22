@@ -179,6 +179,13 @@ class Physiology:
         cold = np.clip((COMFORT_C - COMFORT_BAND_C - self.body_temp) / COMFORT_SPAN_C, 0, 1)
         return hot, cold
 
+    def cooling(self) -> tuple[np.ndarray, np.ndarray]:
+        """How much a duck wants the pond and the shade to cool off in, each 0 to 1 (Chris, 2026-09-21: heat
+        should send a duck to cool off). Water love picks which, as it picks between their senses below, and like
+        a swim it gives way to hunger. A fed hot duck used to stand in the sun: being hot was no reason to walk."""
+        hot = self.discomfort()[0] * (1 - 0.8 * pressing(self.hunger)) * ~self.asleep
+        return hot * self.k["water_love"], hot * (1 - self.k["water_love"])
+
     def sense_gains(self) -> dict[str, np.ndarray]:
         """Multipliers on encoder levels, by input set name (sides share a gain)."""
         k = self.k

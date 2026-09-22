@@ -62,6 +62,9 @@ CONTROL_PARAMS = {"sim.step": {"n": 1}, "sim.state": {}, "garden.shake_tree": {}
                   "garden.drop_hat": {"x": 0.0, "y": 0.0}, "garden.drop_ball": {"x": 0.0, "y": 0.0}, "garden.volume": {"level": 0.75}, "garden.give": {"duck": 0}, "garden.drum": {"x": 0.0, "y": 0.0, "on": 1}, "garden.grab": {"x": 0.0, "y": 0.0}, "garden.hand_at": {"x": 0.0, "y": 0.0},
                   "garden.release": {"x": 0.0, "y": 0.0, "vx": 0.0, "vy": 0.0}}
 SHAKE_FRUIT = 2
+# The player's shake has a limit of its own. It shared the tree's (MAX_FOOD, 4), which the demo garden's tree keeps
+# the lawn at by itself, so F and a tap on the tree did nothing at all (Chris, 2026-09-21).
+SHAKE_MOST = 12
 PUSH_M = 0.15
 DOWN_S = 10.0  # a kicked duck goes over, and this is about how long a microduck takes to get back on its feet
 SWIM_SPEED = 0.5  # fraction of commanded speed while swimming
@@ -69,6 +72,7 @@ SOUND_TAGS = {"alarm", "greet", "inquire", "peck", "chirp", "coo", "wheee"}  # m
 SIT_AFTER_S = 3.0  # a duck that has not moved for this long is drawn sitting (body/mujoco/adapter.py really sits)
 DRUM_REACH_M = 0.32  # how near a drum a duck has to be to tap it
 KICK_REACH_M, KICK_MS = 0.22, 1.6  # how near its feet a ball has to be for a duck to kick it, and how fast it leaves
+COOL_SEEN_M = 3.0  # the pond or the tree's shade this far from its edge is half as plain as at it
 BALL_SEEN_M = 1.5  # a ball this far off fills half what it would at a duck's feet
 NEAR_M = 1.0  # another duck nearer than this is the one a duck is with
 EARSHOT_M = 2.0  # how far an alarm, a whoop or a cry carries
@@ -367,7 +371,7 @@ class Stub:
 
     def shake_tree(self) -> int:
         """Callers hold self.lock (control calls do; the viewer takes it)."""
-        return self.world.drop_fruit(self.fruit_rng, SHAKE_FRUIT)
+        return self.world.drop_fruit(self.fruit_rng, SHAKE_FRUIT, SHAKE_MOST)
 
     def _pet(self, p):
         i = int(p["duck"])
@@ -586,6 +590,15 @@ class Stub:
             on_left = (rel * left).sum(1) >= 0
             sense["drum_left"], sense["drum_right"] = plain_drum * on_left, plain_drum * ~on_left
             sense["drum_near"] = (d_drum < DRUM_REACH_M).astype(float)
+        # Where a hot duck can cool off (Chris, 2026-09-21): the garden is one temperature out of the shade and
+        # damp air carries half a metre, so nothing told a duck standing in the sun which way relief lay. It
+        # lives here and knows its pond and its tree by sight: which eye, and plainer the nearer.
+        for name, place in (("pond", w.pond), ("shade", w.tree)):
+            if place is not None:
+                rel = np.asarray(place[:2]) - xy
+                plain = 1 / (1 + np.maximum(np.linalg.norm(rel, axis=1) - place[2], 0) / COOL_SEEN_M)
+                on_left = (rel * left).sum(1) >= 0
+                sense[f"{name}_left"], sense[f"{name}_right"] = plain * on_left, plain * ~on_left
         sense["drummed"] = self.drummed.astype(float)
         self.drummed[:] = False
         sense["kicked"], sense["show"] = self.kicked.astype(float), self.saw_show.astype(float)
@@ -656,7 +669,8 @@ def main() -> None:
     ap.add_argument("--view", action="store_true")
     ap.add_argument("--frame-port", type=int, default=frames.FRAME_PORT,
                     help="first UDP port to try for the ducks' senses; a free block at or after it is used")
-    ap.add_argument("--godot", action="store_true", help="publish the world for the Godot garden (viewer/godot/)")
+    ap.add_argument("--godot", action="store_true", help="open the Godot garden (viewer/godot/) on this one; closing it ends the garden")
+    ap.add_argument("--no-window", action="store_true", help="with --godot: publish only, and open Godot yourself")
     ap.add_argument("--wander", action="store_true", help="random walk every 0.5 s, for watching the stub alone")
     ap.add_argument("--brain", action="store_true",
                     help="drive the ducks from here with the real brain, so the viewer has drives to show")
@@ -727,7 +741,7 @@ def main() -> None:
     world_out = None
     if args.godot:
         from viewer.snapshot import Snapshot
-        world_out = Snapshot(args.blind)
+        world_out = Snapshot(args.blind, window=not args.no_window)
     try:
         run_loop(args, stub, view, server, rng, click, key, world_out)
     except KeyboardInterrupt:

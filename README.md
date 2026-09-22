@@ -39,22 +39,25 @@ uv run python -m body.mujoco.adapter --ducks 5 --view --brain
 
 ## The Godot garden
 
-`viewer/godot/` is the garden to look at. It is laid out after the Chao gardens of Sonic Adventure 2: a lawn in a bowl of rock, a pond under a waterfall, a fruit tree, a rail fence over the sea. The ducks are the real microduck, built from Pollen Robotics' own meshes and posed joint by joint. A halftone screen of ink shades everything, and night is a wash of blue. It needs [Godot 4](https://godotengine.org). Start either body with `--godot`, and then open the project:
+`viewer/godot/` is the garden to look at. It is laid out after the Chao gardens of Sonic Adventure 2: a lawn in a bowl of rock, a pond under a waterfall, a fruit tree, a rail fence over the sea. The ducks are the real microduck, built from Pollen Robotics' own meshes and posed joint by joint. A halftone screen of ink shades everything, and night is a wash of blue. It needs [Godot 4](https://godotengine.org), in `/Applications`, on your path as `godot`, or wherever `GODOT` says. One command opens the garden:
 
 ```
-uv run python -m body.stub2d.stub --brain --godot
-/Applications/Godot.app/Contents/MacOS/Godot --path viewer/godot
+uv run python -m garden
 ```
+
+That is five ducks on five brains with the Godot window over them. Closing the window ends the garden and saves it, and the next time you open it the ducks have aged by however long you were away. Any body takes `--godot` to do the same, and `--no-window` if you would rather open `viewer/godot` yourself.
 
 `/` opens the list of controls. Godot only draws. The garden publishes its world over UDP, and what you do goes back as the same control calls the 2D window uses.
 
 - Click a duck to select it. The camera follows it, a panel shows its needs, moods and wants as bars, and another shows its fly brain: 12,000 of its 139,000 neurons where FlyWire has them, each flaring as it fires.
 - `Tab` rides the selected duck. W, A, S and D steer it, and you see its two hex retinas and what its descending neurons ask of its legs.
 - `H` brings out a hand in place of the cursor. With it out, hold the left button to pick up fruit, a hat, a ball, the music box or a duck, carry it, and let go to put it down. Let go on the move and you throw it. A duck that trusts your hand likes being carried, and a thrown duck trusts you less. With the hand out the camera turns on right-drag, and otherwise on a plain drag.
-- `F` shakes fruit down from the tree, and so does a tap on it. `T` drops a hat at the mouse, `B` drops a ball, `D` puts a small drum down or takes it up, `M` does the same for the music box, `C` claps, and `P` pets the selected duck.
+- `F` shakes fruit down from the tree, and so does a tap on it. The tree stops dropping by itself once four fruit lie about, and your shake goes on working up to twelve. `T` drops a hat at the mouse, `B` drops a ball, `D` puts a small drum down or takes it up, `M` does the same for the music box, `C` claps, and `P` pets the selected duck.
 - A duck that likes the music dances to it while the box is down and nothing presses on it.
 - The music box plays your own music. Put mp3s in `~/.cache/micro-garden/music/` and it shuffles them while it is down in the garden. Click the box to step its volume. No music ships with the project.
 - The ducks have each other. A shove makes a grudge and time together makes a friend, duck by duck. A kind duck goes to one that is crying, an alarm is catching, and a song pleases a sociable duck and annoys a solitary one. They also come to know your hand: pet a duck or hand it a fruit with `G` and it learns to come to you, and each has a fruit it likes best.
+- A duck that gets too hot goes to cool off. A water lover heads for the pond and a water-shy duck for the shade of the tree.
+- Friends keep each other company at arm's length. They stop closing once they are beside each other, and a duck that is crowded steps aside.
 - Hats are for the ducks. A duck that finds one decides whether to wear it, and a vain duck usually does. A duck that shakes one off leaves it on the lawn for the next.
 
 The ducks emote every so often, like a Chao or a Sim. Each acts out its strongest feeling with its head and its voice, a chatty duck more often. Strong characters have a trick of their own: an aggressive duck stomps, a sleepy one yawns, a water lover splashes, a chatty one sings, and a timid one cowers. A flag on the near cliff shows the breeze, which is what the ducks find food by.

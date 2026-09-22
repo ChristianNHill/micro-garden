@@ -29,6 +29,8 @@ FRAME = np.dtype([
     # it is at the duck's feet to be kicked, and 1 on the step the duck kicked it.
     ("ball_left", "<f4"), ("ball_right", "<f4"), ("ball_near", "<f4"), ("kicked", "<f4"),
     ("drum_left", "<f4"), ("drum_right", "<f4"), ("drum_near", "<f4"), ("drummed", "<f4"),  # and the same of a drum
+    # and of the two places a duck can cool off, its pond and the shade of its tree, from anywhere in its garden
+    ("pond_left", "<f4"), ("pond_right", "<f4"), ("shade_left", "<f4"), ("shade_right", "<f4"),
     # What the ducks nearby are up to, which is most of a duck's day (brain/social.py). An id is the other
     # duck's number in this garden, or -1 for nobody. `near_*` is the nearest duck within NEAR_M and which side
     # it is on; a cry is a duck close by that is miserable, and which side; the hand is the player's, and which side.

@@ -124,10 +124,10 @@ class World:
         self.bites = np.append(self.bites, int(bites))
         self.kinds = np.append(self.kinds, self.kind_rng.integers(0, FRUITS))
 
-    def drop_fruit(self, rng: np.random.Generator, n: int = 1) -> int:
-        """Fruit falls somewhere under the shade tree's canopy. Returns how many fell."""
+    def drop_fruit(self, rng: np.random.Generator, n: int = 1, most: int = MAX_FOOD) -> int:
+        """Fruit falls somewhere under the shade tree's canopy, while less than `most` lies about. Returns how many fell."""
         fell = 0
-        while fell < n and len(self.food) < MAX_FOOD:
+        while fell < n and len(self.food) < most:
             a, r = rng.uniform(-np.pi, np.pi), rng.uniform(0.2, self.tree[2] + 0.2)
             xy = np.clip(np.array(self.tree[:2]) + r * np.array([np.cos(a), np.sin(a)]), WALL_CLEAR_M, self.size - WALL_CLEAR_M)
             self.add_food(xy, FRUIT_BITES)

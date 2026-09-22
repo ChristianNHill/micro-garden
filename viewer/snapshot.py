@@ -12,10 +12,13 @@ viewer stops asking (it quit, or crashed, with a duck still in hand).
 Knobs go along so a viewer can draw who a duck is in its outline; labels too, unless the run is blind, when
 both are withheld, as telling a Bully by its silhouette is no blind test.
 """
+import atexit
 import base64
 import json
 import os
+import shutil
 import socket
+import subprocess
 
 import numpy as np
 
@@ -74,8 +77,21 @@ def readout(body, i: int) -> list:
     return [[section, name, round(float(np.clip(v, 0, 1)), 2)] for section, name, v in rows]
 
 
+GODOT = os.environ.get("GODOT") or shutil.which("godot") or "/Applications/Godot.app/Contents/MacOS/Godot"
+PROJECT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "godot")
+
+
 class Snapshot:
-    def __init__(self, blind: bool = False):
+    def __init__(self, blind: bool = False, window: bool = False):
+        """window=True opens the Godot garden beside this one, and closing its window ends the garden (which is
+        what saves it): one command to open a garden and one window to close it (Chris, 2026-09-21)."""
+        self.window = None
+        if window and os.path.exists(GODOT):
+            self.window = subprocess.Popen([GODOT, "--path", PROJECT, "--", f"--port={SNAPSHOT_PORT}"],
+                                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            atexit.register(self.window.terminate)  # and ending the garden closes its window
+        elif window:
+            print(f"no Godot at {GODOT}: install Godot 4 or set GODOT, or open viewer/godot yourself")
         self.out = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.actions = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.actions.bind(("127.0.0.1", ACTION_PORT))
@@ -164,6 +180,8 @@ class Snapshot:
     def step(self, stub, server=None) -> None:
         """Publish this step and do whatever the player asked. Call with the stub's lock held. `server` is
         the BrainServer, or None when the garden runs without a brain."""
+        if self.window is not None and self.window.poll() is not None:
+            raise KeyboardInterrupt  # the window was closed: both bodies' loops end on this as on Ctrl-C, and save
         world = self.build(stub, server.body if server else None)
         if server is not None and getattr(server, "decoder", None) and self.wheel[0] >= 0 and stub.seen is not None:
             world["ride"] = self.ride(stub, server, self.wheel[0])

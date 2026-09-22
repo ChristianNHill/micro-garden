@@ -64,6 +64,9 @@ COMPANIONSHIP_VYAW = 1.5
 FLEE, CHASE = 1.0, 1.0
 SWIM_GROWS, RUN_GROWS = 0.6, 0.25  # how much faster a fully practised duck is, in water and on land
 BOND_VYAW, HAND_VYAW, COMFORT_VYAW = 1.5, 1.5, 2.0  # rad/s at full bond, full trust, and full kindness at a cry beside it
+ROOM_FROM, ROOM_GONE = 0.5, 0.65  # `near_*` summed (1 - metres apart): company stops pulling from 0.5 m to 0.35 m
+CROWDED_VYAW = 1.5  # rad/s aside from a duck nearer than that, for one with nothing pressing and no quarrel
+COOL_VYAW = 2.0  # rad/s towards the eye its relief is in, for a duck as hot as a duck gets, at the pond's edge
 PLAY_VYAW = 2.0  # rad/s towards the eye a ball is in, for a duck that wants to play as much as a duck can
 PURSUE_VX = 0.2  # m/s an angry duck closes on another at: brisk, and short of the run that overshot
 MUSIC_VYAW = 1.5  # rad/s toward the louder ear at full music affinity, and away from it at none
@@ -219,6 +222,13 @@ class Decoder:
         liking = np.clip(2 * b("sociability", 0.5) - 1 + b("fondness", 0.0) + b("sleepy_together", 0.0), -1, 1) * b("at_ease", 1.0)
         # Which way it turns for the other ducks is company when nothing else is going on; fear turns it
         # away from them and a fight turns it after them, whatever it otherwise thinks of company.
+        # Company is wanted as far as arm's length and no further (Chris, 2026-09-21: a friend kept closing on its
+        # friend and walked it into the fence). `near_*` is 1 at no distance and 0 at a metre: the turn towards a
+        # duck it likes is gone by 0.35 m, and a duck nearer than that to anyone, and not cross, turns aside.
+        beside = b("near_left", 0.0) + b("near_right", 0.0)
+        room = 1 - np.clip((beside - ROOM_FROM) / (ROOM_GONE - ROOM_FROM), 0, 1)
+        crowded = np.clip((beside - ROOM_GONE) / 0.1, 0, 1) * (1 - aggression) * b("at_ease", 1.0)
+        liking = np.where(liking > 0, liking * room, liking)
         liking = np.clip(liking + chased - 2 * fled, -1, 1)
         # Fleeing a stink adds a turn away from it; it does not stop a duck steering by everything
         # else. The (1 - avoid) factor here used to scale down all the rest, so a hungry duck within
@@ -232,10 +242,14 @@ class Decoder:
                 + MUSIC_VYAW * taste * (b("music_left", 0.0) - b("music_right", 0.0))
                 + COMPANIONSHIP_VYAW * liking * (b("duck_left", 0.0) - b("duck_right", 0.0))
                 + PLAY_VYAW * b("play", 0.0) * (b("ball_left", 0.0) - b("ball_right", 0.0))
+                # a hot duck turns for the pond or the shade, whichever its water love picks (Physiology.cooling)
+                + COOL_VYAW * (b("cool_left", 0.0) - b("cool_right", 0.0))
                 # and among the others (brain/social.py): towards its friends and away from its grudges, by their
                 # own smells from across the garden and more surely for the duck beside it, towards a hand it trusts and away from one it does not, and, for a kind
                 # duck, towards one that is crying. All as far as nothing is pressing, like the other likes.
-                + b("at_ease", 1.0) * (BOND_VYAW * (b("bond_turn", 0.0) + b("bond_near", 0.0) * (b("near_left", 0.0) - b("near_right", 0.0)))
+                + b("at_ease", 1.0) * (BOND_VYAW * np.where(b("bond_near", 0.0) > 0, room, 1.0)
+                                       * (b("bond_turn", 0.0) + b("bond_near", 0.0) * (b("near_left", 0.0) - b("near_right", 0.0)))
+                                       - CROWDED_VYAW * crowded * (b("near_left", 0.0) - b("near_right", 0.0))
                                        + HAND_VYAW * b("hand_trust", 0.0) * (b("hand_left", 0.0) - b("hand_right", 0.0))
                                        + COMFORT_VYAW * b("comfort", 0.0) * (b("cry_left", 0.0) - b("cry_right", 0.0))))
         vyaw = np.where(asleep, 0.0, vyaw)
@@ -245,3 +259,26 @@ class Decoder:
              "zoomies": bool(zoomies[b])}
             for b in range(len(self.rates))
         ]
+
+
+if __name__ == "__main__":
+    # The explicit turns, on a silent brain: no connectome needed, two made-up neurons a set.
+    names = ["DNa02", "odor_steer", "moist_steer", "DNp09", "moonwalker", "giant_fiber", "proboscis_mn",
+             "danger_valence", "touch_steer", "aIPg", "grooming_dn", "wind_steer"]
+    sets = {name: np.array([2 * i, 2 * i + 1]) for i, name in enumerate(names)}
+    ann = pd.DataFrame({"side": ["left", "right"] * len(names)})
+    silent = torch.zeros((1, 2 * len(names)), dtype=torch.bool, device=DEVICE)
+
+    def turn(**body) -> float:
+        dec = Decoder(ann, sets, 1)
+        dec.wander = np.zeros(1)
+        dec.ticks = 1  # past the tick that redraws the wander
+        dec.body = {"sociability": 0.5, **body}
+        return dec.update(silent)[0]["vyaw"]
+
+    far, close, touching = (turn(bond_near=1.0, near_left=x) for x in (0.3, 0.65, 0.75))
+    assert far > 0.3 and abs(close) < far / 2 and touching < 0, (far, close, touching)
+    assert turn(bond_near=-1.0, near_left=0.6) < 0, "a grudge beside it still turns a duck away"
+    assert turn(cool_left=0.5) > 0.5 > -0.5 > turn(cool_right=0.5)
+    print(f"ok  a friend on the left turns a duck {far:+.2f} rad/s at 0.7 m, {close:+.2f} at 0.35 m and {touching:+.2f} "
+          "touching; a hot duck turns for the eye its relief is in")

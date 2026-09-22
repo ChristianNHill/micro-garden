@@ -192,8 +192,11 @@ class BrainServer:
         self.playing = body.play() * at_ease
         toy_left, toy_right = np.maximum(f["ball_left"], f["drum_left"]), np.maximum(f["ball_right"], f["drum_right"])
         ball = self.playing * np.maximum(toy_left, toy_right)  # a ball or a drum: whichever it sees plainer
-        wants = np.maximum.reduce([tune, ball, among.pop("social_want") * at_ease])
+        to_pond, to_shade = body.cooling()
+        cool_left, cool_right = (to_pond * f[f"pond_{s}"] + to_shade * f[f"shade_{s}"] for s in ("left", "right"))
+        wants = np.maximum.reduce([tune, ball, among.pop("social_want") * at_ease, to_pond + to_shade])
         self.decoder.body = {**body.motor(wants=wants, damp=(f["humidity_left"] + f["humidity_right"]) / 2), **among,
+                             "cool_left": cool_left, "cool_right": cool_right,
                              "play": self.playing, "ball_left": toy_left, "ball_right": toy_right,
                              "surge": self.following, "swimming": f["swimming"] > 0, "at_shore": f["water"] > 0,
                              "thirst": body.thirst, "hatted": f["hat"] > 0, "fear": body.fear,

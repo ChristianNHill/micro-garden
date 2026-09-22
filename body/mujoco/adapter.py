@@ -401,7 +401,8 @@ def main() -> None:
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--sock-dir", default=os.path.expanduser("~/.cache/micro-garden"))
     ap.add_argument("--view", action="store_true")
-    ap.add_argument("--godot", action="store_true", help="publish the world for the Godot garden (viewer/godot/)")
+    ap.add_argument("--godot", action="store_true", help="open the Godot garden (viewer/godot/) on this one; closing it ends the garden")
+    ap.add_argument("--no-window", action="store_true", help="with --godot: publish only, and open Godot yourself")
     ap.add_argument("--brain", action="store_true", help="drive the ducks from here with the real brain")
     ap.add_argument("--labels", default="Bully,Napper,Carefree,Chatty,Scaredy")
     ap.add_argument("--cameras", default="", help="ducks that see through their sim camera, by letter: a or a,c")
@@ -430,7 +431,7 @@ def main() -> None:
     world_out = None
     if args.godot:
         from viewer.snapshot import Snapshot
-        world_out = Snapshot()
+        world_out = Snapshot(window=not args.no_window)
     next_t = time.monotonic()
     try:
         while view is None or view.alive():
