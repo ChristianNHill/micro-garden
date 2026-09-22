@@ -2,13 +2,13 @@
 
 ![Five microducks in the Godot garden: one sings, one yawns, one takes fright, and a ball, a drum, hats and fruit lie on the lawn](docs/garden.gif)
 
-Micro Garden is five small ducks in a garden, and each duck runs on its own live copy of a real fruit fly brain. I built it to ask whether a wiring diagram, a body with needs, and a place to live are enough to get behaviour nobody scripted. The brain is the FlyWire connectome, about 139,000 neurons and 2.7 million connections, simulated as spiking neurons. Each duck smells, sees, hears, gets hungry, thirsty, hot and sleepy, learns, makes friends and grudges, and has a personality.
+Micro Garden is five small ducks in a garden, and each duck runs on its own live copy of a real fruit fly brain. I built it to ask whether a wiring diagram, a body with needs, and a place to live are enough to get behaviour nobody scripted. The brain is the FlyWire connectome, about 139,000 neurons and 2.7 million connections, simulated as spiking neurons. Each duck smells, sees and hears. It gets hungry, thirsty, hot and sleepy. It learns, makes friends and holds grudges, and each one has a personality.
 
-The ducks are modelled on the [microduck](https://github.com/pollen-robotics/microduck), a real open-source robot, and the brain talks to the body through that robot's own command protocol. There are two bodies. One is a 2D body in Python. The other is the microduck's own MuJoCo simulation, where the real robot daemon runs the real walking policy and five simulated ducks live a garden day on five fly brains. A low-poly garden in Godot draws either body. The project is simulation only, and I do not plan real ducks on a floor.
+The ducks are modelled on the [microduck](https://github.com/pollen-robotics/microduck), a real open-source robot, and the brain talks to the body through that robot's own command protocol. The ducks can run in either of two bodies. One is a 2D body in Python. The other is the microduck's own MuJoCo simulation, where the robot's real daemon runs its real walking policy and each of the five simulated ducks has its own fly brain. Either way, a low-poly garden in Godot shows what the ducks are doing. Everything runs in simulation, and I have no plans to build the physical robots.
 
 ## Run it
 
-You need macOS on Apple Silicon or any machine PyTorch supports, Python 3.12, [uv](https://docs.astral.sh/uv/), and [Godot 4](https://godotengine.org) in `/Applications`, on your path as `godot`, or wherever `GODOT` points. The repo does not redistribute the FlyWire data, so download two files into `data/`:
+You need macOS on Apple Silicon or any machine PyTorch supports, Python 3.12, [uv](https://docs.astral.sh/uv/), and [Godot 4](https://godotengine.org). The garden uses the Godot that `GODOT` points to, then `godot` on your path, then the app in `/Applications`. The repo does not redistribute the FlyWire data, so download two files into `data/`:
 
 - `proofread_connections_783.feather` from the [FlyWire v783 release on Zenodo](https://doi.org/10.5281/zenodo.10676866)
 - `Supplemental_file1_neuron_annotations.tsv` from [flyconnectome/flywire_annotations](https://github.com/flyconnectome/flywire_annotations)
@@ -23,7 +23,7 @@ That starts five ducks on five brains and opens the Godot window over them. Clos
 
 ## The garden
 
-The garden is laid out after the Chao gardens of Sonic Adventure 2. A lawn sits in a bowl of rock, with a pond under a waterfall, a fruit tree, and a rail fence over the sea. The ducks are the real microduck, built from Pollen Robotics' own meshes and posed joint by joint. They sit, walk, kick and get up with the robot's own recorded motions. A halftone screen of ink shades everything, and night is a wash of blue. A flag on the near cliff shows the breeze, which is how the ducks find food.
+The garden is laid out after the Chao gardens of Sonic Adventure 2. A lawn sits in a bowl of rock, with a pond under a waterfall, a fruit tree, and a rail fence over the sea. Each duck is the real microduck, built from Pollen Robotics' own meshes and posed joint by joint. They sit, walk, kick and get up with the robot's own recorded motions. A halftone screen of ink shades everything, and night is a wash of blue. A flag on the near cliff shows the breeze, which is how the ducks find food.
 
 ![The garden from the open front of the lawn, with ducks at the pond, hats on two of them, a ball and a drum on the grass](docs/garden.webp)
 
@@ -33,22 +33,22 @@ Select a duck and you see who it is, what it needs and feels, and its fly brain 
 
 ![The Carefree duck selected under the fruit tree, happy, with its favourite fruit and its skills on its card](docs/under-the-tree.webp)
 
-Godot only draws. The garden publishes its world over UDP, and what you do goes back as the same control calls the 2D window uses. Press `/` to see every control:
+Godot only draws the garden, and the Python side runs it. The garden publishes its world over UDP, and your clicks and keys go back as the same control calls the 2D window sends. Press `/` to see every control:
 
 - Click a duck to select it. The camera follows it, one panel shows its needs, moods and wants as bars, and another shows its fly brain: 12,000 of its 139,000 neurons where FlyWire has them, each flaring as it fires.
 - `Tab` rides the selected duck. W, A, S and D steer it, and you see its two hex retinas and what its descending neurons ask of its legs. `O` hides that overlay.
-- `H` brings out a hand in place of the cursor. Hold the left button to pick up fruit, a hat, a ball, the drum, the music box or a duck, and let go to put it down. Let go on the move and you throw it. With the hand out the camera turns on a right-drag, and otherwise on a plain drag.
+- `H` brings out a hand in place of the cursor. Hold the left button to pick up fruit, a hat, a ball, the drum, the music box or a duck, and let go to put it down. Let go on the move and you throw it. To turn the camera, drag with the left button, or with the right button while the hand is out.
 - `F` shakes fruit down from the tree, and so does a tap on it. The tree stops dropping fruit by itself once four lie on the lawn, and your shakes keep working up to twelve.
 - `G` hands the selected duck a fruit, `P` pets it, and `C` claps.
 - `T` drops a hat at the mouse and `B` drops a ball. `D` puts a small drum down or takes it up, and `M` does the same for the music box.
 
-The music box plays your own music. Put mp3s in `~/.cache/micro-garden/music/` and it shuffles them while the box is in the garden. Click the box to step its volume, and off means off for the ducks too. No music ships with the project.
+The music box plays your own music. Put mp3s in `~/.cache/micro-garden/music/` and it shuffles them while the box is in the garden. Click the box to step its volume. When you turn it off, the ducks stop hearing it too. No music ships with the project.
 
 ## What the ducks do
 
 A duck eats when it is hungry, drinks when it is thirsty, and sleeps when it is tired. A hungry duck follows the smell of fruit up the wind, and a thirsty one follows damp air to the pond. A duck that gets too hot goes to cool off, and its love of water decides where: a water lover heads for the pond and a water-shy duck for the shade of the tree. With nothing pressing, a duck sits or stands about until boredom sets it wandering.
 
-The ducks have each other. A shove makes a grudge and time together makes a friend, duck by duck, and each duck can smell the others from across the garden. Friends keep each other company at arm's length. They stop closing in once they are side by side, and a crowded duck steps aside. A kind duck goes to one that is crying, and an alarm spreads from duck to duck. A song pleases a sociable duck and annoys a solitary one.
+The ducks have each other. A shove makes a grudge and time together makes a friend, and each duck keeps its own tally for every other duck. Each duck can also smell the others from across the garden. Friends seek each other out but stop about half a metre apart, and a duck that gets crowded steps aside. A kind duck goes to one that is crying, and an alarm spreads from duck to duck. A song pleases a sociable duck and annoys a solitary one.
 
 They also come to know your hand. Pet a duck or hand it a fruit and it learns to come to you. A duck that trusts your hand likes being carried, and a thrown duck trusts you less. Each duck has a fruit it likes best.
 
@@ -82,7 +82,7 @@ To run the ducks as simulated robots, check out [microduck](https://github.com/p
 uv run python -m body.mujoco.adapter --ducks 5 --brain --godot
 ```
 
-The simulator runs natively on a Mac. The walking policy upstream ships does not yet track a velocity ([microduck_rl issue 46](https://github.com/pollen-robotics/microduck_rl/issues/46)), so these ducks march and pivot. Either body takes `--godot` to open the Godot garden. Add `--no-window` to publish the world only and open `viewer/godot` yourself.
+The simulator runs natively on a Mac. The walking policy that ships upstream does not yet track a commanded velocity ([microduck_rl issue 46](https://github.com/pollen-robotics/microduck_rl/issues/46)), so these ducks march and pivot. Either body takes `--godot` to open the Godot garden. Add `--no-window` to publish the world only and open `viewer/godot` yourself.
 
 ## How it is checked
 
@@ -94,7 +94,7 @@ uv run python -m gates --fast # the ones that take about a minute
 uv run python -m gates 4 8 # just those
 ```
 
-The fast gates pass. The last full run passed 14 of 15. The one failure was Gate 5's check that a fed duck that is too hot goes to cool off. Heat now sends a duck to the pond or the shade, and Gate 5 has not run since. Two other results stand because they are true. The five demo personalities are hard to tell apart by numbers alone, so Gate 5 prints that comparison and does not assert it. The Bully's aggression costs it food, and I count that as character, not a bug.
+The fast gates pass. The last full run passed 14 of 15. The one failure was Gate 5's check that a fed duck that is too hot goes to cool off. Heat now sends a duck to the pond or the shade, and Gate 5 has not run since. Two other results look like failures, and I leave them in because they are true. The five demo personalities are hard to tell apart by numbers alone, so Gate 5 prints that comparison and does not assert it. The Bully's aggression costs it food, and I count that as character, not a bug.
 
 ## Where things are
 
