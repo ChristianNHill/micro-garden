@@ -67,6 +67,7 @@ SHAKE_FRUIT = 2
 SHAKE_MOST = 12
 PUSH_M = 0.15
 DOWN_S = 10.0  # a kicked duck goes over, and this is about how long a microduck takes to get back on its feet
+BLOCKED_VYAW = 1.5  # rad/s a duck the fence or a rock has stopped turns back in at
 SWIM_SPEED = 0.5  # fraction of commanded speed while swimming
 SOUND_TAGS = {"alarm", "greet", "inquire", "peck", "chirp", "coo", "wheee"}  # microduck's voice bank
 SIT_AFTER_S = 3.0  # a duck that has not moved for this long is drawn sitting (body/mujoco/adapter.py really sits)
@@ -525,11 +526,23 @@ class Stub:
         x += (vx * np.cos(h) - vy * np.sin(h)) * DT
         y += (vx * np.sin(h) + vy * np.cos(h)) * DT
         self.still_for = np.where(np.hypot(vx, vy) > 0.01, 0.0, self.still_for + DT)
+        free = self.pose[:, :2].copy()
         np.clip(self.pose[:, :2], DUCK_R, self.world.size - DUCK_R, out=self.pose[:, :2])
+        blocked = np.linalg.norm(self.pose[:, :2] - free, axis=1) > 1e-6
         self._keep_apart()
         if self.held is not None and self.held[0] == "duck" and self.world.hand is not None:
             self.pose[self.held[1], :2] = self.world.hand  # its legs may go, and it goes nowhere
+        free = self.pose[:, :2].copy()
         self.world.push_out(self.pose[:, :2], DUCK_R)
+        blocked |= np.linalg.norm(self.pose[:, :2] - free, axis=1) > 1e-6
+        # A duck the fence or a rock has stopped turns back in, towards the middle of the garden, as the robot
+        # body does (`fence`). It used to stay pressed there until its wander turned it, and with the pond
+        # reaching nearly to the back corner a swimmer that met the waterfall's foot looked drawn to it
+        # (Chris, 2026-09-21).
+        if blocked.any():
+            ahead = np.column_stack([np.cos(h), np.sin(h)])
+            to_mid = self.world.size / 2 - self.pose[:, :2]
+            h += blocked * np.where(ahead[:, 0] * to_mid[:, 1] - ahead[:, 1] * to_mid[:, 0] >= 0, 1.0, -1.0) * BLOCKED_VYAW * DT
         self.velocity = (self.pose[:, :2] - before) / DT
         self.world.roll_balls(DT, self.pose[:, :2], self.velocity)
         if self.world.hand is not None and self.t > self.hand_until:

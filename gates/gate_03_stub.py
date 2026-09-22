@@ -105,6 +105,14 @@ def main() -> int:
         gap = float(np.hypot(*(rocky.pose[0, :2] - 2.0)) - 0.5)
         rocky.close()
     print(f"a duck walking at a rock for 8 s stops {gap:.3f} m from it")
+    with tempfile.TemporaryDirectory() as d:  # and one walking into a corner turns back in by itself
+        corner = Stub(1, 0, d, food_xy=[], pose=[[5.5, 5.5, np.pi / 4]], size=6.0, frame_port=PORT_BASE + 12)
+        for _ in range(int(8 / DT)):
+            corner.cmd[0] = [0.3, 0.0, 0.0]
+            corner.step()
+        out = float(np.hypot(*(corner.pose[0, :2] - 6.0)))
+        corner.close()
+    print(f"a duck walking into the corner for 8 s is {out:.2f} m out of it")
     with tempfile.TemporaryDirectory() as d:  # an emote is head poses, played in order and ending level, one at a time
         actor = Stub(2, 0, d, food_xy=[], frame_port=PORT_BASE + 9)
         for feeling in ("curious", "happy"):  # the second is refused: the first is still playing
@@ -120,6 +128,7 @@ def main() -> int:
 
     checks = {
         "a rock stops a duck at its edge": 0.06 < gap < 0.1,
+        "a duck at the fence turns back in": out > 1.0,
         "an emote moves that duck's head through its poses and back to level": bool(emoted),
         "same seed, identical final poses": np.array_equal(pose_a, pose_b),
         "different seed, different poses": not np.array_equal(pose_a, pose_c),
