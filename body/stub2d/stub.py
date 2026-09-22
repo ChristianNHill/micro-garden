@@ -228,46 +228,57 @@ class Stub:
 
     def _do(self, i: int, p: dict) -> None:
         """Other skill names are accepted and do nothing on the 2D stub."""
-        if p["skill"] == "ground_pick":
-            self._pick(i)
-        elif p["skill"] == "headbutt":
-            self._headbutt(i)
-        elif p["skill"] == "drink":
-            self._drink(i)
-        elif p["skill"].startswith("emote_"):
-            self._emote(i, p["skill"][len("emote_"):])
-        elif p["skill"] == "kick":
-            fwd = np.array([np.cos(self.pose[i, 2]), np.sin(self.pose[i, 2])])
-            for ball in self.world.balls:
-                rel = ball[:2] - self.pose[i, :2]
-                if np.linalg.norm(rel) < KICK_REACH_M and rel @ fwd > 0:
-                    ball[2:] += KICK_MS * fwd
-                    self.kicks.append((self.t, i))
-                    self.kicked[i] = True
-                    break
-        elif p["skill"] == "drum" and self.world.drum is not None:
-            rel = np.asarray(self.world.drum) - self.pose[i, :2]
-            if np.linalg.norm(rel) < DRUM_REACH_M:
-                self.drums.append((self.t, i))
-                self.drummed[i] = True
-                self.sounds.append((self.t, i, "drum"))  # the drum's voice and not the duck's; a viewer plays it quietly
-                near = np.linalg.norm(self.pose[:, :2] - self.pose[i, :2], axis=1) < AUDIENCE_M  # and it is a performance
-                near[i] = False
-                self.saw_show |= near
-                self.events["show_by"][near] = i
-        elif p["skill"] == "wear" and not self.hats[i]:
-            near = [k for k, (x, y, _) in enumerate(self.hat_items) if np.hypot(x - self.pose[i, 0], y - self.pose[i, 1]) < HAT_REACH_M]
-            if near:
-                self.hats[i], self.hat_style[i] = True, self.hat_items.pop(near[0])[2]
-                self.donned.append((self.t, i))
-                saw = np.linalg.norm(self.pose[:, :2] - self.pose[i, :2], axis=1) < WITNESS_M
-                saw[i] = False
-                self.events["hat_taken_by"][saw] = i
-        elif p["skill"] == "preen" and self.hats[i]:
-            self.hats[i] = False  # shaken off, and it lands where the duck stands, for whoever wants it next
-            self.hat_items.append([float(self.pose[i, 0]), float(self.pose[i, 1]), int(max(self.hat_style[i], 0))])
-            self.hat_style[i] = -1
-            self.preened.append((self.t, i))
+        skill = p["skill"]
+        if skill.startswith("emote_"):
+            self._emote(i, skill[len("emote_"):])
+            return
+        do = {"ground_pick": self._pick, "headbutt": self._headbutt, "drink": self._drink, "kick": self._kick,
+              "drum": self._tap_drum, "wear": self._wear, "preen": self._shed}.get(skill)
+        if do is not None:
+            do(i)
+
+    def _audience(self, i: int) -> None:
+        """Duck i is performing, and the ducks near it see it: what they make of it is theirs (brain/social.py)."""
+        near = np.linalg.norm(self.pose[:, :2] - self.pose[i, :2], axis=1) < AUDIENCE_M
+        near[i] = False
+        self.saw_show |= near
+        self.events["show_by"][near] = i
+
+    def _kick(self, i: int) -> None:
+        fwd = np.array([np.cos(self.pose[i, 2]), np.sin(self.pose[i, 2])])
+        for ball in self.world.balls:
+            rel = ball[:2] - self.pose[i, :2]
+            if np.linalg.norm(rel) < KICK_REACH_M and rel @ fwd > 0:
+                ball[2:] += KICK_MS * fwd
+                self.kicks.append((self.t, i))
+                self.kicked[i] = True
+                return
+
+    def _tap_drum(self, i: int) -> None:
+        if self.world.drum is None or np.linalg.norm(np.asarray(self.world.drum) - self.pose[i, :2]) >= DRUM_REACH_M:
+            return
+        self.drums.append((self.t, i))
+        self.drummed[i] = True
+        self.sounds.append((self.t, i, "drum"))  # the drum's voice and not the duck's; a viewer plays it quietly
+        self._audience(i)  # and it is a performance
+
+    def _wear(self, i: int) -> None:
+        near = [k for k, (x, y, _) in enumerate(self.hat_items) if np.hypot(x - self.pose[i, 0], y - self.pose[i, 1]) < HAT_REACH_M]
+        if self.hats[i] or not near:
+            return
+        self.hats[i], self.hat_style[i] = True, self.hat_items.pop(near[0])[2]
+        self.donned.append((self.t, i))
+        saw = np.linalg.norm(self.pose[:, :2] - self.pose[i, :2], axis=1) < WITNESS_M
+        saw[i] = False
+        self.events["hat_taken_by"][saw] = i
+
+    def _shed(self, i: int) -> None:
+        if not self.hats[i]:
+            return
+        self.hats[i] = False  # shaken off, and it lands where the duck stands, for whoever wants it next
+        self.hat_items.append([float(self.pose[i, 0]), float(self.pose[i, 1]), int(max(self.hat_style[i], 0))])
+        self.hat_style[i] = -1
+        self.preened.append((self.t, i))
 
     def _emote(self, i: int, feeling: str) -> None:
         """Act a feeling out: say it, and queue the head's poses for step() to play. One at a time, and not
@@ -278,11 +289,8 @@ class Stub:
         self.emotes.append((self.t, i, feeling))
         if feeling == "cry":
             self.crying_until[i] = self.t + CRY_S
-        if feeling in PERFORMANCES:  # and it has an audience: what they make of it is theirs (brain/physiology.py)
-            near = np.linalg.norm(self.pose[:, :2] - self.pose[i, :2], axis=1) < AUDIENCE_M
-            near[i] = False
-            self.saw_show |= near
-            self.events["show_by"][near] = i
+        if feeling in PERFORMANCES:  # and it has an audience
+            self._audience(i)
         if tag:
             self._sound(i, {"tag": tag})
         at = self.t

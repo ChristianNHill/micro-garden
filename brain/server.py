@@ -291,49 +291,64 @@ class BrainServer:
         if it["preen"]:
             send("robot.do", skill="preen")
             self.hat_shy_until[i] = self.t + HAT_SHY_S
-        # A hat lying in the garden is the duck's to put on or walk past (Chris, 2026-09-21). It decides once,
-        # as it comes upon one, and vanity is the chance: explicit, like shedding one, and a scale like it.
-        # A ball at its feet is kicked, by a duck that wants to play: decided about once a second, not per tick.
-        if f["ball_near"] > 0 and self.t >= self.kick_at[i] and not self.body.asleep[i]:
-            self.kick_at[i] = self.t + KICK_EVERY_S
-            if self.emote_rng.random() < self.playing[i]:
-                send("robot.do", skill="kick")
-        # A duck that likes what it hears dances (Chris, 2026-09-21): asked again every DANCE_EVERY_S, so it
-        # dances now and then while the music and its mood last, with a rest after each.
-        if self.t >= self.dance_at[i] and not self.body.asleep[i]:
-            self.dance_at[i] = self.t + DANCE_EVERY_S
-            if self.emote_rng.random() < self.performing[i] * (0.6 + 0.8 * self.body.dance_skill[i]):  # a practised duck performs more
-                # a song, a dance, or mostly both: a chatty duck sings, a playful one or one that likes the
-                # music dances, and each is decided by itself, so it is not always the same one
-                k = self.body.k
-                sings = self.emote_rng.random() < 0.3 + 0.6 * k["chattiness"][i]
-                dances = self.emote_rng.random() < 0.3 + 0.6 * max(k["playfulness"][i], self.dancing[i]) or not sings
-                send("robot.do", skill="emote_" + ("singdance" if sings and dances else "sing" if sings else "dance"))
-                self.body.amuse(i)
-                social.performed(self.body, i)
-                self.dance_at[i] += self.emote_rng.uniform(*DANCE_REST_S)  # and then it has had its turn for a while
-        if f["drum_near"] > 0 and self.t >= self.drum_at[i] and not self.body.asleep[i]:  # and a drum in reach is tapped
-            self.drum_at[i] = self.t + DRUM_EVERY_S
-            if self.emote_rng.random() < self.playing[i]:
-                send("robot.do", skill="drum")
-        near = f["hat_near"] > 0
-        if near and not self.hat_was_near[i] and f["hat"] == 0 and not self.body.asleep[i] and self.t >= self.hat_shy_until[i]:
-            if self.emote_rng.random() < WEAR_P[0] + (WEAR_P[1] - WEAR_P[0]) * float(self.body.k["vanity"][i]):
-                send("robot.do", skill="wear")
-        self.hat_was_near[i] = near
+        if not self.body.asleep[i]:
+            self._toy(send, i, f["ball_near"] > 0, self.kick_at, KICK_EVERY_S, "kick")
+            self._perform(send, i)
+            self._toy(send, i, f["drum_near"] > 0, self.drum_at, DRUM_EVERY_S, "drum")
+            self._consider_hat(send, i, f)
+        self.hat_was_near[i] = f["hat_near"] > 0
         if it["zoomies"] and not self.zooming[i]:  # once, as they start; a body shows them how it likes
             send("robot.do", skill="zoomies")
         self.zooming[i] = it["zoomies"]
-        if self.t >= self.emote_at[i]:
-            self.emote_at[i] = self.t + emotes.EVERY_S
-            emote = emotes.pick(self.body, i, self.emote_rng)
-            if emote:
-                send("robot.do", skill=f"emote_{emote}")
-                if emote in emotes.AMUSING:
-                    self.body.amuse(i)
+        self._emote(send, i)
         tag = self._voice(i, f, falls_asleep, wakes)
         if tag:
             send("robot.sound", tag=tag)
+
+    def _toy(self, send, i, near, at, every_s, skill) -> None:
+        """A ball at its feet is kicked and a drum in reach is tapped, by a duck that wants to play: each decided
+        about once a second (`at` is that toy's clock, one time a duck), not per tick."""
+        if near and self.t >= at[i]:
+            at[i] = self.t + every_s
+            if self.emote_rng.random() < self.playing[i]:
+                send("robot.do", skill=skill)
+
+    def _perform(self, send, i) -> None:
+        """A duck that likes what it hears dances (Chris, 2026-09-21): asked again every DANCE_EVERY_S, so it
+        dances now and then while the music and its mood last, with a rest after each."""
+        if self.t < self.dance_at[i]:
+            return
+        self.dance_at[i] = self.t + DANCE_EVERY_S
+        if self.emote_rng.random() >= self.performing[i] * (0.6 + 0.8 * self.body.dance_skill[i]):  # a practised duck performs more
+            return
+        # a song, a dance, or mostly both: a chatty duck sings, a playful one or one that likes the
+        # music dances, and each is decided by itself, so it is not always the same one
+        k = self.body.k
+        sings = self.emote_rng.random() < 0.3 + 0.6 * k["chattiness"][i]
+        dances = self.emote_rng.random() < 0.3 + 0.6 * max(k["playfulness"][i], self.dancing[i]) or not sings
+        send("robot.do", skill="emote_" + ("singdance" if sings and dances else "sing" if sings else "dance"))
+        self.body.amuse(i)
+        social.performed(self.body, i)
+        self.dance_at[i] += self.emote_rng.uniform(*DANCE_REST_S)  # and then it has had its turn for a while
+
+    def _consider_hat(self, send, i, f) -> None:
+        """A hat lying in the garden is the duck's to put on or walk past (Chris, 2026-09-21). It decides once,
+        as it comes upon one, and vanity is the chance: explicit, like shedding one, and a scale like it."""
+        comes_upon = f["hat_near"] > 0 and not self.hat_was_near[i]
+        if comes_upon and f["hat"] == 0 and self.t >= self.hat_shy_until[i]:
+            if self.emote_rng.random() < WEAR_P[0] + (WEAR_P[1] - WEAR_P[0]) * float(self.body.k["vanity"][i]):
+                send("robot.do", skill="wear")
+
+    def _emote(self, send, i) -> None:
+        """Every EVERY_S a duck may act out its strongest feeling (brain/emotes.py)."""
+        if self.t < self.emote_at[i]:
+            return
+        self.emote_at[i] = self.t + emotes.EVERY_S
+        emote = emotes.pick(self.body, i, self.emote_rng)
+        if emote:
+            send("robot.do", skill=f"emote_{emote}")
+            if emote in emotes.AMUSING:
+                self.body.amuse(i)
 
     def _voice(self, i, f, falls_asleep, wakes) -> str | None:
         """A quack for this step, if any: events pick the tag, chattiness picks whether to speak."""

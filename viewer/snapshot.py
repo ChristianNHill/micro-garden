@@ -127,35 +127,10 @@ class Snapshot:
         self._gather_toasts(stub)
         n = len(stub.names)
         last = lambda events: {e[1]: e for e in events[-4 * n:]}  # each duck's latest, from the recent few
-        emotes, bites, kicks, taps = last(stub.emotes), last(stub.eaten), last(stub.kicks), last(stub.drums)
+        recent = dict(emotes=last(stub.emotes), bites=last(stub.eaten), kicks=last(stub.kicks), taps=last(stub.drums),
+                      posture=stub.posture(), joints=stub.articulation(), down_left=stub.down_left(), swimming=stub._swimming())
+        ducks = [self._duck(stub, body, i, **recent) for i in range(n)]
         w = stub.world
-        posture, joints, down_left = stub.posture(), stub.articulation(), stub.down_left()
-        swimming = stub._swimming()
-        ducks = []
-        for i in range(n):
-            mood, strength = max(((m, float(getattr(body, m)[i])) for m in MOODS), key=lambda x: x[1]) if body else ("", 0.0)
-            emote = emotes.get(i)
-            showing = emote is not None and stub.t - emote[0] < EMOTE_S
-            level = lambda name: round(float(getattr(body, name)[i]), 2) if body else 0.0
-            ducks.append({
-                "name": stub.names[i].replace("duck-", ""), "label": label_of(body.k, i) if body and not self.blind else "",
-                "x": round(float(stub.pose[i, 0]), 3), "y": round(float(stub.pose[i, 1]), 3),
-                "h": round(float(stub.pose[i, 2]), 3),
-                "asleep": bool(body.asleep[i]) if body else False, "sat": posture[i] == "sat",
-                "down": posture[i] == "down", "down_left": round(float(down_left[i]), 2), "swimming": bool(swimming[i]), "hat": bool(stub.hats[i]), "hat_style": int(max(stub.hat_style[i], 0)),
-                "head": [round(float(v), 3) for v in stub.head[i]],  # neck_pitch, head_pitch, head_yaw, head_roll, as told
-                "eating": i in bites and stub.t - bites[i][0] < EATING_S,
-                "kicking": i in kicks and stub.t - kicks[i][0] < KICKING_S,
-                "drumming": i in taps and stub.t - taps[i][0] < 0.5,
-                "mood": mood, "strength": round(strength, 2),
-                "emote": emote[2] if showing else "", "emote_t": round(emote[0], 2) if showing else -1.0,
-                "hunger": level("hunger"), "thirst": level("thirst"), "sleepy": level("sleep_pressure"),
-                "knobs": {k: round(float(body.k[k][i]), 2) for k in SHAPE_KNOBS} if body and not self.blind else {},
-                "readout": readout(body, i) if body and i == self.watched else [],
-                "among": among(body, i, [n.replace("duck-", "") for n in stub.names]) if body and i == self.watched and hasattr(body, "bond") else {},
-                "crying": bool(stub.crying_until[i] > stub.t),  # the selected duck's only: it is 400 bytes
-                **joints[i],
-            })
         return {"t": round(stub.t, 2), "size": w.size, "light": round(float(daylight(stub.t)), 3),
                 "day": round(stub.t % DAY_S / DAY_S, 4), "ducks": ducks,
                 "food": [[round(float(x), 3), round(float(y), 3), int(k)] for (x, y), k in zip(w.food, w.kinds)],  # and which fruit
@@ -170,12 +145,44 @@ class Snapshot:
                 "hand": None if w.hand is None else [float(v) for v in w.hand], "toasts": self.toasts,
                 "sounds": [[round(t, 2), int(i), tag] for t, i, tag in stub.sounds[-2 * n:] if stub.t - t < HEARD_S]}
 
+    def _duck(self, stub, body, i, emotes, bites, kicks, taps, posture, joints, down_left, swimming) -> dict:
+        """One duck's part of the snapshot: what the body shows, and what the brain adds when there is one."""
+        emote = emotes.get(i)
+        showing = emote is not None and stub.t - emote[0] < EMOTE_S
+        duck = {
+            "name": stub.names[i].replace("duck-", ""),
+            "x": round(float(stub.pose[i, 0]), 3), "y": round(float(stub.pose[i, 1]), 3),
+            "h": round(float(stub.pose[i, 2]), 3),
+            "sat": posture[i] == "sat", "down": posture[i] == "down", "down_left": round(float(down_left[i]), 2),
+            "swimming": bool(swimming[i]), "hat": bool(stub.hats[i]), "hat_style": int(max(stub.hat_style[i], 0)),
+            "head": [round(float(v), 3) for v in stub.head[i]],  # neck_pitch, head_pitch, head_yaw, head_roll, as told
+            "eating": i in bites and stub.t - bites[i][0] < EATING_S,
+            "kicking": i in kicks and stub.t - kicks[i][0] < KICKING_S,
+            "drumming": i in taps and stub.t - taps[i][0] < 0.5,
+            "emote": emote[2] if showing else "", "emote_t": round(emote[0], 2) if showing else -1.0,
+            "crying": bool(stub.crying_until[i] > stub.t),
+            "label": "", "asleep": False, "mood": "", "strength": 0.0, "hunger": 0.0, "thirst": 0.0, "sleepy": 0.0,
+            "knobs": {}, "readout": [], "among": {},
+            **joints[i],
+        }
+        if body is None:
+            return duck
+        mood, strength = max(((m, float(getattr(body, m)[i])) for m in MOODS), key=lambda x: x[1])
+        level = lambda name: round(float(getattr(body, name)[i]), 2)
+        duck.update(asleep=bool(body.asleep[i]), mood=mood, strength=round(strength, 2),
+                    hunger=level("hunger"), thirst=level("thirst"), sleepy=level("sleep_pressure"))
+        if not self.blind:
+            duck.update(label=label_of(body.k, i), knobs={k: round(float(body.k[k][i]), 2) for k in SHAPE_KNOBS})
+        if i == self.watched:  # the selected duck's only: it is 400 bytes
+            duck.update(readout=readout(body, i), among=among(body, i, [n.replace("duck-", "") for n in stub.names]))
+        return duck
+
     def ride(self, stub, server, duck: int) -> dict:
         """What the ridden duck sees and what its brain is asking of its legs, for the ride view's overlay:
         both hex retinas as bytes (left eye first) and the six descending readouts in Hz."""
         rates = server.decoder.rates
         return {"duck": duck, "hex": HEX, "lum": _b64(np.round(np.clip(stub.seen[duck], 0, 1) * 255).astype(np.uint8)),
-                "dn": [] if rates is None else [[name, round(float(hz), 1)] for name, hz in zip(DN_NAMES, rates[duck])]}
+                "dn": [[name, round(float(hz), 1)] for name, hz in zip(DN_NAMES, rates[duck])]}
 
     def step(self, stub, server=None) -> None:
         """Publish this step and do whatever the player asked. Call with the stub's lock held. `server` is
@@ -183,21 +190,27 @@ class Snapshot:
         if self.window is not None and self.window.poll() is not None:
             raise KeyboardInterrupt  # the window was closed: both bodies' loops end on this as on Ctrl-C, and save
         world = self.build(stub, server.body if server else None)
-        if server is not None and getattr(server, "decoder", None) and self.wheel[0] >= 0 and stub.seen is not None:
+        if server is not None and server.decoder is not None and self.wheel[0] >= 0 and stub.seen is not None:
             world["ride"] = self.ride(stub, server, self.wheel[0])
-        if server is not None and getattr(server, "brainview", None) is not None and server.brainview.duck >= 0:
+        if server is not None and server.brainview is not None and server.brainview.duck >= 0:
             world["brain"] = {"duck": server.brainview.duck, "points": str(POINTS), "spikes": server.brainview.take()}
         self.out.sendto(json.dumps(world).encode(), ("127.0.0.1", SNAPSHOT_PORT))
+        self._take_actions(stub, server)
+        if server is not None:
+            self._hold_wheel(stub, server)
+
+    def _take_actions(self, stub, server) -> None:
+        """Everything the viewer has sent since the last step."""
         while True:
             try:
                 action = json.loads(self.actions.recv(4096))
             except BlockingIOError:
-                break
+                return
             method, p = str(action.get("method", "")), action.get("params", {})
             if method == "garden.watch":  # which duck the viewer has selected, or -1 for none
                 self.watched = int(p["duck"]) if 0 <= int(p["duck"]) < len(stub.names) else -1
-                if server is not None and hasattr(server, "brainview"):
-                    server.brainview.duck = int(p["duck"]) if 0 <= int(p["duck"]) < len(stub.names) else -1
+                if server is not None and server.brainview is not None:
+                    server.brainview.duck = self.watched
             elif method == "garden.wheel":
                 self.wheel = (int(p["duck"]), float(np.clip(p["fwd"], -1, 1)), float(np.clip(p["turn"], -1, 1)), stub.t)
             elif method.startswith("garden."):  # the player's calls, and nothing else
@@ -209,18 +222,19 @@ class Snapshot:
                     if method not in self.refused:
                         self.refused.add(method)
                         print(f"ignoring {method} from the viewer: {type(e).__name__} {e}")
-        duck, fwd, turn, asked = self.wheel
-        if server is not None:
-            held = 0 <= duck < len(stub.names) and stub.t - asked < WHEEL_S
-            if self.riding >= 0 and (not held or duck != self.riding):
-                server.possessed[self.riding] = False  # its legs are its brain's again: getting off used to leave it muted for good
-            self.riding = duck if held else -1
-            if held:
-                server.possessed[duck] = True
-                stub._move(duck, {"vx": WHEEL_VX * fwd, "vy": 0.0, "vyaw": WHEEL_VYAW * turn})
-            else:
-                self.wheel = (-1, 0.0, 0.0, -np.inf)
 
+    def _hold_wheel(self, stub, server) -> None:
+        """Give the ridden duck's legs to the player while the viewer keeps asking, and back when it stops."""
+        duck, fwd, turn, asked = self.wheel
+        held = 0 <= duck < len(stub.names) and stub.t - asked < WHEEL_S
+        if self.riding >= 0 and (not held or duck != self.riding):
+            server.possessed[self.riding] = False  # its legs are its brain's again: getting off used to leave it muted for good
+        self.riding = duck if held else -1
+        if held:
+            server.possessed[duck] = True
+            stub._move(duck, {"vx": WHEEL_VX * fwd, "vy": 0.0, "vyaw": WHEEL_VYAW * turn})
+        else:
+            self.wheel = (-1, 0.0, 0.0, -np.inf)
 
 if __name__ == "__main__":
     import tempfile
@@ -255,7 +269,7 @@ if __name__ == "__main__":
         time.sleep(0.05)
         snap.step(stub)  # neither stops the garden
         from types import SimpleNamespace
-        server = SimpleNamespace(possessed=np.zeros(3, bool), body=None)
+        server = SimpleNamespace(possessed=np.zeros(3, bool), body=None, decoder=None, brainview=None)
         tx.sendto(json.dumps({"method": "garden.wheel", "params": {"duck": 1, "fwd": 1, "turn": 0}}).encode(), ("127.0.0.1", ACTION_PORT))
         snap.step(stub, server)
         assert server.possessed[1] and stub.cmd[1, 0] == WHEEL_VX, "the rider has duck b's legs"
