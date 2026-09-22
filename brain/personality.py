@@ -11,7 +11,7 @@ KNOBS = [
     "smarts", "playfulness", "music_affinity", "hoarding", "vanity",
 ]
 # hoarding is read by nothing yet; it waits for the shiny rocks
-UNBUILT = {"playfulness", "hoarding"}
+UNBUILT = {"hoarding"}
 KNOB_DEFAULT = 0.5
 JITTER = 0.1
 
