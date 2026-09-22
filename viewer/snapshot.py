@@ -48,7 +48,7 @@ _b64 = lambda a: base64.b64encode(np.asarray(a).tobytes()).decode()
 # where each of an eye's 721 columns looks, as signed bytes across the eye's field: sent with the view
 HEX = _b64(np.round(np.concatenate([HEX_AZ, HEX_EL]) / np.abs(HEX_AZ).max() * 127).astype(np.int8))
 TOAST_FORMATS = (("eaten", "{who} ate"), ("headbutts", "{who} shoved {other}"), ("pets", "{who} was petted"),
-                 ("emotes", "{who} {other}"), ("kicks", "{who} kicked the ball"), ("drums", "{who} plays the drum"), ("given", "{who} was handed a fruit"), ("throws", "{who} was thrown"), ("donned", "{who} put a hat on"), ("preened", "{who} shook its hat off"))
+                 ("emotes", "{who} {other}"), ("kicks", "{who} kicked the ball"), ("drums", "{who} played the drum"), ("given", "{who} was handed a fruit"), ("throws", "{who} was thrown"), ("donned", "{who} put a hat on"), ("preened", "{who} shook its hat off"))
 
 
 FRUIT_NAMES = ("oranges", "apples", "bananas")
@@ -69,7 +69,7 @@ def readout(body, i: int) -> list:
     hot, cold = (float(v[i]) for v in body.discomfort())
     k = lambda name: float(body.k[name][i])
     free = 1.0 - float(pressing(np.maximum(body.hunger, body.thirst))[i])
-    rows = [("needs", "hunger", body.hunger[i]), ("needs", "thirst", body.thirst[i]), ("needs", "sleep", body.sleep_pressure[i]),
+    rows = [("needs", "hungry", body.hunger[i]), ("needs", "thirsty", body.thirst[i]), ("needs", "sleepy", body.sleep_pressure[i]),
             ("needs", "tired", body.fatigue[i]), ("needs", "bored", body.boredom[i]), ("needs", "too hot", hot), ("needs", "too cold", cold),
             ("moods", "joy", body.joy[i]), ("moods", "fear", body.fear[i]), ("moods", "anger", body.anger[i]), ("moods", "sorrow", body.sorrow[i]),
             ("wants", "a swim", k("water_love") * (1 + hot) / 2 * free), ("wants", "company", k("sociability") * free),

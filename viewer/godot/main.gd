@@ -27,10 +27,10 @@ const HELP := """
 
 
     tap a duck            select it: its needs, its moods, its brain, who its friends are
-    tap the grass         let it go
+    tap the grass         deselect it
 
     with a duck selected
-      Tab                 ride it (W A S D steer, O hides its eyes, Tab gets off)
+      Tab                 ride it (W A S D steer, O hides what it sees, Tab gets off)
       P                   pet it
       G                   hand it a fruit
 
@@ -43,7 +43,7 @@ const HELP := """
     B                     drop a ball at the mouse
     D                     put a drum down at the mouse, or take it up
     M                     put the music box down at the mouse, or take it up
-    tap the music box     step its volume
+    tap the music box     turn it up, down or off
     C                     clap
 
     drag                  turn the camera (right-drag while the hand is out)
@@ -51,8 +51,9 @@ const HELP := """
 
     /                     close this
 """
+const FEELS := {"joy": "happy", "fear": "scared", "anger": "angry", "sorrow": "sad"}  # a mood, as the card says it
 const HELP_HINT := "/  controls"
-const HELP_RIDING := "W A S D  steer      O  hide its eyes      Tab  get off"
+const HELP_RIDING := "W A S D  steer      O  hide what it sees      Tab  get off"
 const PITCH := Vector2(0.35, 1.25)  # radians above the horizon the camera may sit
 const DRIFT := 0.12  # radians the idle camera sways either way
 
@@ -394,15 +395,15 @@ func _show_words() -> void:
 
 
 func _card_text(d: Dictionary) -> String:
-	var text := "%s   %s\n%s" % [d.name, d.label, ("asleep" if d.asleep else ("crying" if d.get("crying", false) else d.mood))]
+	var text := "%s   %s\n%s" % [d.name, d.label, ("asleep" if d.asleep else ("crying" if d.get("crying", false) else FEELS.get(d.mood, d.mood)))]
 	var a: Dictionary = d.get("among", {})
 	if a.is_empty():
 		return text
 	text += "\n\nlikes %s best\n%s" % [a.favourite, a.hand]
 	if a.friend != "":
-		text += "\nfriend: %s" % a.friend
+		text += "\nfriends with %s" % a.friend
 	if a.grudge != "":
-		text += "\ngrudge against: %s" % a.grudge
+		text += "\nholds a grudge against %s" % a.grudge
 	return text + "\nswimmer %d%%   runner %d%%   dancer %d%%" % [a.skills[0] * 100, a.skills[1] * 100, a.skills[2] * 100]
 
 
@@ -712,7 +713,7 @@ func _key(code: int) -> void:
 		if not hand_mode and gripping:
 			gripping = false
 			_let_go()
-		_say("the hand is out: hold the left button to pick things up" if hand_mode else "the hand is away")
+		_say("the hand is out: hold the left button to pick things up" if hand_mode else "the hand is put away")
 	elif code == KEY_T:  # a hat, no two alike, left where the mouse is; the ducks decide who wears it
 		var spot = _mouse_ground()
 		if spot != null:
