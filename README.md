@@ -44,8 +44,6 @@ Ducks get better at swimming, walking, eating, fighting, dancing, fashion and mu
 
 ## What the brain does and what is explicit
 
-"Fly brain drives a duck" is an easy claim to inflate, so I try to be exact.
-
 Senses enter the brain through the fly's real sensory neurons, with vision through a model of the optic lobe ([flyvis](https://github.com/TuragaLab/flyvis)). Movement comes out through real descending neurons, which I found by screening the whole brain. The clearest is DNge091, which fires on the side the wind comes from. A duck that smells food walks up the odour plume the way a real fly does. With the real wiring a duck finds a dish in 20 of 20 trials, and with the wiring shuffled it finds it in 1 of 20. Learning changes only the synapses between Kenyon cells and mushroom body output neurons, gated by reward and punishment dopamine neurons.
 
 Some behaviour is explicit code, and the code marks each place. The body code decides how much weight each sense gets. The brain's own left-right signal for most smells is weaker than its steering noise, so explicit code turns a duck toward music, balls, other ducks, you, and the pond or shade. All social behaviour, trust and skills are explicit too. Personalities are preset combinations of continuous traits, and a garden draws five of 19.
