@@ -560,7 +560,8 @@ class Stub:
 
     def _release(self, p):
         """The hand opens. Gently, the thing is put down; on the move, it is thrown: a ball rolls off, anything
-        else lands a little way on, and a thrown duck is knocked down."""
+        else lands a little way on, and a thrown duck is knocked down. A fruit is never thrown: it drops where
+        the hand opens, so feeding a duck by hand puts the fruit at its beak and not past it."""
         if self.held is None:
             return
         v = np.array([float(p["vx"]), float(p["vy"])])
@@ -568,7 +569,7 @@ class Stub:
         v = v * min(1.0, THROW_MAX_MS / max(speed, 1e-9))
         at = np.array([float(p["x"]), float(p["y"])])
         kind, which = self.held
-        thrown = speed > THROW_MS
+        thrown = speed > THROW_MS and kind != "food"
         if kind == "ball":
             self._carry(tuple(at), tuple(v) if thrown else (0.0, 0.0))
         else:

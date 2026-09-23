@@ -35,7 +35,7 @@ const CONTROLS := [
 	["your hand", [
 		["H", "reach into the garden, or take your hand back out"],
 		["hold and drag", "carry a fruit, a hat, a ball, an instrument, the music box or a duck"],
-		["let go while moving", "throw it. A duck you throw thinks less of you"],
+		["let go while moving", "throw it, except a fruit, which just drops. A duck you throw thinks less of you"],
 	]],
 	["the garden", [
 		["F, or tap the tree", "shake fruit down"],
@@ -710,6 +710,7 @@ func _props(kind: String, items: Array, make: Callable) -> void:
 		nodes = []
 		for item in items:
 			var n := Node3D.new()
+			n.position = Vector3(item[0], 0, -item[1])  # where it is, before anything asks whether it moved
 			add_child(n)
 			make.call(n, item)
 			nodes.append(n)
