@@ -23,7 +23,7 @@ Closing the window saves the garden, and the ducks are older by however long you
 
 ## The garden
 
-The garden is modelled on the Chao gardens of Sonic Adventure 2: a lawn inside rock walls, a pond under a waterfall, a fruit tree, and a cliff above the sea. The wind turns slowly over the day, and flags and reeds show which way it blows. That matters because the ducks find food by smelling it on the wind.
+The garden is modelled on the Chao gardens of Sonic Adventure 2: a lawn inside rock walls, a pond under a waterfall, a fruit tree, and a cliff above the sea. The wind turns slowly over the day, and flags and reeds show which way it blows. That matters because the wind carries the smell of food, and a hungry duck follows that smell upwind.
 
 ![Fennel the Musician selected, with its card, its needs, moods and wants as bars, and its brain firing in the corner](docs/selected-duck.webp)
 
