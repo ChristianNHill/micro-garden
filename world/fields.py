@@ -14,6 +14,14 @@ DIFFUSION = 0.2  # per substep, stable below 0.25
 # reading as alarm.
 DECAY = 0.0008  # about 1 m
 SUBSTEPS = 5  # per 20 ms body step
+DT = 0.02  # the body step this world is stepped on
+# The breeze sweeps round the compass on its own clock (`wind_turns_s`), and on top of that it has a mind
+# of its own: every few minutes it takes a new lean off the sweep and a new strength, and eases towards
+# them. A duck cannot learn the weather, and a lull is as likely as a gust.
+WIND_HOLDS_S = (90.0, 360.0)
+WIND_WANDER = 0.7  # radians either side of the sweep
+WIND_GUST = (0.3, 1.3)  # times the garden's own wind speed: from a lull to a good blow
+WIND_EASES_S = 40.0  # how long it takes to settle into a new one
 EMIT = 1.0
 DISH_R = 0.08
 DUCK_R = 0.07
@@ -38,7 +46,7 @@ FRUIT_BITES = 10
 BALL_R = 0.06  # a ball a duck can push with its chest or kick
 BALL_ROLLS_S = 1.2  # how long a rolling ball takes to lose most of its speed on grass; a third of that in water
 BALL_BOUNCE = 0.6  # of its speed kept off the fence or a rock
-FRUITS = 3  # orange, apple, banana
+FRUITS = 10  # orange, apple, banana, pear, cherries, grapes, strawberry, lemon, plum, peach (viewer/godot/main.gd _fruit)
 MAX_FOOD = 4  # the tree stops dropping while this much food is on the ground
 
 
@@ -53,11 +61,16 @@ class World:
         (x, y) of a speaker, part of the garden like the pond; the player can move it."""
         self.size, self.tree = float(size), tuple(tree)  # metres along a side, and the tree's (x, y, shade radius)
         self.drum = None  # (x, y) of a drum put down for the ducks, or None
+        self.instruments = []  # [x, y, kind] of each other instrument put down (body/stub2d/stub.py INSTRUMENTS)
         self.balls = np.zeros((0, 4))  # x, y, vx, vy each: toys, which roll (Gate 8b)
         self.rocks = np.asarray(rocks, float).reshape(-1, 3)  # (x, y, radius) each: round, solid, and in the way
         self.grid = round(self.size / CELL_M)
         self.wind0 = self.wind = None if wind is None else np.asarray(wind, float)
         self.wind_turns_s = wind_turns_s
+        self.wind_rng = np.random.default_rng(7)
+        self.wind_next = 0.0  # garden time at which the breeze next changes its mind
+        self.wind_to = np.array([0.0, 1.0])  # the lean and strength it is heading for
+        self.wind_at = self.wind_to.copy()
         self.damp = np.zeros((self.grid, self.grid))
         self.kind_rng = np.random.default_rng(len(np.asarray(food_xy, float).reshape(-1, 2)) + 17)
         self.set_food(food_xy, bites)
@@ -97,8 +110,13 @@ class World:
 
     def step(self, t: float = 0.0) -> None:
         if self.wind0 is not None and self.wind_turns_s:
-            a = 2 * np.pi * t / self.wind_turns_s
-            self.wind = np.array([[np.cos(a), -np.sin(a)], [np.sin(a), np.cos(a)]]) @ self.wind0
+            if t >= self.wind_next:  # now and then it leans off the sweep and gets up or drops away
+                self.wind_next = t + self.wind_rng.uniform(*WIND_HOLDS_S)
+                self.wind_to = np.array([self.wind_rng.uniform(-WIND_WANDER, WIND_WANDER),
+                                         self.wind_rng.uniform(*WIND_GUST)])
+            self.wind_at += (self.wind_to - self.wind_at) * min(DT / WIND_EASES_S, 1.0)  # it changes slowly
+            a = 2 * np.pi * t / self.wind_turns_s + self.wind_at[0]
+            self.wind = np.array([[np.cos(a), -np.sin(a)], [np.sin(a), np.cos(a)]]) @ self.wind0 * self.wind_at[1]
         self.diffuse(SUBSTEPS)
 
     def set_food(self, food_xy, bites, kinds=None) -> None:

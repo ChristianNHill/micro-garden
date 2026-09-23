@@ -10,11 +10,22 @@ const Hats := preload("res://hats.gd")
 const CELL := 5.0  # halftone cell in px, finer than the ground's so a small duck is not spotty
 const LOOK := 1.9  # drawn larger than life, so a duck reads from across the garden
 const EMOTE_S := 2.8
+# A knocked or tripping duck falls the way it was sent. Its fall is the robot's own, recorded once (go_limp),
+# and that always tips the same way, so the duck is turned to point it along the blow, lifted off its feet for
+# a moment, and turned back as it gets up. PUSH_M is the body's shove (body/stub2d/stub.py): a harder shove
+# lifts it higher.
+const PUSH_M := 0.15
+const KNOCKED_S := 0.3  # how long it is off its feet
 const RIBBONS := [Ink.CORAL, Ink.TEAL, Ink.MUSTARD, Color("7d6bd0"), Color("e58ac0")]
-const DOES := {"cry": "cries", "dance": "dances", "singdance": "sings and dances", "stomp": "stomps", "yawn": "yawns", "splash": "splashes", "sing": "sings", "cower": "cowers"}  # emote -> the word shown over the duck
+const DOES := {"laugh": "laughs", "comfort": "comforts", "cry": "cries", "dance": "dances", "singdance": "sings and dances", "stomp": "stomps", "yawn": "yawns", "splash": "splashes", "sing": "sings", "cower": "cowers"}  # emote -> the word shown over the duck
 const MOOD_SHAPES := {"joy": "ball", "fear": "spike", "anger": "block", "sorrow": "drop"}
 
+var tumbler := Node3D.new()  # turns the duck so its fall goes the way it was sent, and lifts it off its feet
 var model := Node3D.new()  # the body; the shadow and the signs sit outside it
+var down_was := false
+var tumble_t := 99.0  # seconds since it was knocked off its feet
+var tumble_yaw := 0.0  # the turn that points its recorded fall the way it was sent
+var tumble_hop := 0.0
 var rig := Node3D.new()  # the robot in MuJoCo's frame (z up), turned once into Godot's
 var trunk := Node3D.new()
 var hinges := {}  # joint name -> [the node it turns, its axis]
@@ -76,7 +87,8 @@ func build(index: int, knobs: Dictionary) -> void:
 	var inks := {"cream": Ink.CREAM, "navy": Ink.STONE, "coral": Ink.CORAL, "mustard": Ink.MUSTARD,
 		"stone": RIBBONS[index % RIBBONS.size()]}
 
-	add_child(model)
+	add_child(tumbler)
+	tumbler.add_child(model)
 	model.scale = Vector3(1.0, 1.0, girth) * LOOK * size
 	var data := robot_data()
 	rig.rotation.x = -PI / 2  # MuJoCo: z up, y left; Godot: y up, z right
@@ -208,7 +220,11 @@ func _torus(inner: float, outer: float) -> TorusMesh:
 
 func show_state(s: Dictionary, first: bool) -> void:
 	state = s
+	var moved := Vector3(s.x, 0, -s.y) - target  # a shove moves a duck in one step
 	target = Vector3(s.x, 0, -s.y)
+	if s.down and not down_was and not first and not s.has("joints"):  # the robot body falls for real
+		_start_tumble(moved, s.h)
+	down_was = s.down
 	if first:
 		position = target
 		rotation.y = s.h
@@ -242,6 +258,38 @@ func _process(dt: float) -> void:
 		node.quaternion = node.quaternion.slerp(Quaternion(hinge[1], angle.get(name, 0.0)), min(1.0, (20.0 if real else 9.0) * dt))
 	_act_out(dt)
 	_signs(dt, t)
+	_tumble(dt)
+
+
+func _fall_way() -> Vector3:
+	# Which way the recorded fall tips the duck, in the duck's own frame: where its trunk's top ends up.
+	if clips.is_empty():
+		clips = JSON.parse_string(FileAccess.get_file_as_string("res://clips.json"))
+	var q: Array = clips.clips["go_limp"].frames[-1][2]  # w, x, y, z, in MuJoCo's frame (z up, y left)
+	var top := Quaternion(q[1], q[2], q[3], q[0]).normalized() * Vector3(0, 0, 1)
+	return Vector3(top.x, 0, -top.y).normalized()  # into Godot's frame, as `rig` turns it
+
+
+func _start_tumble(moved: Vector3, heading: float) -> void:
+	# The way it was sent: the shove's own direction, or forwards for a trip or a lunge that missed, a little off
+	# straight so no two falls look alike.
+	var shoved: bool = moved.length() > 0.05
+	var way: Vector3 = moved.normalized() if shoved else Vector3(cos(heading), 0, -sin(heading))
+	way = way.rotated(Vector3.UP, randf_range(-0.35, 0.35))
+	var falls := global_transform.basis * _fall_way()  # where the recording would drop it, as it stands now
+	tumble_yaw = atan2(falls.cross(way).y, falls.dot(way))
+	var force: float = clamp(moved.length() / PUSH_M, 1.0, 2.0) if shoved else 0.6
+	tumble_hop = randf_range(0.02, 0.04) * force * LOOK
+	tumble_t = 0.0
+
+
+func _tumble(dt: float) -> void:
+	# Turned towards its fall while it is down, lifted for the first moment, and turned back as it gets up.
+	tumble_t += dt
+	var yaw: float = tumbler.rotation.y
+	yaw = lerp_angle(yaw, tumble_yaw if state.down else 0.0, min(1.0, (16.0 if state.down else 2.5) * dt))
+	var u: float = clamp(tumble_t / KNOCKED_S, 0.0, 1.0)
+	tumbler.transform = Transform3D(Basis(Vector3.UP, yaw), Vector3(0, tumble_hop * 4.0 * u * (1.0 - u), 0))
 
 
 func _stand() -> Dictionary:

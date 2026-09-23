@@ -17,6 +17,7 @@ from brain.personality import KNOB_DEFAULT, KNOBS
 # body walking 0.06 m/s between dish and pond cannot keep up with five ducks' bites and sips.
 HUNGER_RISE_S = 600.0
 BITE_FULLNESS = 0.1
+EAT_GROWS = 0.5  # how much more a fully practised eater takes from a bite
 THIRST_RISE_S = 800.0  # kept at four thirds of hunger's
 SIP_QUENCH = 0.1
 FATIGUE_M = 30.0  # metres of walking from rested to exhausted, at energy 0.5
@@ -76,6 +77,10 @@ class Physiology:
         self.joy, self.fear, self.sorrow = full(0.0), full(0.0), full(0.0)
         self.anger = full(provoked)
         self.scent, self.scent_was = full(0.0), full(0.0)
+        # what a duck has got good at, grown by doing it (brain/social.py); a save keeps them
+        self.swim_skill, self.walk_skill = full(0.0), full(0.0)
+        self.eat_skill, self.dance_skill, self.fight_skill = full(0.0), full(0.0), full(0.0)
+        self.fashion_skill, self.music_skill = full(0.0), full(0.0)
 
     def step(self, dt: float, f, escaped, speed):
         """f: frame records (structured array); escaped and speed: per duck, from the last step."""
@@ -89,7 +94,9 @@ class Physiology:
 
         self.scent = (f["odor_left"] + f["odor_right"]) / 2.0
         self.scent_was = self.scent_was + (self.scent - self.scent_was) * min(dt / SCENT_MEMORY_S, 1.0)
-        self.hunger = np.clip(self.hunger + dt / HUNGER_RISE_S * (0.5 + k["appetite"]) - BITE_FULLNESS * ate, 0, 1)
+        # a practised eater gets more out of the same bite: it knows how to get the fruit down
+        self.hunger = np.clip(self.hunger + dt / HUNGER_RISE_S * (0.5 + k["appetite"])
+                              - BITE_FULLNESS * (1 + EAT_GROWS * self.eat_skill) * ate, 0, 1)
         self.thirst = np.clip(self.thirst + dt / THIRST_RISE_S - SIP_QUENCH * drank, 0, 1)
         tire = speed * dt / FATIGUE_M * (1.5 - k["energy"])
         rest = np.where(speed < 0.01, dt / REST_S, 0.0) * (1 + self.asleep)

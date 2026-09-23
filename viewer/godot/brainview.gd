@@ -4,13 +4,21 @@
 extends Control
 
 const Ink := preload("res://ink.gd")
-const WIDTH := 600.0
-const FADE_S := 0.35
+const WIDTH := 420.0  # a corner of the window, not half of it
+const PAD := 12.0  # the cream panels' padding, in ink instead
+const ROUND := 10
+const TOP := 56.0  # under the name and the count, where the neurons start
+const FOOT := 42.0  # room under them for the legend
+# A spike flares and is gone, so a lit dot is a neuron that fired a moment ago. Held much longer, a neuron
+# firing at a few hertz stays lit nearly all the time, and the whole brain looks alight.
+const FADE_S := 0.12
 const DIM := [Color("3f6fb0"), Color("b0428f"), Color("3f9a62"), Color("c9772e"), Color("77798a")]
 const LIT := [Color("bfe0ff"), Color("ffb3ec"), Color("c6ffd6"), Color("ffe08a"), Color("ffffff")]
 
 var dots := MultiMeshInstance2D.new()
 var title := Label.new()
+var under := Label.new()  # how many of how many, under the name
+var panel := StyleBoxFlat.new()
 var names: Array = []
 var group: Array = []
 var glow := {}  # dot -> brightness, 1 down to 0
@@ -23,13 +31,19 @@ func _ready() -> void:
 	dots.multimesh = MultiMesh.new()
 	dots.multimesh.use_colors = true
 	var dot := QuadMesh.new()
-	dot.size = Vector2(3.4, 3.4)
+	dot.size = Vector2(2.6, 2.6)  # smaller with the panel, so the brain keeps its texture
 	dots.multimesh.mesh = dot
 	add_child(dots)
+	panel.bg_color = Color(Ink.NAVY, 0.92)  # the one dark panel: a window into the duck, not a note about it
+	panel.set_corner_radius_all(ROUND)
 	title.add_theme_color_override("font_color", Ink.CREAM)
-	title.add_theme_font_size_override("font_size", 14)
+	title.add_theme_font_size_override("font_size", 20)
+	title.position = Vector2(PAD, 8)
+	under.add_theme_color_override("font_color", Color(Ink.CREAM, 0.6))
+	under.add_theme_font_size_override("font_size", 12)
+	under.position = Vector2(PAD, 34)
 	add_child(title)
-	title.position = Vector2(12, 8)
+	add_child(under)
 
 
 func load_points(path: String) -> void:
@@ -39,11 +53,12 @@ func load_points(path: String) -> void:
 	loaded = path
 	group = data.group
 	var ys: Array = data.y
-	height = WIDTH * float(ys.max()) + 70.0
+	var across := WIDTH - 2.0 * PAD
+	height = TOP + across * float(ys.max()) + FOOT
 	dots.multimesh.instance_count = 0
 	dots.multimesh.instance_count = group.size()
 	for k in group.size():
-		dots.multimesh.set_instance_transform_2d(k, Transform2D(0.0, Vector2(12.0 + data.x[k] * (WIDTH - 24.0), 34.0 + data.y[k] * (WIDTH - 24.0))))
+		dots.multimesh.set_instance_transform_2d(k, Transform2D(0.0, Vector2(PAD + data.x[k] * across, TOP + data.y[k] * across)))
 		dots.multimesh.set_instance_color(k, DIM[group[k]])
 	names = data.groups
 	title.set_meta("of", int(data.of))
@@ -55,18 +70,29 @@ func load_points(path: String) -> void:
 func show_brain(brain: Dictionary, duck_name: String) -> void:
 	if brain.points != loaded:
 		load_points(brain.points)
-	title.text = "%s's brain: %d of its %d neurons, as they fire" % [duck_name, group.size(), title.get_meta("of", 0)]
+	title.text = "%s's Brain" % duck_name
+	under.text = "%s of its %s neurons, as they fire" % [_thousands(group.size()), _thousands(title.get_meta("of", 0))]
 	for k in brain.spikes:
 		glow[int(k)] = 1.0
 
 
+func _thousands(n: int) -> String:
+	var digits := str(n)
+	var out := ""
+	for i in digits.length():
+		out += digits[i]
+		if i < digits.length() - 1 and (digits.length() - 1 - i) % 3 == 0:
+			out += ","
+	return out
+
+
 func _draw() -> void:
-	draw_rect(Rect2(Vector2.ZERO, Vector2(WIDTH, height)), Color(Ink.NAVY, 0.92))
-	var x := 12.0  # the legend
+	draw_style_box(panel, Rect2(Vector2.ZERO, Vector2(WIDTH, height)))
+	var x := PAD  # the legend, each group in its own ink
 	for k in names.size():
 		var word: String = names[k]
-		draw_string(ThemeDB.fallback_font, Vector2(x, height - 12.0), word, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, LIT[k].lerp(DIM[k], 0.35))
-		x += ThemeDB.fallback_font.get_string_size(word, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x + 12.0
+		draw_string(ThemeDB.fallback_font, Vector2(x, height - PAD - 4.0), word, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, LIT[k].lerp(DIM[k], 0.3))
+		x += ThemeDB.fallback_font.get_string_size(word, HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x + 12.0
 
 
 func _process(dt: float) -> void:

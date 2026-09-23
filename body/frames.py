@@ -35,7 +35,7 @@ FRAME = np.dtype([
     # scent_*: how strongly each antenna smells each other duck, by number (own slot is 0).
     ("scent_left", "<f4", (MAX_DUCKS,)), ("scent_right", "<f4", (MAX_DUCKS,)),
     ("near_id", "<f4"), ("near_left", "<f4"), ("near_right", "<f4"),
-    ("bumped_by", "<f4"), ("saw_shove_by", "<f4"), ("saw_shove_of", "<f4"),
+    ("bumped_by", "<f4"), ("saw_shove_by", "<f4"), ("saw_shove_of", "<f4"), ("saw_fall_by", "<f4"),
     ("heard_alarm", "<f4"), ("heard_joy", "<f4"), ("show_by", "<f4"), ("hat_taken_by", "<f4"),
     ("cry_left", "<f4"), ("cry_right", "<f4"), ("comforted_by", "<f4"),
     ("hand_left", "<f4"), ("hand_right", "<f4"), ("hand_fed", "<f4"), ("ate_kind", "<f4"),
@@ -64,7 +64,8 @@ def blank() -> np.void:
     return rec
 
 
-IDS = ("near_id", "bumped_by", "saw_shove_by", "saw_shove_of", "show_by", "hat_taken_by", "comforted_by", "ate_kind")
+IDS = ("near_id", "bumped_by", "saw_shove_by", "saw_shove_of", "saw_fall_by", "show_by", "hat_taken_by", "comforted_by",
+       "ate_kind")
 
 
 def pack(**fields) -> bytes:

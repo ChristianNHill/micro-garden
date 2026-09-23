@@ -17,7 +17,7 @@ import torch
 
 from body import frames
 from body.contract import Client
-from brain import emotes, social
+from brain import emotes, reactions, social
 from brain.brainview import BrainView
 from brain.data import load_connectome, named_sets, shuffled
 from brain.decoder import Decoder
@@ -145,6 +145,13 @@ class BrainServer:
         self.possessed = np.zeros(self.n, bool)
         self.zooming = np.zeros(self.n, bool)
         self.emote_rng = np.random.default_rng(seed + 7)  # separate, so emotes do not shift the senses' noise
+        self.slip_rng = np.random.default_rng(seed + 13)  # mishaps, on their own dice for the same reason
+        self.mishap = [None] * self.n
+        self.laughs = np.zeros(self.n, bool)
+        self.squabble = np.zeros(self.n, bool)
+        self.reactions = reactions.Reactions(self.n, np.random.default_rng(seed + 17))
+        self.shown: list[reactions.Stimulus] = []  # feelings acted out last step, for the others to react to
+        self.react_acts: list[list[str]] = [[] for _ in range(self.n)]
         social.init(self.body, seed)  # bonds, trust, skills live on the body so a save keeps them
         self.brainview = BrainView(ann, self.sets, self.brain.dev)  # idle until a duck is watched
         self.hat_was_near = np.zeros(self.n, bool)
@@ -167,8 +174,12 @@ class BrainServer:
         self.t += BODY_DT_MS / 1000
         falls_asleep, wakes = body.step(BODY_DT_MS / 1000, f, self.escaped, self.last_vx)
         f = self._in_all_gardens(f)
-        social.update(body, f, BODY_DT_MS / 1000, self.last_vx)
-        among = social.steering(body, f, self._scents(f))
+        self.laughs = social.update(body, f, BODY_DT_MS / 1000, self.last_vx, self.slip_rng)
+        self.squabble = social.squabbles(body, f, BODY_DT_MS / 1000, self.slip_rng)
+        self.mishap = social.mishaps(body, f, BODY_DT_MS / 1000, self.last_vx, self.slip_rng)
+        left, right = self._scents(f)
+        among = social.steering(body, f, (left, right))
+        self._react(body, f, left, right, among)
 
         levels = self._levels(f)
         self.decoder.body = self._decoder_input(f, levels, among)
@@ -196,6 +207,28 @@ class BrainServer:
                 continue
             self._send(robot.call if lockstep else robot.notify, i, it, f[i], falls_asleep[i], wakes[i])
         return intents
+
+    def _react(self, body, f, left, right, among) -> None:
+        """Explicit code: this step's stimuli, the others' responses to them, and the ducks walking over to
+        comfort or to shove (brain/reactions.py). The intents steer through the decoder."""
+        stimuli, R = self.shown, reactions.Stimulus
+        self.shown = []
+        for j in range(self.n):
+            by = int(f["bumped_by"][j])
+            if by >= 0:
+                stimuli.append(R("shove", by, j, self.reactions.heat_of.pop((by, j), 1.0)))
+            by = int(f["comforted_by"][j])
+            if by >= 0:
+                stimuli.append(R("comfort", by, j))
+        stimuli += [R("fall", i) for i, m in enumerate(self.mishap) if m in ("trip", "flounder", "whiff")]
+        stimuli += [R("laugh", i, int(f["saw_fall_by"][i])) for i in np.flatnonzero(self.laughs)]
+        total = left + right
+        near = total / (total + reactions.SCENT_HALF)
+        acts = self.reactions.react(body, stimuli, near, f["light"], self.t)
+        turn, want, arrived = self.reactions.steer(body, f, left, right, self.t)
+        among["intent_turn"], among["intent"] = turn, want
+        among["social_want"] = np.maximum(among["social_want"], want)
+        self.react_acts = [a + b for a, b in zip(acts, arrived)]
 
     def _in_all_gardens(self, f):
         """The frames with duck ids made global across this server's gardens."""
@@ -229,7 +262,11 @@ class BrainServer:
         self.performing = np.maximum(self.dancing, 0.6 * bored * np.maximum(body.k["chattiness"], body.k["playfulness"]))
         # Explicit code: wanting to play plus seeing a ball gets a duck walking; the decoder turns it
         # towards the eye the ball is in.
-        self.playing = body.play() * at_ease
+        # Explicit code: a duck that loves music wants to play an instrument it can see, the more when bored,
+        # whether or not it is playful; the chattiest and most musical personalities play the most.
+        instrument = np.clip(3 * np.maximum(f["drum_left"], f["drum_right"]), 0, 1)
+        musical = np.clip(2 * body.k["music_affinity"] - 1, 0, 1) * instrument * (0.4 + 0.6 * body.boredom)
+        self.playing = np.maximum(body.play(), musical) * at_ease
         toy_left, toy_right = np.maximum(f["ball_left"], f["drum_left"]), np.maximum(f["ball_right"], f["drum_right"])
         ball = self.playing * np.maximum(toy_left, toy_right)  # whichever toy it sees plainer
         to_pond, to_shade = body.cooling()
@@ -295,8 +332,14 @@ class BrainServer:
         send("robot.move", vx=it["vx"], vy=it["vy"], vyaw=it["vyaw"])
         if it["feed"]:
             send("robot.do", skill="drink" if f["water"] > 0 else "ground_pick")
-        if it["attack"]:
-            send("robot.do", skill="headbutt")
+        if it["attack"] or self.squabble[i]:  # the brain's attack, or a shove personality made likely
+            send("robot.do", skill=social.strike(self.body, i, self.slip_rng))
+        if self.mishap[i]:
+            send("robot.do", skill=self.mishap[i])
+        if self.laughs[i]:
+            send("robot.do", skill="emote_laugh")
+        for skill in self.react_acts[i]:  # a reaction: an emote now, or the shove it walked over to give
+            send("robot.do", skill=social.strike(self.body, i, self.slip_rng) if skill == "strike" else skill)
         if it["preen"]:
             send("robot.do", skill="preen")
             self.hat_shy_until[i] = self.t + HAT_SHY_S
@@ -319,7 +362,7 @@ class BrainServer:
         if near and self.t >= at[i]:
             at[i] = self.t + every_s
             if self.emote_rng.random() < self.playing[i]:
-                send("robot.do", skill=skill)
+                send("robot.do", skill=social.plays(self.body, i, self.slip_rng) if skill == "drum" else skill)
 
     def _perform(self, send, i) -> None:
         """Explicit code: a duck may sing or dance, asked every DANCE_EVERY_S, with a rest after each."""
@@ -333,6 +376,8 @@ class BrainServer:
         sings = self.emote_rng.random() < 0.3 + 0.6 * k["chattiness"][i]
         dances = self.emote_rng.random() < 0.3 + 0.6 * max(k["playfulness"][i], self.dancing[i]) or not sings
         send("robot.do", skill="emote_" + ("singdance" if sings and dances else "sing" if sings else "dance"))
+        if dances and social.falls_dancing(self.body, i, self.slip_rng):
+            send("robot.do", skill="trip")
         self.body.amuse(i)
         social.performed(self.body, i)
         self.dance_at[i] += self.emote_rng.uniform(*DANCE_REST_S)
@@ -352,6 +397,9 @@ class BrainServer:
         emote = emotes.pick(self.body, i, self.emote_rng)
         if emote:
             send("robot.do", skill=f"emote_{emote}")
+            shown = {"angry": "angry", "stomp": "angry", "sad": "sad", "cry": "sad", "lonely": "sad"}.get(emote)
+            if shown:
+                self.shown.append(reactions.Stimulus(shown, i))
             if emote in emotes.AMUSING:
                 self.body.amuse(i)
 

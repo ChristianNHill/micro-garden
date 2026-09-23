@@ -34,7 +34,7 @@ import torch
 from brain.lif import DEVICE, DT_MS
 
 TAU_MS = 100.0
-BASE_VX, RUN_VX = 0.08, 0.3  # m/s
+BASE_VX, RUN_VX = 0.11, 0.3  # m/s: an amble that reads as walking on screen, and a run
 VX_PER_HZ = 0.02  # m/s per Hz of forward minus backward drive
 VYAW_PER_HZ = 1.0  # rad/s per Hz of left minus right steering DNs, positive = turn left
 ESCAPE_TICKS = 50  # 0.5 s of running backward
@@ -53,10 +53,13 @@ COMPANIONSHIP_VYAW = 1.5
 # How far fear counts towards running from the other ducks, and aggression towards turning after them.
 # At 0 they no longer steer a duck by the others: the control to measure them against.
 FLEE, CHASE = 1.0, 1.0
-SWIM_GROWS, RUN_GROWS = 0.6, 0.25  # how much faster a fully practised duck is, in water and on land
+# How much faster a fully practised duck is, in water and on land. On land it is the walk and the run alike:
+# a practised walker ambles quicker and flees or charges quicker when it is scared or angry.
+SWIM_GROWS, WALK_GROWS = 0.6, 0.4
 BOND_VYAW, HAND_VYAW, COMFORT_VYAW = 1.5, 1.5, 2.0  # rad/s at full bond, full trust, and full kindness at a cry beside it
 ROOM_FROM, ROOM_GONE = 0.5, 0.65  # `near_*` summed (1 - metres apart): company stops pulling from 0.5 m to 0.35 m
 CROWDED_VYAW = 1.5  # rad/s aside from a duck nearer than that
+INTENT_VYAW = 2.0  # rad/s towards a duck it has set out to comfort or to shove (brain/reactions.py)
 COOL_VYAW = 2.0  # rad/s towards the eye its relief is in, at full heat
 PLAY_VYAW = 2.0  # rad/s towards the eye a ball is in, at full wish to play
 PURSUE_VX = 0.2  # m/s an angry duck closes on another at, short of a run, which overshoots
@@ -181,8 +184,8 @@ class Decoder:
         apart = ~(r[TOUCH_L] + r[TOUCH_R] > TOUCH_HZ)
         vx = vx + (PURSUE_VX - np.minimum(np.maximum(vx, 0), PURSUE_VX)) * chased * ducks_near * apart * (vx >= 0)
         vx = np.where(attack, RUN_VX, vx)
-        # practice shows: a duck that has swum a lot is quicker in the water, one that has run a lot quicker on land
-        vx = vx * np.where(swimming, 1 + SWIM_GROWS * b("swim_skill", 0.0), 1 + RUN_GROWS * b("run_skill", 0.0))
+        # practice shows: a duck that has swum a lot is quicker in the water, one that has walked a lot quicker on land
+        vx = vx * np.where(swimming, 1 + SWIM_GROWS * b("swim_skill", 0.0), 1 + WALK_GROWS * b("walk_skill", 0.0))
         vx = np.where(asleep, 0.0, vx)
 
         share = self.touch_share
@@ -202,7 +205,8 @@ class Decoder:
         # duck nearer than that to anyone, and not cross, turns aside.
         beside = b("near_left", 0.0) + b("near_right", 0.0)
         room = 1 - np.clip((beside - ROOM_FROM) / (ROOM_GONE - ROOM_FROM), 0, 1)
-        crowded = np.clip((beside - ROOM_GONE) / 0.1, 0, 1) * (1 - aggression) * b("at_ease", 1.0)
+        # a duck on its way to comfort or shove someone does not step aside from it
+        crowded = np.clip((beside - ROOM_GONE) / 0.1, 0, 1) * (1 - aggression) * b("at_ease", 1.0) * (1 - b("intent", 0.0))
         liking = np.where(liking > 0, liking * room, liking)
         liking = np.clip(liking + chased - 2 * fled, -1, 1)
         # Fleeing a stink adds a turn away from it and leaves the rest of the steering alone.
@@ -215,6 +219,7 @@ class Decoder:
                 + PLAY_VYAW * b("play", 0.0) * (b("ball_left", 0.0) - b("ball_right", 0.0))
                 # a hot duck turns for the pond or the shade, whichever its water love picks (Physiology.cooling)
                 + COOL_VYAW * (b("cool_left", 0.0) - b("cool_right", 0.0))
+                + INTENT_VYAW * b("intent_turn", 0.0)  # explicit: towards the duck it is going to
                 # explicit social turns (brain/social.py): towards friends and away from grudges, towards a
                 # trusted hand and away from a distrusted one, and for a kind duck towards one crying; all
                 # only as far as nothing is pressing

@@ -71,9 +71,11 @@ static func palm(root: Node3D, at: Vector3, height: float, rng: RandomNumberGene
 		frond.translate_object_local(Vector3(0, -0.35, 0))
 
 
-static func build(root: Node3D, snap: Dictionary, falls: Array, viewer: Vector3) -> Vector3:
-	# Returns the top of the cliff rock nearest `viewer` (where the camera starts), for the flag.
+static func build(root: Node3D, snap: Dictionary, falls: Array, viewer: Vector3, reeds: Array) -> Array:
+	# Returns the tops of the cliff rocks nearest `viewer` (where the camera starts) and furthest from it,
+	# a flag to each.
 	var summit := Vector3.INF
+	var far_summit := Vector3.INF
 	var size: float = snap.size
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 11
@@ -98,6 +100,8 @@ static func build(root: Node3D, snap: Dictionary, falls: Array, viewer: Vector3)
 			place_lump(root, at, r, h, rng)
 			if summit == Vector3.INF or (at - viewer).length() < (summit - viewer).length():
 				summit = at + Vector3(0, h, 0)
+			if far_summit == Vector3.INF or (at - viewer).length() > (far_summit - viewer).length():
+				far_summit = at + Vector3(0, h, 0)
 			if rng.randf() < 0.3:
 				palm(root, at + Vector3(rng.randf_range(-0.3, 0.3), h - 0.25, rng.randf_range(-0.3, 0.3)), rng.randf_range(0.5, 0.9), rng)
 			along += r * 1.25
@@ -126,8 +130,12 @@ static func build(root: Node3D, snap: Dictionary, falls: Array, viewer: Vector3)
 			var at := Vector3(p[0] + cos(a) * (p[2] + 0.05), 0.0, -p[1] - sin(a) * (p[2] + 0.05))
 			if at.x > 0.1 and at.x < size - 0.4 and -at.z > 0.1 and -at.z < size - 0.4:
 				var h := rng.randf_range(0.2, 0.36)
-				Ink.part(root, Ink.cone(0.012, h, 0.008, 4), FROND, at + Vector3(0, h / 2, 0), Vector3.ONE, 7.0)
-				Ink.part(root, Ink.cone(0.016, 0.07, 0.016, 5), WOOD, at + Vector3(0, h, 0), Vector3.ONE, 7.0)
+				var reed := Node3D.new()  # each reed is one node, standing on its own foot, so it can lean
+				reed.position = at
+				root.add_child(reed)
+				Ink.part(reed, Ink.cone(0.012, h, 0.008, 4), FROND, Vector3(0, h / 2, 0), Vector3.ONE, 7.0)
+				Ink.part(reed, Ink.cone(0.016, 0.07, 0.016, 5), WOOD, Vector3(0, h, 0), Vector3.ONE, 7.0)
+				reeds.append(reed)
 
 	for i in int(70 * size * size / 16.0):  # grass tufts, the same every run
 		var at := Vector3(rng.randf_range(0.1, size - 0.1), 0.03, -rng.randf_range(0.1, size - 0.1))
@@ -140,7 +148,7 @@ static func build(root: Node3D, snap: Dictionary, falls: Array, viewer: Vector3)
 	Ink.part(root, Ink.cone(0.1, 1.0, 0.07, 6), WOOD, trunk + Vector3(0, 0.5, 0), Vector3.ONE, 7.0, -1.0, true)
 	for blob in [[0.0, 1.2, 0.0, 0.6], [0.32, 1.05, 0.14, 0.42], [-0.3, 1.1, -0.18, 0.45], [0.03, 1.6, 0.04, 0.38]]:
 		Ink.part(root, Ink.ball(blob[3], 7), FROND, trunk + Vector3(blob[0], blob[1], blob[2]), Vector3(1, 0.8, 1), 8.0, -1.0, true).material_override.set_shader_parameter("lift", 0.15)
-	return summit
+	return [summit, far_summit]
 
 
 static func waterfall(root: Node3D, snap: Dictionary, centre: Vector2, size: float, rng: RandomNumberGenerator, falls: Array) -> void:

@@ -41,7 +41,17 @@ LABELS = {
     "Show-off": dict(vanity=0.9, playfulness=0.8, sociability=0.8, music_affinity=0.9),
     "Scaredy": dict(timidity=0.95, sociability=0.4, stink_affinity=0.0, music_affinity=0.1),
     "Loner": dict(sociability=0.05, curiosity=0.6, timidity=0.3, music_affinity=0.3),
+    # plays every instrument it finds, and loves an audience
+    "Musician": dict(music_affinity=0.95, chattiness=0.7, playfulness=0.6, sociability=0.7),
+    # the stink patch is in the garden whatever anyone thinks of it; this one wallows in it
+    "Stink lover": dict(stink_affinity=0.95, curiosity=0.7, timidity=0.2),
 }
+
+
+# What a hatching duck can be. The rest are left out because nothing they turn up shows in a garden you
+# watch for a few minutes: smarts only sets the learning rate, carelessness only dulls the senses, Naive
+# plays as Curious, and No personality is the flat control. They are still there to ask for by name.
+HATCHABLE = [label for label in LABELS if label not in ("Smart", "Careless", "Naive", "No personality")]
 
 
 def preset(label: str, rng: np.random.Generator | None = None) -> dict[str, float]:

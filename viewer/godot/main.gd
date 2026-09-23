@@ -22,38 +22,52 @@ const Hats := preload("res://hats.gd")
 const BrainView := preload("res://brainview.gd")
 const MusicBox := preload("res://musicbox.gd")
 const SNAPSHOT_PORT := 7650  # actions go back on port + 1; --port moves both
-const HELP := """
-    MICRO GARDEN
-
-
-    tap a duck            select it: its needs, its moods, its brain, who its friends are
-    tap the grass         deselect it
-
-    with a duck selected
-      Tab                 ride it (W A S D steer, O hides what it sees, Tab gets off)
-      P                   pet it
-      G                   hand it a fruit
-
-    H                     bring out the hand, or put it away. With it out:
-      hold and drag         pick up fruit, a hat, a ball, the drum, the music box, or a duck
-      let go on the move    throw it (a thrown duck thinks less of you)
-
-    F, or tap the tree    shake fruit down
-    T                     drop a hat at the mouse, for whoever wants it
-    B                     drop a ball at the mouse
-    D                     put a drum down at the mouse, or take it up
-    M                     put the music box down at the mouse, or take it up
-    tap the music box     turn it up, down or off
-    C                     clap
-
-    drag                  turn the camera (right-drag while the hand is out)
-    scroll                zoom
-
-    /                     close this
-"""
+# The controls, by what you are doing, as [heading, [[what you press, what happens] ...]]. _build_menu
+# lays them out, so no line here needs spacing by hand.
+const CONTROLS := [
+	["the ducks", [
+		["tap a duck", "watch this one: its needs, its moods, its brain and who its friends are"],
+		["tap the grass", "stop watching"],
+		["Tab", "ride the duck you are watching. W A S D steer it, O hides what it sees"],
+		["P", "pet it"],
+		["G", "hand it a fruit"],
+	]],
+	["your hand", [
+		["H", "reach into the garden, or take your hand back out"],
+		["hold and drag", "carry a fruit, a hat, a ball, an instrument, the music box or a duck"],
+		["let go while moving", "throw it. A duck you throw thinks less of you"],
+	]],
+	["the garden", [
+		["F, or tap the tree", "shake fruit down"],
+		["T", "leave a hat at the mouse, for whoever wants it"],
+		["B", "leave a ball at the mouse"],
+		["D", "set the drum down at the mouse, or pick it back up"],
+		["I", "leave an instrument at the mouse, one of ten, picked at random"],
+		["M", "set the music box down at the mouse, or pick it back up"],
+		["tap the music box", "turn it up, turn it down, turn it off"],
+		["C", "clap, which startles every duck"],
+	]],
+	["the view", [
+		["drag", "turn the camera. Right-drag instead while your hand is out"],
+		["scroll", "zoom in and out"],
+		["/", "close this"],
+	]],
+]
 const FEELS := {"joy": "happy", "fear": "scared", "anger": "angry", "sorrow": "sad"}  # mood name -> card word
 const HELP_HINT := "/  controls"
 const HELP_RIDING := "W A S D  steer      O  hide what it sees      Tab  get off"
+const PAPER_ROUND := 10  # every panel is the same cream paper: corner radius and padding
+const PAPER_PAD := 12
+const BARS_W := 302.0  # the selected duck's readout, under its card
+const STINK_PUFFS := 9  # puffs rising off a stink patch, three to a strand
+const DUCK_TALL := 0.42  # how tall a duck is drawn, for taps that land on the duck itself
+const KICKED_M := 0.3  # a fruit that jumps further than this in one step was kicked, not carried
+const KICKED_S := 0.7  # how long a kicked fruit takes to bounce to where it lands
+# Each instrument's sound (body/stub2d/stub.py INSTRUMENTS, in order): its lowest note in Hz, how long a note
+# rings, and which of _note's voices plays it.
+const INSTRUMENT_TONES := [[880.0, 0.4, "struck"], [0.0, 0.14, "shaken"], [0.0, 0.3, "jingle"], [2400.0, 1.0, "ring"],
+	[523.0, 0.6, "struck"], [196.0, 0.9, "plucked"], [349.0, 0.4, "brass"], [660.0, 1.0, "ring"], [784.0, 0.45, "blown"],
+	[392.0, 0.9, "harp"]]
 const PITCH := Vector2(0.35, 1.25)  # camera pitch range, radians above the horizon
 const DRIFT := 0.12  # radians the idle camera sways either way
 
@@ -63,8 +77,9 @@ var snap := {}
 var got := 0
 var ducks: Array = []
 var selected := -1
-var flag := Node3D.new()
+var flags: Array = []  # the cloths, which turn with the wind
 var falls: Array = []  # waterfall sheets
+var reeds: Array = []  # the reeds round the pond, which lean with the wind
 var props := {}  # kind -> nodes drawn for the items of that kind
 
 var cam := Camera3D.new()
@@ -96,9 +111,15 @@ var brain := Control.new()
 var watching := -2  # whose brain the garden was last asked for
 var asked := 0.0
 var overlay := Control.new()  # ride view: retinas and descending-neuron bars; O hides it
-var card := Label.new()
-var help := Label.new()
-var help_on := false  # a one-line hint until / opens the full help
+var card := PanelContainer.new()  # the selected duck's card: its name, how it is, and what it has learned
+var card_name := Label.new()
+var card_trait := Label.new()
+var card_body := Label.new()
+var card_skills := Label.new()
+var help := Label.new()  # the one-line hint in the corner, and the riding line
+var menu := Control.new()  # the controls, built by _build_menu
+var paper := StyleBoxFlat.new()  # the cream panel every readout is drawn on
+var help_on := false  # the hint until / opens the menu
 var toasts := Label.new()
 var args := {}
 
@@ -118,14 +139,14 @@ func _ready() -> void:
 	add_child(cam)
 	var ui := CanvasLayer.new()
 	add_child(ui)
-	for label in [card, toasts, help]:
+	paper = _paper(Color(Ink.CREAM, 0.88), PAPER_ROUND, PAPER_PAD)
+	for label in [toasts, help]:  # every panel is the same cream paper
 		label.add_theme_color_override("font_color", Ink.NAVY)
-		label.add_theme_font_size_override("font_size", 18)
-		var paper := StyleBoxFlat.new()
-		paper.bg_color = Color(Ink.CREAM, 0.85)
-		paper.set_content_margin_all(8)
+		label.add_theme_font_size_override("font_size", 16)
+		label.add_theme_constant_override("line_spacing", 5)
 		label.add_theme_stylebox_override("normal", paper)
 		ui.add_child(label)
+	_build_card(ui)
 	bars.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	bars.draw.connect(_draw_bars)
 	ui.add_child(bars)
@@ -136,16 +157,15 @@ func _ready() -> void:
 	overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	overlay.draw.connect(_draw_overlay)
 	ui.add_child(overlay)
-	card.position = Vector2(24, 20)
 	help.add_theme_font_size_override("font_size", 13)
-	var mono := SystemFont.new()
-	mono.font_names = PackedStringArray(["Menlo", "Monaco", "Courier New", "monospace"])
-	help.add_theme_font_override("font", mono)  # the two columns line up
 	help.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT, Control.PRESET_MODE_MINSIZE, 24)
 	help.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	help.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	toasts.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT, Control.PRESET_MODE_MINSIZE, 24)
-	toasts.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	# the news goes top centre, clear of the card and readout on the left, the brain on the right and the ride view
+	toasts.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP, Control.PRESET_MODE_MINSIZE, 20)
+	toasts.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	toasts.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_build_menu(ui)
 	# a white glove with a cuff: a palm, four fingers and a thumb
 	Ink.part(glove, Ink.ball(0.07, 8), Color.WHITE, Vector3.ZERO, Vector3(1.0, 0.55, 1.1), 5.0, -1.0, true).material_override.set_shader_parameter("lift", 0.4)
 	for k in 4:
@@ -227,6 +247,7 @@ func _report() -> void:
 
 
 func _process(dt: float) -> void:
+	_roll_kicked(dt)
 	var latest := ""
 	while udp.get_available_packet_count() > 0:
 		latest = udp.get_packet().get_string_from_utf8()
@@ -253,12 +274,10 @@ func _build() -> void:
 	if not args.has("orbit"):
 		orbit = Vector3(2.2, 0.5, 1.7 * size)  # from the open front of the lawn
 	var eye := Vector3(size / 2, 0, -size / 2) + Vector3(cos(orbit.x), 0, sin(orbit.x)) * orbit.z
-	var summit := Scenery.build(self, snap, falls, eye)
-	# a white flag on the cliff rock nearest the viewer, showing the breeze the ducks smell by
-	Ink.part(self, Ink.cone(0.035, 1.5, 0.028, 5), Scenery.WOOD, summit + Vector3(0, 0.7, 0), Vector3.ONE, 7.0)
-	flag.position = summit + Vector3(0, 1.22, 0)
-	add_child(flag)
-	Ink.part(flag, BoxMesh.new(), Color.WHITE, Vector3(0.42, 0, 0), Vector3(0.84, 0.46, 0.02), 7.0, 1.0, true)  # no halftone screen, so it stays white
+	# a flag on the cliff rock nearest the viewer and another on the rocks across the garden, both
+	# showing the breeze the ducks smell by
+	for summit in Scenery.build(self, snap, falls, eye, reeds):
+		flags.append(_raise_flag(summit))
 	for i in snap.ducks.size():
 		var d := Node3D.new()
 		d.set_script(Duck)
@@ -307,10 +326,21 @@ func _show_props() -> void:
 		var lying := Hats.make(int(h[2]))
 		lying.scale = Vector3.ONE * 1.9  # ducks are drawn 1.9x life size, so hats are too
 		n.add_child(lying))
-	_props("balls", snap.get("balls", []), func(n: Node3D, b: Array) -> void:
-		var ball := Ink.part(n, Ink.ball(0.06 * 1.9, 8), Color("f6f1e6"), Vector3(0, 0.06 * 1.9, 0), Vector3.ONE, 5.0, -1.0, true)
-		ball.material_override.set_shader_parameter("lift", 0.3)
-		Ink.part(ball, Ink.ball(0.06 * 1.9 * 1.01, 8), Color("e2483d"), Vector3.ZERO, Vector3(1.0, 0.34, 1.0), 5.0).material_override.set_shader_parameter("lift", 0.3))
+	var played: Array = snap.get("instruments", [])
+	_props("instruments", played, _instrument)
+	for i in played.size():  # the oldest goes when a fifth is put down, so the count can stay and the kinds change
+		if props.instruments[i].get_meta("kind", -1) != int(played[i][2]):
+			for old in props.instruments[i].get_children():
+				old.queue_free()
+			_instrument(props.instruments[i], played[i])
+	var balls: Array = snap.get("balls", [])
+	_props("balls", balls, _ball)
+	for i in balls.size():  # the oldest ball goes when a fourth is put down, so the count can stay and the kinds change
+		var style: int = int(balls[i][2]) if balls[i].size() > 2 else 0
+		if props.balls[i].get_meta("style", -1) != style:
+			for old in props.balls[i].get_children():
+				old.queue_free()
+			_ball(props.balls[i], balls[i])
 	for n in props.get("balls", []):  # roll by the distance moved
 		var ball: Node3D = n.get_child(0)
 		var moved: Vector3 = n.position - n.get_meta("was", n.position)
@@ -323,7 +353,20 @@ func _show_props() -> void:
 		for k in 3:
 			Ink.part(n, Ink.cone(0.012, 0.06, 0.012, 4), Scenery.WOOD, Vector3(cos(TAU * k / 3.0) * 0.09, 0.03, sin(TAU * k / 3.0) * 0.09), Vector3.ONE, 6.0))
 	_props("danger", snap.danger, func(n: Node3D, f: Array) -> void:
-		Ink.part(n, Ink.cone(0.22, 0.002, 0.22, 10), Ink.MUSTARD, Vector3(0, 0.003, 0), Vector3.ONE, 5.0, 0.3))
+		Ink.part(n, Ink.cone(0.22, 0.002, 0.22, 10), Ink.MUSTARD, Vector3(0, 0.003, 0), Vector3.ONE, 5.0, 0.3)
+		for k in STINK_PUFFS:  # puffs of stink, drifting up off the patch and thinning out
+			Ink.part(n, Ink.ball(0.035, 7), Ink.MUSTARD, Vector3.ZERO, Vector3.ONE, 4.0, 0.7))
+	var gust = snap.get("wind")  # the stink goes where the wind takes it, like the smell itself
+	var drift := Vector3(gust[0], 0.0, -gust[1]) * 0.35 if gust != null else Vector3.ZERO
+	for n in props.get("danger", []):
+		for k in range(1, n.get_child_count()):  # each puff rises, curls aside and thins away
+			var puff: Node3D = n.get_child(k)
+			var strand := float((k - 1) % 3)
+			var up: float = fposmod(Time.get_ticks_msec() / 2600.0 * calm + float(k) / STINK_PUFFS, 1.0)
+			var swing := sin(up * TAU + strand * 2.1) * 0.07
+			var a := TAU * strand / 3.0 + 0.4
+			puff.position = Vector3(cos(a) * 0.08 + swing, 0.04 + up * 0.55, sin(a) * 0.08 + swing * 0.6) + drift * up * up
+			puff.scale = Vector3.ONE * (1.0 - 0.75 * up)
 	_props("music", [snap.music] if snap.music != null else [], func(n: Node3D, f: Array) -> void:
 		Ink.part(n, BoxMesh.new(), Ink.CORAL, Vector3(0, 0.05, 0), Vector3(0.14, 0.1, 0.14), 7.0, -1.0, true)
 		Ink.part(n, Ink.cone(0.02, 0.16, 0.1, 8), Ink.MUSTARD, Vector3(0.03, 0.18, 0), Vector3.ONE, 7.0, -1.0, true).rotation.z = -0.5)
@@ -334,20 +377,31 @@ func _show_props() -> void:
 func _show_weather() -> void:
 	var wind = snap.get("wind")
 	var blowing: bool = wind != null and Vector2(wind[0], wind[1]).length() > 0.05
-	var flutter := sin(Time.get_ticks_msec() / 160.0) * 0.14 * calm
-	flag.rotation.y = lerp_angle(flag.rotation.y, (atan2(wind[1], wind[0]) if blowing else flag.rotation.y) + flutter, 0.08)
-	flag.rotation.z = lerp(flag.rotation.z, 0.0 if blowing else -1.35, 0.05)  # hangs with no wind
+	for i in flags.size():
+		var flag: Node3D = flags[i]
+		var flutter := sin(Time.get_ticks_msec() / 160.0 + i * 0.9) * 0.14 * calm  # the two are not in step
+		flag.rotation.y = lerp_angle(flag.rotation.y, (atan2(wind[1], wind[0]) if blowing else flag.rotation.y) + flutter, 0.08)
+		flag.rotation.z = lerp(flag.rotation.z, 0.0 if blowing else -1.35, 0.05)  # hangs with no wind
 	for i in falls.size():
 		falls[i].scale.z = 0.5 * (1.0 + 0.12 * calm * sin(Time.get_ticks_msec() / 130.0 + i * 1.7))
+	# the reeds lean the way the wind goes and rustle on top of it, so the breeze shows at ground level too
+	var strength: float = clamp(Vector2(wind[0], wind[1]).length(), 0.0, 1.0) if blowing else 0.0
+	var toward := Vector3(wind[0], 0.0, -wind[1]).normalized() if blowing else Vector3.FORWARD
+	var axis := Vector3(toward.z, 0.0, -toward.x).normalized()
+	var beat := Time.get_ticks_msec() / 520.0
+	for i in reeds.size():
+		var reed: Node3D = reeds[i]
+		var lean: float = calm * (0.2 * strength + 0.04) * (0.75 + 0.25 * sin(beat + i * 0.8))
+		reed.quaternion = reed.quaternion.slerp(Quaternion(axis, lean), 0.08)
 
 
 func _show_held() -> void:
 	# lift whatever the hand holds
 	var held = snap.get("held")
-	for kind in ["balls", "hats", "food", "music", "drum"]:
+	for kind in ["balls", "hats", "food", "music", "drum", "instruments"]:
 		var nodes: Array = props.get(kind, [])
 		for k in nodes.size():
-			var up: bool = held != null and held[0] + ("s" if held[0] in ["ball", "hat"] else "") == kind and int(held[1]) == k
+			var up: bool = held != null and held[0] + ("s" if held[0] in ["ball", "hat", "instrument"] else "") == kind and int(held[1]) == k
 			nodes[k].position.y = lerp(nodes[k].position.y, 0.3 if up else 0.0, 0.3)
 	for i in ducks.size():
 		ducks[i].lifted = held != null and held[0] == "duck" and int(held[1]) == i
@@ -363,7 +417,7 @@ func _ask_for_brain() -> void:
 	brain.visible = selected >= 0 and snap.has("brain") and snap.brain.duck == selected
 	if brain.visible:
 		brain.show_brain(snap.brain, snap.ducks[selected].name)
-		brain.position = Vector2(get_viewport().get_visible_rect().size.x - brain.size.x - 20.0, 20.0)
+		brain.position = Vector2(get_viewport().get_visible_rect().size.x - brain.size.x - 24.0, 20.0)
 
 
 func _show_words() -> void:
@@ -378,36 +432,213 @@ func _show_words() -> void:
 	toasts.text = "\n".join(lines)
 	toasts.visible = not lines.is_empty()
 	card.visible = selected >= 0
-	help.visible = true
-	help.text = HELP_RIDING if possessing else (HELP if help_on else HELP_HINT)
 	var open: bool = help_on and not possessing
-	help.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT if open else Control.PRESET_BOTTOM_RIGHT,
-		Control.PRESET_MODE_MINSIZE, 0 if open else 24)
-	help.add_theme_font_size_override("font_size", 17 if open else 13)
-	for other in [card, bars, toasts, brain]:  # the open help covers the window
+	menu.visible = open
+	help.visible = not open
+	help.text = HELP_RIDING if possessing else HELP_HINT
+	for other in [card, bars, toasts, brain]:  # the open menu has the window to itself
 		other.modulate.a = 0.0 if open else 1.0
 	if selected >= 0:
-		card.text = _card_text(snap.ducks[selected])
+		_fill_card(snap.ducks[selected])
 
 
-func _card_text(d: Dictionary) -> String:
-	var text := "%s   %s\n%s" % [d.name, d.label, ("asleep" if d.asleep else ("crying" if d.get("crying", false) else FEELS.get(d.mood, d.mood)))]
+func _raise_flag(summit: Vector3) -> Node3D:
+	# A pole on a cliff rock, and a white flag with a duck on it. The cloth turns with the wind, so the
+	# duck is printed on both faces.
+	Ink.part(self, Ink.cone(0.035, 1.5, 0.028, 5), Scenery.WOOD, summit + Vector3(0, 0.7, 0), Vector3.ONE, 7.0)
+	var cloth := Node3D.new()
+	cloth.position = summit + Vector3(0, 1.22, 0)
+	add_child(cloth)
+	Ink.part(cloth, BoxMesh.new(), Color.WHITE, Vector3(0.42, 0, 0), Vector3(0.84, 0.46, 0.02), 7.0, 1.0, true)  # no halftone screen, so it stays white
+	for face in [0.016, -0.016]:
+		var body := Ink.part(cloth, Ink.ball(0.1, 9), Ink.NAVY, Vector3(0.4, -0.03, face), Vector3(1.05, 0.8, 0.12), 6.0, 0.75)
+		body.rotation.z = 0.15
+		Ink.part(cloth, Ink.ball(0.062, 9), Ink.NAVY, Vector3(0.49, 0.09, face), Vector3(1, 1, 0.12), 6.0, 0.75)
+		Ink.part(cloth, Ink.cone(0.03, 0.06, 0.0, 5), Ink.MUSTARD, Vector3(0.565, 0.085, face), Vector3(1, 1, 0.3), 6.0, 0.9).rotation.z = -PI / 2
+		Ink.part(cloth, Ink.cone(0.0, 0.1, 0.05, 3), Ink.NAVY, Vector3(0.33, 0.0, face), Vector3(1, 1, 0.12), 6.0, 0.75).rotation.z = 2.0  # the tail
+	return cloth
+
+
+func _paper(fill: Color, radius: int, pad: int) -> StyleBoxFlat:
+	var box := StyleBoxFlat.new()
+	box.bg_color = fill
+	box.set_corner_radius_all(radius)
+	box.set_content_margin_all(pad)
+	return box
+
+
+func _build_card(ui: CanvasLayer) -> void:
+	# The selected duck's card: its name in full, then who it is and how it is, then what it has learned.
+	card.add_theme_stylebox_override("panel", paper)
+	card.position = Vector2(24, 20)
+	card.custom_minimum_size.x = BARS_W  # the same width as the readout under it
+	ui.add_child(card)
+	var stack := VBoxContainer.new()
+	stack.add_theme_constant_override("separation", 3)
+	card.add_child(stack)
+	card_name.add_theme_font_size_override("font_size", 27)
+	card_name.add_theme_color_override("font_color", Ink.NAVY)
+	card_trait.add_theme_font_size_override("font_size", 14)
+	card_trait.add_theme_color_override("font_color", Ink.CORAL)
+	card_body.add_theme_font_size_override("font_size", 15)
+	card_body.add_theme_color_override("font_color", Ink.NAVY)
+	card_body.add_theme_constant_override("line_spacing", 5)
+	card_skills.add_theme_font_size_override("font_size", 13)
+	card_skills.add_theme_color_override("font_color", Color(Ink.NAVY, 0.65))
+	card_skills.add_theme_constant_override("line_spacing", 4)
+	for label in [card_name, card_trait, card_body, card_skills]:
+		label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		stack.add_child(label)
+	var rule := HSeparator.new()  # between how it is and what it can do
+	var line := StyleBoxFlat.new()
+	line.bg_color = Color(Ink.NAVY, 0.15)
+	line.content_margin_top = 1
+	rule.add_theme_stylebox_override("separator", line)
+	stack.add_child(rule)
+	stack.move_child(rule, card_skills.get_index())
+
+
+func _build_menu(ui: CanvasLayer) -> void:
+	# The controls as a printed card: a title, then two columns of sections, each a heading over its keys.
+	var mono := SystemFont.new()
+	mono.font_names = PackedStringArray(["Menlo", "Monaco", "Courier New", "monospace"])
+	menu.set_anchors_preset(Control.PRESET_FULL_RECT)
+	menu.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	menu.visible = false
+	ui.add_child(menu)
+	var dim := ColorRect.new()  # the garden dims behind it
+	dim.color = Color(Ink.NAVY, 0.55)
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	menu.add_child(dim)
+	var centre := CenterContainer.new()
+	centre.set_anchors_preset(Control.PRESET_FULL_RECT)
+	centre.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	menu.add_child(centre)
+	var card_box := _paper(Ink.CREAM, 16, 34)
+	card_box.border_width_bottom = 6  # the card sits on an inked edge, like a printed card
+	card_box.border_color = Ink.NAVY
+	var paper := PanelContainer.new()
+	paper.add_theme_stylebox_override("panel", card_box)
+	centre.add_child(paper)
+	var column := VBoxContainer.new()
+	column.add_theme_constant_override("separation", 10)
+	paper.add_child(column)
+	var title := Label.new()
+	title.text = "MICRO GARDEN"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 34)
+	title.add_theme_color_override("font_color", Ink.NAVY)
+	column.add_child(title)
+	var under := Label.new()
+	under.text = "the controls"
+	under.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	under.add_theme_font_size_override("font_size", 15)
+	under.add_theme_color_override("font_color", Ink.CORAL)
+	column.add_child(under)
+	var spread := HBoxContainer.new()  # the sections, half in each column
+	spread.add_theme_constant_override("separation", 46)
+	column.add_child(spread)
+	var sides := [VBoxContainer.new(), VBoxContainer.new()]
+	for side in sides:
+		side.add_theme_constant_override("separation", 22)
+		spread.add_child(side)
+	for s in CONTROLS.size():
+		var section: Array = CONTROLS[s]
+		var holder := VBoxContainer.new()
+		holder.add_theme_constant_override("separation", 8)
+		var head := Label.new()
+		head.text = section[0]
+		head.add_theme_font_size_override("font_size", 19)
+		head.add_theme_color_override("font_color", Ink.TEAL)
+		holder.add_child(head)
+		var grid := GridContainer.new()
+		grid.columns = 2
+		grid.add_theme_constant_override("h_separation", 16)
+		grid.add_theme_constant_override("v_separation", 7)
+		for row in section[1]:
+			var key := Label.new()
+			key.text = row[0]
+			key.add_theme_font_override("font", mono)
+			key.add_theme_font_size_override("font_size", 13)
+			key.add_theme_color_override("font_color", Ink.NAVY)
+			key.add_theme_stylebox_override("normal", _paper(Ink.STONE, 5, 6))
+			key.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN  # the chip hugs the key, not the column
+			var what := Label.new()
+			what.text = row[1]
+			what.add_theme_font_size_override("font_size", 16)
+			what.add_theme_color_override("font_color", Ink.NAVY)
+			what.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+			what.custom_minimum_size.x = 355  # a long one wraps rather than widening the card off the window
+			what.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			grid.add_child(key)
+			grid.add_child(what)
+		holder.add_child(grid)
+		sides[0 if s < CONTROLS.size() / 2 else 1].add_child(holder)
+
+
+func _fill_card(d: Dictionary) -> void:
+	# One line each, no blank ones: who it is, how it is, what it has come to like, and what it can do.
+	var state: String = "asleep" if d.asleep else ("crying" if d.get("crying", false) else FEELS.get(d.mood, d.mood))
+	card_name.text = d.name
+	card_trait.text = "%s  ·  %s" % [d.label, state] if d.label != "" else state
 	var a: Dictionary = d.get("among", {})
+	card_skills.visible = not a.is_empty()
 	if a.is_empty():
-		return text
-	text += "\n\nlikes %s best\n%s" % [a.favourite, a.hand]
+		card_body.text = ""
+		return
+	var lines := ["likes %s best" % a.favourite, a.hand]
 	if a.friend != "":
-		text += "\nfriends with %s" % a.friend
+		lines.append("friends with %s" % a.friend)
 	if a.grudge != "":
-		text += "\nholds a grudge against %s" % a.grudge
-	return text + "\nswimmer %d%%   runner %d%%   dancer %d%%" % [a.skills[0] * 100, a.skills[1] * 100, a.skills[2] * 100]
+		lines.append("holds a grudge against %s" % a.grudge)
+	card_body.text = "\n".join(lines)
+	var names := ["swimming", "walking", "dancing", "eating", "fighting", "fashion", "music"]  # two to a line, so the card keeps its width
+	var learned := PackedStringArray()
+	for i in min(names.size(), a.skills.size()):
+		learned.append("%s %d%%%s" % [names[i], a.skills[i] * 100, "\n" if i % 2 == 1 else "     "])
+	card_skills.text = "".join(learned).strip_edges()
 
 
 func _fruit(n: Node3D, f: Array) -> void:
-	# 0 orange, 1 apple, 2 banana. All are the same food; each duck has a favourite.
+	# Ten fruits (world/fields.py FRUITS), all the same food; each duck has a favourite.
 	var kind: int = int(f[2])
 	var leaf := Color("2f8f4a")
-	if kind == 0:
+	var skin := func(mesh: Mesh, colour: Color, at: Vector3, size := Vector3.ONE) -> MeshInstance3D:
+		var piece := Ink.part(n, mesh, colour, at, size, 6.0, -1.0, true)
+		piece.material_override.set_shader_parameter("lift", 0.3)
+		return piece
+	var stalk := func(at: Vector3, lean := 0.0) -> void:
+		Ink.part(n, Ink.cone(0.005, 0.04, 0.005, 4), Color("6b4326"), at, Vector3.ONE, 6.0).rotation.z = lean
+	if kind == 3:  # a pear
+		skin.call(Ink.ball(0.07, 8), Color("b8c94a"), Vector3(0, 0.066, 0))
+		skin.call(Ink.ball(0.045, 8), Color("b8c94a"), Vector3(0, 0.13, 0))
+		stalk.call(Vector3(0, 0.18, 0), 0.2)
+	elif kind == 4:  # a pair of cherries on joined stalks
+		for side in [-1.0, 1.0]:
+			skin.call(Ink.ball(0.038, 8), Color("b3142c"), Vector3(side * 0.04, 0.038, 0))
+			stalk.call(Vector3(side * 0.022, 0.09, 0), side * 0.45)
+	elif kind == 5:  # a bunch of grapes
+		for spot in [Vector3(-0.04, 0.1, 0), Vector3(0, 0.1, 0.02), Vector3(0.04, 0.1, 0), Vector3(-0.02, 0.066, 0.01),
+				Vector3(0.02, 0.066, -0.01), Vector3(0, 0.033, 0), Vector3(0, 0.1, -0.03)]:
+			skin.call(Ink.ball(0.026, 6), Color("6b3f8f"), spot)
+		stalk.call(Vector3(0, 0.14, 0))
+	elif kind == 6:  # a strawberry, point down, with a green crown
+		skin.call(Ink.cone(0.0, 0.1, 0.055, 8), Color("e0293a"), Vector3(0, 0.05, 0))
+		for k in 5:
+			var a := TAU * k / 5.0
+			Ink.part(n, Ink.ball(0.018, 4), leaf, Vector3(cos(a) * 0.03, 0.102, sin(a) * 0.03), Vector3(1.6, 0.4, 1.0), 6.0)
+	elif kind == 7:  # a lemon, long, with a nub at each end
+		skin.call(Ink.ball(0.06, 8), Color("f5dc3a"), Vector3(0, 0.06, 0), Vector3(1.35, 0.9, 0.9))
+		for side in [-1.0, 1.0]:
+			skin.call(Ink.ball(0.014, 5), Color("f5dc3a"), Vector3(side * 0.083, 0.06, 0))
+	elif kind == 8:  # a plum
+		skin.call(Ink.ball(0.062, 8), Color("5a2a6e"), Vector3(0, 0.062, 0), Vector3(1.0, 1.05, 0.9))
+		stalk.call(Vector3(0, 0.13, 0))
+	elif kind == 9:  # a peach, with a leaf
+		skin.call(Ink.ball(0.07, 8), Color("f6a26b"), Vector3(0, 0.068, 0))
+		Ink.part(n, Ink.ball(0.022, 5), leaf, Vector3(0.025, 0.14, 0), Vector3(1.6, 0.4, 0.9), 6.0)
+	elif kind == 0:
 		Ink.part(n, Ink.ball(0.075, 8), Color("f39a2b"), Vector3(0, 0.072, 0), Vector3.ONE, 6.0, -1.0, true).material_override.set_shader_parameter("lift", 0.3)
 		Ink.part(n, Ink.ball(0.018, 5), leaf, Vector3(0, 0.148, 0), Vector3(1.6, 0.5, 1.0), 6.0)
 	elif kind == 1:
@@ -424,6 +655,52 @@ func _fruit(n: Node3D, f: Array) -> void:
 	n.rotation.y = f[0] * 7.0 + f[1] * 3.0
 
 
+func _ball(n: Node3D, b: Array) -> void:
+	# Ten kinds of ball (body/stub2d/stub.py BALL_STYLES), all the same size. The markings are children of the
+	# ball, so they roll with it.
+	var style: int = int(b[2]) if b.size() > 2 else 0
+	n.set_meta("style", style)
+	var r := 0.06 * 1.9
+	var base: Color = [Color("f6f1e6"), Color("f6f1e6"), Color("f6f1e6"), Color("e0782c"), Color("c8d84a"), Ink.NAVY,
+		Ink.CORAL, Ink.TEAL, Ink.MUSTARD, Ink.STONE][style % 10]
+	var ball := Ink.part(n, Ink.ball(r, 10), base, Vector3(0, r, 0), Vector3.ONE, 5.0, -1.0, true)
+	ball.material_override.set_shader_parameter("lift", 0.3)
+	var mark := func(colour: Color, size: Vector3, turn := Vector3.ZERO, at := Vector3.ZERO) -> void:
+		var piece := Ink.part(ball, Ink.ball(r * 1.01, 10), colour, at, size, 5.0)
+		piece.rotation = turn
+		piece.material_override.set_shader_parameter("lift", 0.3)
+	var spots := func(colour: Color, count: int, size: float) -> void:  # evenly over the ball
+		for k in count:
+			var y := 1.0 - 2.0 * (k + 0.5) / count
+			var ring := sqrt(1.0 - y * y)
+			var at := Vector3(cos(k * 2.4) * ring, y, sin(k * 2.4) * ring) * r * 0.93
+			Ink.part(ball, Ink.ball(r * size, 6), colour, at, Vector3.ONE, 5.0)
+	match style % 10:
+		0:  # the classic: a red band
+			mark.call(Color("e2483d"), Vector3(1.0, 0.34, 1.0))
+		1:  # a beach ball: three bands of colour
+			for k in 3:
+				mark.call([Ink.CORAL, Ink.MUSTARD, Ink.TEAL][k], Vector3(0.5, 1.0, 1.0), Vector3(0, TAU * k / 6.0, 0))
+		2:  # a football: navy patches
+			spots.call(Ink.NAVY, 12, 0.3)
+		3:  # a basketball: two dark seams
+			mark.call(Ink.NAVY, Vector3(1.0, 0.06, 1.0))
+			mark.call(Ink.NAVY, Vector3(0.06, 1.0, 1.0))
+		4:  # a tennis ball: a pale curve
+			mark.call(Color("f6f1e6"), Vector3(1.0, 0.08, 1.0), Vector3(0.6, 0, 0.4))
+		5:  # a snooker ball: a cream spot
+			Ink.part(ball, Ink.ball(r * 0.45, 8), Color("f6f1e6"), Vector3(0, 0, r * 0.8), Vector3(1, 1, 0.5), 5.0)
+		6:  # a plain rubber ball
+			pass
+		7:  # stripes
+			for y in [-0.45, 0.45]:
+				mark.call(Color("f6f1e6"), Vector3(0.9, 0.16, 0.9), Vector3.ZERO, Vector3(0, y * r, 0))  # the ball is narrower up there
+		8:  # polka dots
+			spots.call(Ink.CORAL, 16, 0.24)
+		9:  # a moon, with craters
+			spots.call(Color("8f8a80"), 9, 0.32)
+
+
 func _props(kind: String, items: Array, make: Callable) -> void:
 	# one node per item, rebuilt only when the count changes
 	var nodes: Array = props.get(kind, [])
@@ -438,11 +715,36 @@ func _props(kind: String, items: Array, make: Callable) -> void:
 			nodes.append(n)
 		props[kind] = nodes
 	for i in items.size():
-		nodes[i].position = Vector3(items[i][0], nodes[i].position.y, -items[i][1])  # garden y is Godot -z; _show_held sets height
+		var to := Vector3(items[i][0], nodes[i].position.y, -items[i][1])  # garden y is Godot -z; _show_held sets height
+		var carried: bool = snap.get("held") != null and snap.held[0] == "food" and int(snap.held[1]) == i
+		if kind == "food" and not carried and not nodes[i].has_meta("kicked") and nodes[i].position.distance_to(to) > KICKED_M:
+			nodes[i].set_meta("kicked", {"from": nodes[i].position, "t": 0.0, "to": to})  # it jumped: bounce it there
+		if nodes[i].has_meta("kicked"):
+			nodes[i].get_meta("kicked").to = to  # _roll_kicked moves it
+		else:
+			nodes[i].position = to
+
+
+func _roll_kicked(dt: float) -> void:
+	# A fruit that moved further in one step than anything carries it was kicked: it bounces twice, lower each
+	# time, and spins as it rolls to where it landed.
+	for n in props.get("food", []):
+		if not n.has_meta("kicked"):
+			continue
+		var roll: Dictionary = n.get_meta("kicked")
+		roll.t += dt
+		var u: float = min(roll.t / KICKED_S, 1.0)
+		var from: Vector3 = roll.from
+		var along: Vector3 = roll.to - from
+		n.position = from + along * (1.0 - pow(1.0 - u, 2.0)) + Vector3(0, 0.22 * abs(sin(u * TAU)) * (1.0 - u), 0)
+		if along.length() > 0.01:
+			n.rotate(Vector3.UP.cross(along).normalized(), -dt * 14.0 * (1.0 - u))
+		if u >= 1.0:
+			n.remove_meta("kicked")
 
 
 func _draw_bars() -> void:
-	# needs in coral, moods in mustard, wants in teal, a bar each
+	# One panel under the card: needs in coral, moods in mustard, wants in teal, a heading and a bar each
 	if selected < 0 or snap.is_empty() or possessing:
 		return
 	var rows: Array = snap.ducks[selected].get("readout", [])
@@ -450,24 +752,34 @@ func _draw_bars() -> void:
 		return
 	var tints := {"needs": Ink.CORAL, "moods": Ink.MUSTARD, "wants": Ink.TEAL}
 	var font := ThemeDB.fallback_font
+	var row_h := 20.0
+	var head_h := 27.0  # a heading in the section's own ink, over a rule of it
 	var sections := 0
 	var last := ""
 	for row in rows:
 		sections += int(row[0] != last)
 		last = row[0]
-	bars.draw_rect(Rect2(0, 0, 300, rows.size() * 19.0 + sections * 24.0 + 10.0), Color(Ink.CREAM, 0.88))
-	var y := 6.0
+	var edge := float(PAPER_PAD)
+	bars.draw_style_box(paper, Rect2(0, 0, BARS_W, rows.size() * row_h + sections * head_h + 2.0 * edge))
+	var bar_x := edge + 82.0
+	var bar_w := BARS_W - bar_x - edge - 34.0
+	var y := edge
 	last = ""
 	for row in rows:
 		if row[0] != last:
 			last = row[0]
-			bars.draw_string(font, Vector2(10, y + 15.0), last, HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Ink.NAVY)
-			y += 24.0
-		bars.draw_string(font, Vector2(10, y + 12.0), row[1], HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Ink.NAVY)
-		bars.draw_rect(Rect2(90, y + 2.0, 170, 11), Color(Ink.NAVY, 0.18))
-		bars.draw_rect(Rect2(90, y + 2.0, 170.0 * float(row[2]), 11), tints.get(last, Ink.NAVY))
-		bars.draw_string(font, Vector2(266, y + 12.0), "%d" % int(row[2] * 100.0), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Ink.NAVY)
-		y += 19.0
+			# the ink names the section on the bars and the rule; the word stays navy, which reads on cream
+			var tint: Color = tints.get(last, Ink.NAVY)
+			bars.draw_rect(Rect2(edge, y + 5.0, 8.0, 8.0), tint)
+			bars.draw_string(font, Vector2(edge + 14.0, y + 14.0), last.to_upper(), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Ink.NAVY)
+			bars.draw_rect(Rect2(edge, y + 20.0, BARS_W - 2.0 * edge, 1.5), Color(tint, 0.55))
+			y += head_h
+		bars.draw_string(font, Vector2(edge, y + 13.0), row[1], HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Ink.NAVY)
+		bars.draw_rect(Rect2(bar_x, y + 3.0, bar_w, 11), Color(Ink.NAVY, 0.15))
+		bars.draw_rect(Rect2(bar_x, y + 3.0, bar_w * float(row[2]), 11), tints.get(last, Ink.NAVY))
+		bars.draw_string(font, Vector2(BARS_W - edge - 30.0, y + 13.0), "%d" % int(row[2] * 100.0),
+			HORIZONTAL_ALIGNMENT_RIGHT, 30, 12, Color(Ink.NAVY, 0.7))
+		y += row_h
 
 
 func _draw_overlay() -> void:
@@ -490,7 +802,7 @@ func _draw_overlay() -> void:
 			overlay.draw_circle(centre + Vector2(az, -el) * r, 2.6, Ink.NAVY.lerp(Ink.CREAM, lum[eye * n + k] / 255.0))
 	var left: float = size.x - 4.0 * (r + 12.0) - 12.0 + 4.0
 	var y: float = size.y - 2.0 * r - 60.0 - 22.0 * ride.dn.size()
-	overlay.draw_rect(Rect2(left - 10.0, y - 10.0, 330.0, 22.0 * ride.dn.size() + 14.0), Color(Ink.CREAM, 0.9))
+	overlay.draw_style_box(paper, Rect2(left - PAPER_PAD, y - PAPER_PAD, 330.0, 22.0 * ride.dn.size() + 2.0 * PAPER_PAD))
 	for bar in ride.dn:
 		overlay.draw_rect(Rect2(left, y, 160, 12), Color(Ink.NAVY, 0.25))
 		overlay.draw_rect(Rect2(left, y, 160.0 * clamp(bar[1] / 5.0, 0.0, 1.0), 12), Ink.CORAL)
@@ -503,6 +815,10 @@ func _quack(duck: int, tag: String) -> void:
 	# stays the same. Synthesised here; the garden ships no audio files.
 	if tag == "drum":
 		_thump()
+		return
+	if tag.begins_with("instrument:"):
+		var parts := tag.split(":")
+		_note(duck, int(parts[1]), parts.size() > 2)
 		return
 	var shape: Array = {"alarm": [900.0, 0.5, 0.12, 3], "greet": [520.0, 0.8, 0.16, 2], "inquire": [480.0, 1.3, 0.22, 1],
 		"peck": [700.0, 0.9, 0.05, 2], "chirp": [1100.0, 1.1, 0.07, 2], "coo": [330.0, 0.9, 0.4, 1],
@@ -527,6 +843,111 @@ func _quack(duck: int, tag: String) -> void:
 			var saw := fmod(phase, 1.0) * 2.0 - 1.0
 			var v: float = lerp(sin(TAU * phase), saw, reedy) * sin(min(u, 1.0) * PI) * 0.25 if k < n else 0.0
 			playback.push_frame(Vector2(v, v))
+
+
+func _note(duck: int, kind: int, sour: bool) -> void:
+	# A note on an instrument, from a pentatonic scale so any run of them sounds like a tune. How well the duck
+	# plays (its music skill, `tune`) sets how far off pitch it drifts; a sour note is well off.
+	var tone: Array = INSTRUMENT_TONES[kind % INSTRUMENT_TONES.size()]  # [Hz, seconds, voice]
+	var skill: float = float(snap.ducks[duck].get("tune", 1.0)) if duck < snap.get("ducks", []).size() else 1.0
+	var off: float = randf_range(-1.0, 1.0) * ((1.0 - skill) * 0.6 + (1.8 if sour else 0.0))  # semitones out of tune
+	var hz: float = float(tone[0]) * pow(2.0, ([0, 2, 4, 7, 9, 12][randi() % 6] + off) / 12.0)
+	var out: AudioStreamGeneratorPlayback = voice.get_stream_playback()
+	var n := int(float(tone[1]) * 22050.0)
+	var phase := 0.0
+	for k in n:
+		if out.get_frames_available() < 1:
+			return
+		var u := float(k) / n
+		var t := float(k) / 22050.0
+		phase += hz / 22050.0
+		var v := 0.0
+		match tone[2]:
+			"struck":
+				v = (sin(TAU * phase) + 0.3 * sin(TAU * phase * 4.0)) * exp(-7.0 * u)
+			"shaken":
+				v = randf_range(-1.0, 1.0) * exp(-9.0 * u)
+			"jingle":
+				v = randf_range(-1.0, 1.0) * sin(TAU * t * 5200.0) * exp(-6.0 * u)
+			"ring":
+				v = (sin(TAU * phase) + 0.4 * sin(TAU * phase * 2.76) + 0.2 * sin(TAU * phase * 5.4)) * exp(-3.0 * u)
+			"plucked":
+				v = (fmod(phase, 1.0) * 2.0 - 1.0) * exp(-5.0 * u) * 0.6
+			"harp":
+				v = sin(TAU * phase) * exp(-4.0 * u)
+			"brass":
+				v = clamp(sin(TAU * phase) * 3.0, -1.0, 1.0) * min(u * 12.0, 1.0) * (1.0 - u) * 0.7
+			"blown":
+				v = sin(TAU * phase + 0.3 * sin(TAU * t * 5.5)) * min(u * 10.0, 1.0) * (1.0 - u)
+		out.push_frame(Vector2(v, v) * 0.09)
+
+
+func _instrument(n: Node3D, it: Array) -> void:
+	# Ten instruments (body/stub2d/stub.py INSTRUMENTS), built from the same few shapes as everything else.
+	var kind: int = int(it[2])
+	n.set_meta("kind", kind)
+	var wood := Scenery.WOOD
+	var brass := Color("e6b54a")
+	var part := func(mesh: Mesh, colour: Color, at: Vector3, size := Vector3.ONE, lined := false) -> MeshInstance3D:
+		var piece := Ink.part(n, mesh, colour, at, size, 6.0, -1.0, lined)
+		piece.material_override.set_shader_parameter("lift", 0.3)
+		return piece
+	match kind:
+		0:  # a xylophone: bars from long to short on a wooden frame
+			for side in [-1.0, 1.0]:
+				part.call(BoxMesh.new(), wood, Vector3(0, 0.03, side * 0.07), Vector3(0.34, 0.03, 0.02))
+			for k in 6:
+				part.call(BoxMesh.new(), [Ink.CORAL, Ink.MUSTARD, Color("7ac74f"), Ink.TEAL, Color("3a7bd5"), Color("7d4fc2")][k],
+					Vector3(-0.13 + 0.052 * k, 0.05, 0), Vector3(0.04, 0.015, 0.2 - 0.018 * k), true)
+		1:  # maracas, crossed
+			for side in [-1.0, 1.0]:
+				part.call(Ink.ball(0.045, 8), [Ink.CORAL, Ink.MUSTARD][int(side > 0)], Vector3(side * 0.05, 0.045, -0.04), Vector3(1, 1, 1.2), true)
+				part.call(Ink.cone(0.01, 0.12, 0.012, 5), wood, Vector3(side * 0.02, 0.02, 0.05), Vector3.ONE).rotation.x = PI / 2 - side * 0.3
+		2:  # a tambourine: a drum hoop with jingles round the rim
+			part.call(Ink.cone(0.12, 0.035, 0.12, 14), Color("f6f1e6"), Vector3(0, 0.02, 0), Vector3.ONE, true)
+			for k in 6:
+				var a := TAU * k / 6.0
+				part.call(Ink.cone(0.018, 0.008, 0.018, 8), brass, Vector3(cos(a) * 0.12, 0.03, sin(a) * 0.12))
+		3:  # a triangle, standing on a little stand, and its beater
+			for k in 3:  # each side from one corner to the next
+				var from := Vector2(cos(PI / 2 + TAU * k / 3.0), sin(PI / 2 + TAU * k / 3.0)) * 0.1
+				var to := Vector2(cos(PI / 2 + TAU * (k + 1) / 3.0), sin(PI / 2 + TAU * (k + 1) / 3.0)) * 0.1
+				var mid := (from + to) / 2.0
+				var side: MeshInstance3D = part.call(BoxMesh.new(), brass, Vector3(mid.x, 0.12 + mid.y, 0), Vector3(from.distance_to(to), 0.02, 0.02), true)
+				side.rotation.z = (to - from).angle()
+			part.call(Ink.cone(0.04, 0.02, 0.05, 8), wood, Vector3(0, 0.01, 0))
+			part.call(Ink.cone(0.004, 0.11, 0.004, 4), Color("c9c2b2"), Vector3(0.1, 0.006, 0.04)).rotation.z = PI / 2
+		4:  # a toy piano
+			part.call(BoxMesh.new(), Ink.CORAL, Vector3(0, 0.06, 0), Vector3(0.3, 0.12, 0.16), true)
+			part.call(BoxMesh.new(), Color("f6f1e6"), Vector3(0, 0.1, 0.07), Vector3(0.26, 0.02, 0.05))
+			for k in 5:
+				part.call(BoxMesh.new(), Ink.NAVY, Vector3(-0.1 + 0.05 * k, 0.115, 0.06), Vector3(0.02, 0.012, 0.03))
+		5:  # a guitar, lying on the grass
+			part.call(Ink.ball(0.08, 10), Color("c46b2a"), Vector3(0, 0.03, 0), Vector3(1, 0.4, 1), true)
+			part.call(Ink.ball(0.06, 10), Color("c46b2a"), Vector3(0.1, 0.03, 0), Vector3(1, 0.4, 1), true)
+			part.call(Ink.ball(0.025, 8), Ink.NAVY, Vector3(0.02, 0.058, 0), Vector3(1, 0.2, 1))
+			part.call(BoxMesh.new(), wood, Vector3(0.25, 0.04, 0), Vector3(0.22, 0.02, 0.035))
+			part.call(BoxMesh.new(), wood, Vector3(0.38, 0.04, 0), Vector3(0.05, 0.025, 0.055))
+		6:  # a trumpet
+			part.call(Ink.cone(0.015, 0.08, 0.06, 10), brass, Vector3(0.14, 0.06, 0), Vector3.ONE, true).rotation.z = -PI / 2
+			part.call(Ink.cone(0.013, 0.2, 0.013, 6), brass, Vector3(0, 0.06, 0), Vector3.ONE, true).rotation.z = PI / 2
+			for k in 3:
+				part.call(Ink.cone(0.01, 0.04, 0.01, 5), brass, Vector3(-0.02 + 0.025 * k, 0.09, 0))
+		7:  # a hand bell
+			part.call(Ink.cone(0.07, 0.1, 0.03, 10), brass, Vector3(0, 0.05, 0), Vector3.ONE, true)
+			part.call(Ink.cone(0.012, 0.07, 0.012, 5), wood, Vector3(0, 0.13, 0))
+			part.call(Ink.ball(0.018, 6), Ink.NAVY, Vector3(0, 0.01, 0))
+		8:  # a recorder, lying down, with its holes
+			part.call(Ink.cone(0.018, 0.3, 0.014, 8), Color("f6f1e6"), Vector3(0, 0.02, 0), Vector3.ONE, true).rotation.z = PI / 2
+			for k in 5:
+				part.call(Ink.ball(0.005, 4), Ink.NAVY, Vector3(-0.08 + 0.035 * k, 0.037, 0))
+		9:  # a harp: a curved frame and its strings
+			part.call(BoxMesh.new(), wood, Vector3(-0.08, 0.15, 0), Vector3(0.03, 0.3, 0.03), true)
+			part.call(BoxMesh.new(), wood, Vector3(0.0, 0.02, 0), Vector3(0.2, 0.03, 0.04), true)
+			part.call(BoxMesh.new(), wood, Vector3(0.0, 0.26, 0), Vector3(0.2, 0.03, 0.03), true).rotation.z = -0.35
+			for k in 5:
+				part.call(BoxMesh.new(), Color("f6f1e6"), Vector3(-0.05 + 0.03 * k, 0.13 + 0.01 * k, 0), Vector3(0.004, 0.2 - 0.025 * k, 0.004))
+	n.rotation.y = float(it[0]) * 5.0 + float(it[1]) * 3.0
 
 
 func _thump() -> void:
@@ -653,14 +1074,33 @@ func _ground(screen: Vector2):
 	return Vector2(hit.x, -hit.z)
 
 
+func _duck_at(screen: Vector2) -> int:
+	# The duck under the pointer, by where it is drawn: its body, not the grass at its feet. Its height on
+	# screen sets how near a tap has to land, so it works zoomed right in and from across the garden.
+	var best := -1
+	var nearest := INF
+	for i in ducks.size():
+		var feet: Vector3 = ducks[i].global_position
+		if cam.is_position_behind(feet):
+			continue
+		var top := cam.unproject_position(feet + Vector3(0, DUCK_TALL, 0))
+		var down := cam.unproject_position(feet)
+		var reach: float = max(0.6 * down.distance_to(top), 12.0)
+		var off := screen.distance_to((top + down) * 0.5)
+		if off < reach and off < nearest:
+			nearest = off
+			best = i
+	return best
+
+
 func _click(screen: Vector2) -> void:
 	var xy = _ground(screen)
 	if xy == null or snap.is_empty():
 		return
-	for i in snap.ducks.size():
-		if xy.distance_to(Vector2(snap.ducks[i].x, snap.ducks[i].y)) < 0.25:
-			selected = i
-			return
+	var tapped := _duck_at(screen)
+	if tapped >= 0:
+		selected = tapped
+		return
 	if snap.music != null and xy.distance_to(Vector2(snap.music[0], snap.music[1])) < 0.4:  # each click steps the volume
 		var volume: float = music.step_volume()
 		_act("garden.volume", {"level": volume})
@@ -697,6 +1137,10 @@ func _key(code: int) -> void:
 		var here = _mouse_ground()
 		if here != null:
 			_act("garden.drum", {"x": here.x, "y": here.y, "on": int(snap.get("drum") == null)})
+	elif code == KEY_I:
+		var spot = _mouse_ground()
+		if spot != null:
+			_act("garden.instrument", {"x": spot.x, "y": spot.y})
 	elif code == KEY_B:
 		var where = _mouse_ground()
 		if where != null and where.x > 0 and where.y > 0 and where.x < snap.size and where.y < snap.size:

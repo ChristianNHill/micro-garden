@@ -25,7 +25,7 @@ import numpy as np
 from body.contract import ROBOT_PARAMS, Client
 from world.fields import SIZE_M
 from body.mujoco.camera import FRAME_PORT, SimCamera
-from body.stub2d.stub import DEMO_GARDEN, DT, EMOTE_ACTS, Stub, take_the_wheel
+from body.stub2d.stub import DEMO_GARDEN, DOWN_S, DT, EMOTE_ACTS, Stub, take_the_wheel
 
 SIM_STATE = os.path.expanduser("~/.cache/duck-sim")  # where duck-sim puts each duck's robotd socket
 TRUTH_PORT = 7801  # the first duck's body server; +1 per duck
@@ -278,10 +278,10 @@ class MujocoBody(Stub):
             self.robots[i].notify("robot.do", skill="sit_toggle")
             self.rising_until[i] = self.t + RISE_S
 
-    def knock_down(self, j: int) -> None:
+    def knock_down(self, j: int, seconds: float = DOWN_S) -> None:
         """A kick that lands: the duck goes limp and `get_up` stands it in 10 to 15 s. The kicker keeps
         its distance (`keep_apart`), so the blow is the garden's and the fall is the robot's."""
-        super().knock_down(j)
+        super().knock_down(j, seconds)
         if not self.limp[j] and not self.relaxed[j]:
             self.robots[j].call("robot.relax")
             self.limp[j], self.got_up_at[j], self.sat[j] = True, self.t, False
@@ -303,7 +303,7 @@ class MujocoBody(Stub):
         if self.sat[i]:
             return
         skill = p["skill"]
-        if skill in ("headbutt", "kick"):  # both are a foot
+        if skill in ("headbutt", "headbutt_hard", "kick"):  # all a foot
             self.kick_foot[i] = not self.kick_foot[i]
             skill = "kick_left" if self.kick_foot[i] else "kick_right"
         skill = {"zoomies": "roulade", "drum": "ground_pick"}.get(skill, skill)  # a drum tap is a peck

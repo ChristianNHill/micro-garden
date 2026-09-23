@@ -14,14 +14,14 @@ CHANCE = 0.35  # of doing so each time, for the most expressive duck whose feeli
 FELT_AT = 0.4  # below this a feeling is not worth showing
 
 EMOTES = ("happy", "playful", "scared", "angry", "sad", "lonely", "bored", "hungry", "thirsty", "sleepy",
-          "curious", "proud", "stomp", "yawn", "splash", "sing", "cower", "dance", "singdance", "cry")
+          "curious", "proud", "stomp", "yawn", "splash", "sing", "cower", "dance", "singdance", "cry", "laugh", "comfort")
 # stomp, yawn, splash, sing and cower are signature tricks, scaled by a knob (aggressiveness, sleepiness,
 # water_love, chattiness, timidity), not switched by preset label. SIGNATURE is where on the dial a knob's
 # trick starts to show.
 SIGNATURE = 0.6
 
 
-DOES = {"cry": "cries", "dance": "dances", "singdance": "sings and dances", "stomp": "stomps", "yawn": "yawns", "splash": "splashes", "sing": "sings", "cower": "cowers"}
+DOES = {"laugh": "laughs", "comfort": "comforts a friend", "cry": "cries", "dance": "dances", "singdance": "sings and dances", "stomp": "stomps", "yawn": "yawns", "splash": "splashes", "sing": "sings", "cower": "cowers"}
 
 
 AMUSING = ("sing", "dance", "singdance", "playful")  # these relieve boredom
@@ -59,6 +59,7 @@ def feelings(body, i: int) -> dict[str, float]:
         # heard by others: a miserable or starving duck cries, and a kind one comes
         "cry": max(v("sorrow"), max(v("hunger") - 0.85, 0) / 0.15) * 0.9,
         "dance": 0.0, "singdance": 0.0,  # performances, started by brain/server.py
+        "laugh": 0.0, "comfort": 0.0,  # at a fall and beside a cry, started by what happens (brain/social.py, the body)
     }
 
 

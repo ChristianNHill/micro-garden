@@ -34,6 +34,7 @@ from world.fields import DAY_S, daylight
 SNAPSHOT_PORT = int(os.environ.get("MICRO_GARDEN_PORT", 7650))
 ACTION_PORT = SNAPSHOT_PORT + 1
 MOODS = ("fear", "anger", "joy", "sorrow")
+MOOD_AT = 0.25  # under this a duck is content, and the viewer's mood shape is hidden anyway
 SHAPE_KNOBS = ("appetite", "aggressiveness", "timidity", "vanity", "chattiness", "energy", "sleepiness")
 EMOTE_S = 3.0  # how long an emote stays in the snapshot
 EATING_S = 1.0
@@ -46,10 +47,10 @@ _b64 = lambda a: base64.b64encode(np.asarray(a).tobytes()).decode()
 # where each of an eye's 721 columns looks, as signed bytes across the eye's field
 HEX = _b64(np.round(np.concatenate([HEX_AZ, HEX_EL]) / np.abs(HEX_AZ).max() * 127).astype(np.int8))
 TOAST_FORMATS = (("eaten", "{who} ate"), ("headbutts", "{who} shoved {other}"), ("pets", "{who} was petted"),
-                 ("emotes", "{who} {other}"), ("kicks", "{who} kicked the ball"), ("drums", "{who} played the drum"), ("given", "{who} was handed a fruit"), ("throws", "{who} was thrown"), ("donned", "{who} put a hat on"), ("preened", "{who} shook its hat off"))
+                 ("emotes", "{who} {other}"), ("kicks", "{who} kicked the ball"), ("drums", "{who} played the {other}"), ("given", "{who} was handed a fruit"), ("throws", "{who} was thrown"), ("donned", "{who} put a hat on"), ("preened", "{who} shook its hat off"), ("fails", "{who} {other}"))
 
 
-FRUIT_NAMES = ("oranges", "apples", "bananas")
+FRUIT_NAMES = ("oranges", "apples", "bananas", "pears", "cherries", "grapes", "strawberries", "lemons", "plums", "peaches")
 
 
 def among(body, i: int, names: list[str]) -> dict:
@@ -57,8 +58,8 @@ def among(body, i: int, names: list[str]) -> dict:
     friend, grudge = social.friends(body, i, names)
     trust = float(body.hand_trust[i])
     return {"friend": friend, "grudge": grudge, "favourite": FRUIT_NAMES[int(body.favourite[i])],
-            "hand": "trusts your hand" if trust > 0.3 else "is wary of your hand" if trust < -0.2 else "does not know your hand yet",
-            "skills": [round(float(v[i]), 2) for v in (body.swim_skill, body.run_skill, body.dance_skill)]}
+            "hand": "trusts you" if trust > 0.3 else "is wary of you" if trust < -0.2 else "is still making up its mind about you",
+            "skills": [round(float(v[i]), 2) for v in (body.swim_skill, body.walk_skill, body.dance_skill, body.eat_skill, body.fight_skill, body.fashion_skill, body.music_skill)]}
 
 
 def readout(body, i: int) -> list:
@@ -71,7 +72,8 @@ def readout(body, i: int) -> list:
             ("needs", "tired", body.fatigue[i]), ("needs", "bored", body.boredom[i]), ("needs", "too hot", hot), ("needs", "too cold", cold),
             ("moods", "joy", body.joy[i]), ("moods", "fear", body.fear[i]), ("moods", "anger", body.anger[i]), ("moods", "sorrow", body.sorrow[i]),
             ("wants", "a swim", k("water_love") * (1 + hot) / 2 * free), ("wants", "company", k("sociability") * free),
-            ("wants", "music", k("music_affinity") * free), ("wants", "a hat", k("vanity")), ("wants", "to play", k("playfulness") * free)]
+            ("wants", "music", k("music_affinity") * free), ("wants", "a hat", k("vanity")), ("wants", "to play", k("playfulness") * free),
+            ("wants", "the stink", k("stink_affinity"))]  # what it does when it meets one, not a need
     return [[section, name, round(float(np.clip(v, 0, 1)), 2)] for section, name, v in rows]
 
 
@@ -106,7 +108,7 @@ class Snapshot:
         self.actions.close()
 
     def _gather_toasts(self, stub) -> None:
-        short = lambda who: stub.names[who].replace("duck-", "") if isinstance(who, (int, np.integer)) else who
+        short = lambda who: stub.duck_names[who] if isinstance(who, (int, np.integer)) else who
         for key, fmt in TOAST_FORMATS:
             events = getattr(stub, key)
             for e in events[self.seen[key]:]:
@@ -135,8 +137,9 @@ class Snapshot:
                 "pond": None if w.pond is None else [float(v) for v in w.pond], "tree": list(w.tree), "rocks": w.rocks.round(3).tolist(),
                 "wind": None if w.wind is None else [round(float(v), 3) for v in w.wind],  # m/s
                 "hats": [[round(x, 3), round(y, 3), k] for x, y, k in stub.hat_items],
-                "balls": [[round(float(x), 3), round(float(y), 3)] for x, y in w.balls[:, :2]],
+                "balls": [[round(float(x), 3), round(float(y), 3), style] for (x, y), style in zip(w.balls[:, :2], stub.ball_styles)],
                 "drum": None if w.drum is None else list(w.drum),
+                "instruments": [[round(x, 3), round(y, 3), int(k)] for x, y, k in w.instruments],
                 "held": list(stub.held) if stub.held else None,  # [kind, index]
                 "music": None if w.music is None else list(w.music), "music_volume": round(float(w.music_volume), 2),
                 "hand": None if w.hand is None else [float(v) for v in w.hand], "toasts": self.toasts,
@@ -147,7 +150,7 @@ class Snapshot:
         emote = emotes.get(i)
         showing = emote is not None and stub.t - emote[0] < EMOTE_S
         duck = {
-            "name": stub.names[i].replace("duck-", ""),
+            "name": stub.duck_names[i],
             "x": round(float(stub.pose[i, 0]), 3), "y": round(float(stub.pose[i, 1]), 3),
             "h": round(float(stub.pose[i, 2]), 3),
             "sat": posture[i] == "sat", "down": posture[i] == "down", "down_left": round(float(down_left[i]), 2),
@@ -165,13 +168,15 @@ class Snapshot:
         if body is None:
             return duck
         mood, strength = max(((m, float(getattr(body, m)[i])) for m in MOODS), key=lambda x: x[1])
+        if strength < MOOD_AT:  # otherwise a duck feeling nothing at all reads as the first mood on the list
+            mood = "content"
         level = lambda name: round(float(getattr(body, name)[i]), 2)
-        duck.update(asleep=bool(body.asleep[i]), mood=mood, strength=round(strength, 2),
+        duck.update(asleep=bool(body.asleep[i]), mood=mood, strength=round(strength, 2), tune=round(float(body.music_skill[i]), 2),
                     hunger=level("hunger"), thirst=level("thirst"), sleepy=level("sleep_pressure"))
         if not self.blind:
             duck.update(label=label_of(body.k, i), knobs={k: round(float(body.k[k][i]), 2) for k in SHAPE_KNOBS})
         if i == self.watched:  # selected duck only: ~400 bytes
-            duck.update(readout=readout(body, i), among=among(body, i, [n.replace("duck-", "") for n in stub.names]))
+            duck.update(readout=readout(body, i), among=among(body, i, stub.duck_names))
         return duck
 
     def ride(self, stub, server, duck: int) -> dict:
@@ -256,7 +261,7 @@ if __name__ == "__main__":
                        "mood", "strength", "emote", "emote_t", "knobs", "readout", "among", "crying"}
         assert duck_fields <= set(got["ducks"][0]), f"a duck lost {duck_fields - set(got['ducks'][0])}"
         assert len(got["ducks"]) == 3 and got["ducks"][1]["emote"] == "happy" and got["ducks"][0]["emote"] == ""
-        assert got["toasts"] == ["b looks happy"], got["toasts"]
+        assert got["toasts"] == [f"{stub.duck_names[1]} looks happy"], got["toasts"]
         assert len(stub.world.food) == dishes + 1, "a player's feed reaches the garden"
         assert stub.t == t, "only garden.* calls are taken from the network"
         tx.sendto(json.dumps({"method": "garden.no_such_thing", "params": {}}).encode(), ("127.0.0.1", ACTION_PORT))

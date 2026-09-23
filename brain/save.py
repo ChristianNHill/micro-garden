@@ -33,6 +33,7 @@ def save(path, body, plastic=None, stub=None, when=None) -> None:
     if stub is not None:
         world, nowhere = stub.world, [np.nan, np.nan]
         state["pose"], state["hats"] = stub.pose, stub.hats
+        state["duck_names"] = np.asarray(stub.duck_names)
         state["hat_style"] = stub.hat_style
         state["hat_items"] = np.asarray(stub.hat_items, float).reshape(-1, 3)
         state["food"] = np.asarray(world.food, float).reshape(-1, 2)
@@ -48,6 +49,7 @@ def load(path, body, plastic=None, stub=None, now=None) -> float:
     z = np.load(path, allow_pickle=False)
     for key in z.files:
         head, _, name = key.partition(".")
+        name = {"run_skill": "walk_skill"}.get(name, name)  # saves from before walking was the skill
         if head == "body" and hasattr(body, name):
             setattr(body, name, z[key].copy() if z[key].ndim else z[key].item())
         elif head == "knob":
@@ -61,6 +63,8 @@ def load(path, body, plastic=None, stub=None, now=None) -> float:
     if stub is not None and "pose" in z.files:
         world = stub.world
         stub.pose[:], stub.hats[:] = z["pose"], z["hats"]
+        if "duck_names" in z.files:  # saves from before the ducks had names keep the new ones
+            stub.duck_names = [str(name) for name in z["duck_names"]]
         if "hat_style" in z.files:  # older saves lack these
             stub.hat_style[:] = z["hat_style"]
             stub.hat_items = [[float(x), float(y), int(k)] for x, y, k in z["hat_items"]]

@@ -102,9 +102,9 @@ class Viewer:
                          ("emotes", "{who} {other}")):
             events = getattr(stub, key)
             for e in events[self.seen[key]:]:
-                who = stub.names[e[1]].replace("duck-", "")
+                who = stub.duck_names[e[1]]
                 other = e[2] if len(e) > 2 else ""
-                other = stub.names[other].replace("duck-", "") if isinstance(other, (int, np.integer)) else other
+                other = stub.duck_names[other] if isinstance(other, (int, np.integer)) else other
                 other = phrase(other) if key == "emotes" else other
                 self.toasts.append((e[0], fmt.format(who=who, other=other)))
             self.seen[key] = len(events)

@@ -46,7 +46,11 @@ def main() -> int:
                                   f"--feed-at={FEED_AT[0]},{FEED_AT[1]}",
                                   f"--quit-after={args.seconds}"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
         next_t, fed_at = time.monotonic(), None
+        give_up = time.monotonic() + args.seconds + 60  # a script that fails to load never starts the quit timer
         while godot.poll() is None:
+            if time.monotonic() > give_up:
+                godot.kill()
+                break
             with stub.lock:
                 if int(stub.t / DT) % 25 == 0:
                     stub.cmd = np.column_stack([rng.uniform(-0.1, 0.3, 5), np.zeros(5), rng.uniform(-1.5, 1.5, 5)])

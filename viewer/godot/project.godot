@@ -9,6 +9,9 @@ config/features=PackedStringArray("4.7", "Forward Plus")
 [display]
 window/size/viewport_width=1280
 window/size/viewport_height=800
+; the panels and the menu grow with the window, as laid out for 1280 x 800; the garden renders at full size
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
 
 [rendering]
 environment/defaults/default_clear_color=Color(0.957, 0.918, 0.835, 1)
