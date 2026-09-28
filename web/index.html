@@ -25,6 +25,10 @@
 
   .toasts { position: absolute; top: 16px; left: 50%; transform: translateX(-50%); white-space: pre-line; text-align: center;
     max-width: min(560px, calc(100vw - 32px)); line-height: 1.6; }
+  .toast { transition: opacity 0.6s; }
+  .toast.recent { font-weight: 600; }
+  .toast.recent::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--coral);
+    margin-right: 7px; vertical-align: 1px; }
   .card { position: absolute; top: 16px; left: 16px; width: 302px; max-width: calc(100vw - 32px); }
   .card-name { font: 600 26px/1.15 var(--display); }
   .card-trait { color: var(--coral); font-size: 14px; margin: 2px 0 4px; }

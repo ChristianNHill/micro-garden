@@ -10,6 +10,7 @@ const TINTS = { needs: "var(--coral)", moods: "var(--mustard)", wants: "var(--te
 const DIM = ["#3f6fb0", "#b0428f", "#3f9a62", "#c9772e", "#77798a"];
 const LIT = ["#bfe0ff", "#ffb3ec", "#c6ffd6", "#ffe08a", "#ffffff"];
 const FADE_S = 0.12;
+const RECENT_MS = 4000;  // how long a piece of news counts as new
 
 export const CONTROLS = [
   ["the ducks", [
@@ -187,13 +188,24 @@ export class Panels {
     rows.forEach(([, , v], k) => { this.barRows[k][0].style.width = `${v * 100}%`; this.barRows[k][1].textContent = Math.trunc(v * 100); });
   }
 
+  // The news, newest at the bottom: a line from the last few seconds carries a dot and full ink, and older lines fade.
   showToasts(lines, extra) {
-    const all = [...lines];
-    if (performance.now() < this.saidUntil) all.push(this.said);
-    else if (extra) all.push(extra);
-    this.toasts.hidden = !all.length;
-    const text = all.join("\n");
-    if (this.toasts.textContent !== text) this.toasts.textContent = text;
+    const now = performance.now();
+    if (!this.seenAt) this.seenAt = new Map();
+    for (const line of lines) if (!this.seenAt.has(line)) this.seenAt.set(line, now);
+    for (const line of [...this.seenAt.keys()]) if (!lines.includes(line)) this.seenAt.delete(line);
+    const rows = lines.map((line, i) => [line, now - this.seenAt.get(line) < RECENT_MS, 0.5 + 0.5 * (i + 1) / lines.length]);
+    if (now < this.saidUntil) rows.push([this.said, false, 1]);
+    else if (extra) rows.push([extra, false, 1]);
+    this.toasts.hidden = !rows.length;
+    const key = rows.map(([line, recent]) => `${recent ? "*" : ""}${line}`).join("\n");
+    if (key === this.toastKey) return;
+    this.toastKey = key;
+    this.toasts.replaceChildren(...rows.map(([line, recent, ink]) => {
+      const row = el("div", recent ? "toast recent" : "toast", null, line);
+      row.style.opacity = recent ? 1 : ink;
+      return row;
+    }));
   }
 
   // The ridden duck's brain input and output: each eye's 721 columns on the fly's lattice, and six readouts in Hz.
