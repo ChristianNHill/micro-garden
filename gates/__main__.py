@@ -17,8 +17,8 @@ from pathlib import Path
 GATES = ["00_data", "01_tick", "02_sugar", "03_stub", "04_seek", "04b_senses", "04c_temperament",
          "05_personality", "06_vision", "07_learn", "08_social", "08b_toys", "09_persist", "09b_soak", "14_look"]
 # Gates that need something outside this repo running, so they are run by number and never by default:
-# 10 to 12 want the microduck simulator up (11 with a camera on; each gate says how); 13 wants Godot.
-ON_REQUEST = ["10_sim_one", "11_sim_vision", "12_sim_five", "13_godot"]
+# 10 to 12 want the microduck simulator up (11 with a camera on; each gate says how); 13 wants Godot, 15 Chrome.
+ON_REQUEST = ["10_sim_one", "11_sim_vision", "12_sim_five", "13_godot", "15_web"]
 FAST = {"00_data", "01_tick", "02_sugar", "03_stub", "06_vision", "07_learn", "09_persist", "14_look"}
 # The line worth putting in the table, per gate. First capture group wins; nothing means no number.
 HEADLINE = {
@@ -38,6 +38,7 @@ HEADLINE = {
     "11_sim_vision": r"(camera: [^;]*)",
     "12_sim_five": r"sim five: ([^;]*)",
     "09_persist": r"(three days away catches up in [\d.]+ s)",
+    "15_web": r"five brains: ([\d.]+x real time)",
 }
 
 

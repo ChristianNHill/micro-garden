@@ -64,6 +64,15 @@ uv run python -m body.mujoco.adapter --ducks 5 --brain --godot
 
 The upstream walking policy does not yet track a commanded velocity ([microduck_rl issue 46](https://github.com/pollen-robotics/microduck_rl/issues/46)), so these ducks walk at one pace and turn on the spot.
 
+The brain also runs in a web browser, as a first step toward a garden that needs no install. There is no garden in the browser yet, only a page that checks the brain and times it. Pack the brain once, then serve the `web` folder:
+
+```
+uv run python -m web.pack
+python3 -m http.server -d web 8000
+```
+
+Open `http://127.0.0.1:8000`. The page runs the brain through the same five seconds of smells, taste and a looming shadow as the Python model, then shows whether every neuron fired the same number of times. It then runs five brains at once and shows how much faster than real time they go.
+
 ## How it is checked
 
 Each gate is a runnable check that exits non-zero when it fails.
@@ -84,6 +93,7 @@ The fast gates pass. The last full run passed 14 of 15, failing Gate 5's check t
 - `world/` holds the garden itself: wind, smells, water, weather, fruit and toys.
 - `viewer/` holds the debug window and the Godot garden.
 - `gates/` holds one check per gate.
+- `web/` holds the brain for the browser and the page that checks it.
 
 ## Credit
 

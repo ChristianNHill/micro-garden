@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Micro Garden Brain</title>
+<style>
+  :root { --bg: #f4ead5; --ink: #2b2620; --soft: #6d6456; --good: #2f7a3a; --bad: #a3322a; --card: #fbf6ea; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #1d1b18; --ink: #ece4d4; --soft: #a79d8c; --good: #7cc487; --bad: #e0776d; --card: #272420; } }
+  body { background: var(--bg); color: var(--ink); font: 16px/1.5 system-ui, sans-serif; margin: 0; padding: 24px 16px; }
+  main { max-width: 640px; margin: 0 auto; }
+  h1 { font-size: 1.4rem; margin: 0 0 4px; }
+  p { color: var(--soft); margin: 0 0 20px; }
+  section { background: var(--card); border-radius: 10px; padding: 14px 16px; margin-bottom: 14px; }
+  h2 { font-size: 1rem; margin: 0 0 6px; }
+  .good { color: var(--good); } .bad { color: var(--bad); }
+  pre { margin: 0; white-space: pre-wrap; font: 14px/1.5 ui-monospace, monospace; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Micro Garden brain in the browser</h1>
+  <p>The whole FlyWire brain, about 139,000 neurons, running in this tab: first checked against the Python model spike for spike, then five copies at once, one per duck.</p>
+  <section><h2>Matches the Python model</h2><pre id="check">loading the brain…</pre></section>
+  <section><h2>Five ducks at once</h2><pre id="bench">waiting for the check…</pre></section>
+</main>
+<script type="module">
+const BENCH_TICKS = 1000;  // 10 seconds of brain time
+const DUCKS = 5;
+const report = new URLSearchParams(location.search).has("report");  // web/check.py is listening
+
+const run = (job) => new Promise((ok, fail) => {
+  const w = new Worker("worker.js", { type: "module" });
+  w.onmessage = ({ data }) => { w.terminate(); ok(data); };
+  w.onerror = (e) => fail(new Error(e.message));
+  w.postMessage(job);
+});
+
+async function check() {
+  const ref = await fetch("data/reference.bin").then(r => r.arrayBuffer());
+  const [ticks, n] = new Uint32Array(ref, 0, 2);
+  const refTick = new Uint32Array(ref, 8, ticks), refCount = new Uint32Array(ref, 8 + 4 * ticks, n);
+  const got = await run({ job: "reference" });
+  let firstTick = -1, neuronsOff = 0;
+  for (let t = 0; t < ticks; t++) if (got.perTick[t] !== refTick[t]) { firstTick = t; break; }
+  for (let i = 0; i < n; i++) if (got.counts[i] !== refCount[i]) neuronsOff++;
+  const total = (a) => a.reduce((s, x) => s + x, 0);
+  return { ticks, firstTick, neuronsOff, spikes: total(got.perTick), refSpikes: total(refTick) };
+}
+
+async function bench() {
+  const t0 = performance.now();
+  const ducks = await Promise.all(Array.from({ length: DUCKS }, () => run({ job: "bench", ticks: BENCH_TICKS })));
+  const slowest = Math.max(...ducks.map(d => d.msPerTick));
+  return { ducks, slowest, speed: 10 / slowest, wallS: (performance.now() - t0) / 1000 };
+}
+
+const out = {};
+try {
+  const c = out.check = await check();
+  const ok = c.firstTick < 0 && c.neuronsOff === 0;
+  const el = document.getElementById("check");
+  el.className = ok ? "good" : "bad";
+  el.textContent = ok
+    ? `identical over ${c.ticks} ticks (${c.ticks / 100} s): ${c.spikes.toLocaleString()} spikes, every neuron the same`
+    : `differs from tick ${c.firstTick}; ${c.neuronsOff.toLocaleString()} neurons fire a different number of times\n` +
+      `spikes: browser ${c.spikes.toLocaleString()}, Python ${c.refSpikes.toLocaleString()}`;
+  document.getElementById("bench").textContent = `running ${DUCKS} brains for ${BENCH_TICKS / 100} s of brain time…`;
+  const b = out.bench = await bench();
+  document.getElementById("bench").textContent =
+    b.ducks.map((d, i) => `duck ${i + 1}: ${d.msPerTick.toFixed(2)} ms a tick, ${d.spikesPerTick.toFixed(0)} spikes a tick`).join("\n") +
+    `\n\n${b.speed.toFixed(1)}× real time for the slowest duck (a tick is 10 ms of brain time)`;
+} catch (e) {
+  out.error = String(e);
+  document.getElementById("check").textContent = String(e);
+}
+if (report) fetch("result", { method: "POST", body: JSON.stringify(out) });
+</script>
+</body>
+</html>
