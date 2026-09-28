@@ -71,7 +71,7 @@ uv run python -m web.pack
 python3 -m http.server -d web 8000
 ```
 
-Open `http://127.0.0.1:8000` for the garden. The packed files come to about 9 MB, and `web/data` is everything a website needs besides the code. The browser saves the garden in its own storage. On a computer with fewer than eight cores the ducks' eyes start closed, because vision costs as much as the rest of the brain, and `?eyes=1` opens them. A duck with eyes takes about 5 ms of each 20 ms step on an M4 Pro, and 1.3 ms without.
+Open `http://127.0.0.1:8000` for the garden. The packed files come to about 9 MB, and `web/data` is everything a website needs besides the code. The browser saves the garden in its own storage. Every duck sees. A duck with eyes takes about 5 ms of each 20 ms step on an M4 Pro, and 1.3 ms without.
 
 `http://127.0.0.1:8000/check.html` holds the browser to the Python. It puts the same inputs through both and compares the results. The brain matches spike for spike, learning included. The eyes match to within two millionths, because they add their inputs up in another order. The body, the world, the senses, the decoder and the save match to rounding. The page then times five ducks at once.
 

@@ -29,7 +29,7 @@ export const CONTROLS = [
     ["T", "leave a hat at the pointer, for whoever wants it"],
     ["B", "leave a ball at the pointer"],
     ["D", "set the drum down at the pointer, or pick it back up"],
-    ["I", "leave an instrument at the pointer, one of ten, picked at random"],
+    ["I", "leave an instrument at the pointer, one of ten, picked at random. The toolbar's may be the drum"],
     ["M", "set the music box down at the pointer, or pick it back up"],
     ["tap the music box", "turn it up, turn it down, turn it off"],
     ["C", "clap, which startles every duck"],

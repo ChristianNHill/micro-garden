@@ -130,7 +130,6 @@
   <button data-verb="shake">Shake the tree</button>
   <button data-verb="hat">Hat</button>
   <button data-verb="ball">Ball</button>
-  <button data-verb="drum">Drum</button>
   <button data-verb="instrument">Instrument</button>
   <button data-verb="music">Music box</button>
   <button data-verb="hand">Hand</button>
@@ -147,7 +146,6 @@
 <div class="corner">
   <button data-verb="sound" style="font: 500 13px var(--body); color: var(--navy); background: var(--paper); border: 0; border-radius: 8px; padding: 7px 10px; cursor: pointer;">Sound</button>
   <label title="Songs from your computer for the music box; they stay on your device">Your music<input id="music-files" type="file" accept="audio/*" multiple></label>
-  <a id="eyes-toggle" href="?eyes=0" title="The ducks' eyes cost as much as the rest of the brain">eyes</a>
   <a href="https://github.com/ChristianNHill/micro-garden" target="_blank" rel="noopener">About ↗</a>
 </div>
 
@@ -163,14 +161,6 @@
   </div>
 </div>
 
-<script type="module">
-  const eyes = new URLSearchParams(location.search).get("eyes");
-  const link = document.getElementById("eyes-toggle");
-  const on = eyes === null ? (navigator.hardwareConcurrency || 4) >= 8 : eyes !== "0";
-  link.textContent = on ? "Eyes on" : "Eyes off";
-  link.href = `?eyes=${on ? 0 : 1}`;
-  link.title = on ? "Close the ducks' eyes, which halves the work on a slow device" : "Open the ducks' eyes: they see the garden through a model of the fly's optic lobe";
-</script>
 <script type="module" src="view/main.js"></script>
 </body>
 </html>

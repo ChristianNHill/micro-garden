@@ -92,10 +92,7 @@ async function boot() {
   addEventListener("pointerdown", tap);
   addEventListener("keydown", tap);
   const show = (text, frac) => { line.textContent = text; if (frac !== undefined) bar.style.width = `${Math.round(frac * 100)}%`; };
-  // Eyes cost about as much as the rest of the brain; a small device leaves them closed.
-  const cores = navigator.hardwareConcurrency || 4;
-  let eyes = params.has("eyes") ? params.get("eyes") !== "0" : cores >= 8;
-  let total = 0;
+  const eyes = true;  // every duck sees
   const sizes = { brain: 8.5e6, eyes: 0.75e6 }, got = { brain: 0, eyes: 0 };
   const progress = () => show(`Loading the fly brain: ${((got.brain + got.eyes) / 1e6).toFixed(1)} of ${((sizes.brain + (eyes ? sizes.eyes : 0)) / 1e6).toFixed(1)} MB`,
                               (got.brain + got.eyes) / (sizes.brain + (eyes ? sizes.eyes : 0)));
@@ -359,7 +356,20 @@ function run({ garden, brain, brains, eyes, welcome }) {
   // ---------- the visitor ----------
   let pointer = [innerWidth / 2, innerHeight / 2], pointers = new Map(), dragged = 0, pressedAt = 0, gripping = false, trail = [];
   let pinch = null;
-  const where = () => ground(...pointer) || ground(innerWidth / 2, innerHeight / 2);
+  // Where a thing is put down: at the pointer for a key, somewhere open in the garden for a toolbar button, clear of
+  // the pond, the rocks and the tree's trunk and a little way in from the fence.
+  let fromToolbar = false;
+  const openSpot = () => {
+    const margin = 0.5;
+    for (let tries = 0; tries < 200; tries++) {
+      const xy = [margin + Math.random() * (size - 2 * margin), margin + Math.random() * (size - 2 * margin)];
+      const clear = (x, y, r) => Math.hypot(xy[0] - x, xy[1] - y) > r;
+      if ((!snap.pond || clear(snap.pond[0], snap.pond[1], snap.pond[2] + 0.3)) && snap.rocks.every(([x, y, r]) => clear(x, y, r + 0.3))
+          && clear(snap.tree[0], snap.tree[1], 0.3)) return xy;
+    }
+    return [size / 2, size / 2];
+  };
+  const where = () => fromToolbar ? openSpot() : ground(...pointer) || ground(innerWidth / 2, innerHeight / 2);
   const inGarden = xy => xy && xy[0] > 0 && xy[1] > 0 && xy[0] < size && xy[1] < size;
   const click = (x, y) => {
     const xy = ground(x, y);
@@ -446,7 +456,13 @@ function run({ garden, brain, brains, eyes, welcome }) {
     give: () => { if (selected >= 0) act("garden.give", { duck: selected }); },
     pet: () => { if (selected >= 0) act("garden.pet", { duck: selected }); },
     drum: () => { const xy = where(); if (xy) act("garden.drum", { x: xy[0], y: xy[1], on: snap.drum ? 0 : 1 }); },
-    instrument: () => { const xy = where(); if (xy) act("garden.instrument", { x: xy[0], y: xy[1] }); },
+    // the drum is one of the instruments: while none is down, one time in eleven the button puts the drum down
+    instrument: () => {
+      const xy = where();
+      if (!xy) return;
+      if (fromToolbar && !snap.drum && Math.random() < 1 / 11) act("garden.drum", { x: xy[0], y: xy[1], on: 1 });
+      else act("garden.instrument", { x: xy[0], y: xy[1] });
+    },
     ball: () => { const xy = where(); if (inGarden(xy)) act("garden.drop_ball", { x: xy[0], y: xy[1] }); },
     hat: () => { const xy = where(); if (xy) act("garden.drop_hat", { x: xy[0], y: xy[1] }); },
     hand: () => {
@@ -469,7 +485,7 @@ function run({ garden, brain, brains, eyes, welcome }) {
   addEventListener("keyup", e => keys.delete(e.key.length === 1 ? e.key.toLowerCase() : e.key));
 
   // the toolbar, for a touch screen or a mouse
-  for (const b of document.querySelectorAll("[data-verb]")) b.addEventListener("click", e => { e.stopPropagation(); sound.start(); verbs[b.dataset.verb](); });
+  for (const b of document.querySelectorAll("[data-verb]")) b.addEventListener("click", e => { e.stopPropagation(); sound.start(); fromToolbar = true; verbs[b.dataset.verb](); fromToolbar = false; });
   const pad = {};  // the ride view's on-screen wheel
   for (const b of document.querySelectorAll("[data-steer]")) {
     const key = b.dataset.steer;
