@@ -297,8 +297,8 @@ function run({ garden, brain, brains, eyes, welcome }) {
       if (t > (show.heard ?? -1)) { show.heard = t; sound.quack(duck, tag, snap.ducks[duck]?.tune ?? 1); }
     }
     sound.pond(!!snap.pond, snap.light);
-    // the visitor's own songs first, then the Spotify playlist, and the box's own tune if Spotify will not load
-    const ownSongs = sound.tracks.length > 0, useSpotify = !ownSongs && !playlist.failed;
+    // the Spotify playlist, or the box's own tune if Spotify will not load
+    const useSpotify = !playlist.failed;
     playlist.update(useSpotify && !!snap.music, snap.music_volume * (sound.on ? 1 : 0));
     sound.music(!useSpotify && !!snap.music, snap.music_volume);
   };
@@ -509,7 +509,6 @@ function run({ garden, brain, brains, eyes, welcome }) {
     Save.forget();
     location.reload();
   });
-  $("music-files").addEventListener("change", e => { sound.pickTracks(e.target.files); panels.say(`${e.target.files.length} songs for the music box`); });
 
   // ---------- each frame ----------
   let before = performance.now(), frames = 0, frameSince = before;
