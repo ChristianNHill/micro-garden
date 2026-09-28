@@ -61,6 +61,7 @@ export class Snapshot {
   constructor() {
     this.seen = Object.fromEntries(TOAST_FORMATS.map(([key]) => [key, 0]));
     this.toasts = [];
+    this.told = 0;  // news lines ever added, so the view can tell a new line from a repeat of the same words
   }
 
   _gather_toasts(stub) {
@@ -71,7 +72,7 @@ export class Snapshot {
         if (key === "emotes" && (e[2] === "dance" || e[2] === "singdance")) continue;
         const other = key === "emotes" ? phrase(e[2]) : e.length > 2 ? short(e[2]) : "";
         const line = fmt.replace("{who}", short(e[1])).replace("{other}", other);
-        if (!this.toasts.slice(-3).includes(line)) this.toasts.push(line);
+        if (!this.toasts.slice(-3).includes(line)) { this.toasts.push(line); this.told++; }
       }
       this.seen[key] = events.length;
       if (events.length > 400) { events.splice(0, events.length - 200); this.seen[key] = events.length; }  // the garden never needs more
@@ -95,7 +96,7 @@ export class Snapshot {
       hats: stub.hat_items.map(([x, y, k]) => [r3(x), r3(y), k]),
       balls: w.balls.map(([x, y], k) => [r3(x), r3(y), stub.ball_styles[k]]),
       drum: w.drum, instruments: w.instruments.map(([x, y, k]) => [r3(x), r3(y), k]),
-      held: stub.held, music: w.music, music_volume: r2(w.music_volume), hand: w.hand, toasts: this.toasts,
+      held: stub.held, music: w.music, music_volume: r2(w.music_volume), hand: w.hand, toasts: this.toasts, told: this.told,
       sounds: stub.sounds.slice(-2 * n).filter(([t]) => stub.t - t < HEARD_S),
     };
   }

@@ -557,7 +557,7 @@ function run({ garden, brain, brains, eyes, welcome }) {
     if (snap.brain) snap.brain.spikes = [];  // each spike glows once
     panels.showRide(possessing ? snap.ride : null);
     const playing = playlist.down ? "" : sound.title;
-    panels.showToasts(snap.toasts, snap.music && playing ? `♪ ${playing}` : "");
+    panels.showToasts(snap.toasts, snap.told, snap.music && playing ? `♪ ${playing}` : "");
     panels.menu.hidden = !helpOn;
     document.body.classList.toggle("riding", possessing);
     document.body.classList.toggle("watching", selected >= 0);

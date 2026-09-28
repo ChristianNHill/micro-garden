@@ -188,17 +188,17 @@ export class Panels {
     rows.forEach(([, , v], k) => { this.barRows[k][0].style.width = `${v * 100}%`; this.barRows[k][1].textContent = Math.trunc(v * 100); });
   }
 
-  // The news, newest at the bottom: a line from the last few seconds carries a dot and full ink, and older lines fade.
-  showToasts(lines, extra) {
+  // The news, newest at the bottom, older lines fading. The newest line carries a dot and full ink for RECENT_MS after it
+  // arrives; `told` counts every line the garden has added, so a line that repeats earlier words still counts as new.
+  showToasts(lines, told, extra) {
     const now = performance.now();
-    if (!this.seenAt) this.seenAt = new Map();
-    for (const line of lines) if (!this.seenAt.has(line)) this.seenAt.set(line, now);
-    for (const line of [...this.seenAt.keys()]) if (!lines.includes(line)) this.seenAt.delete(line);
-    const rows = lines.map((line, i) => [line, now - this.seenAt.get(line) < RECENT_MS, 0.5 + 0.5 * (i + 1) / lines.length]);
+    if (told !== this.told) { this.told = told; this.newAt = now; }
+    const fresh = now - this.newAt < RECENT_MS;
+    const rows = lines.map((line, i) => [line, fresh && i === lines.length - 1, 0.5 + 0.5 * (i + 1) / lines.length]);
     if (now < this.saidUntil) rows.push([this.said, false, 1]);
     else if (extra) rows.push([extra, false, 1]);
     this.toasts.hidden = !rows.length;
-    const key = rows.map(([line, recent]) => `${recent ? "*" : ""}${line}`).join("\n");
+    const key = `${told}\n` + rows.map(([line, recent]) => `${recent ? "*" : ""}${line}`).join("\n");
     if (key === this.toastKey) return;
     this.toastKey = key;
     this.toasts.replaceChildren(...rows.map(([line, recent, ink]) => {
