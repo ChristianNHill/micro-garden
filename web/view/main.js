@@ -9,6 +9,7 @@ import * as Hats from "./hats.js";
 import { Duck, LOOK, setData, lerpAngle } from "./duck.js";
 import { Panels } from "./ui.js";
 import { Sound } from "./audio.js";
+import { YouTubeBox } from "./youtube.js";
 import { parseBundle } from "../bundle.js";
 import { Garden } from "../garden/garden.js";
 import { DEMO_GARDEN } from "../garden/stub.js";
@@ -142,6 +143,7 @@ function run({ garden, brain, brains, eyes, welcome }) {
   panels.setBrainPoints(brain.arrays["view.xy"], brain.arrays["view.group"], brain.meta.view_groups, brain.meta.neurons);
   const sound = new Sound();
   sound.start();
+  const youtube = new YouTubeBox(document.body);
   if (welcome) panels.say(welcome);
   let pixelRatio = Math.min(devicePixelRatio || 1, 2);
   const resize = () => {
@@ -291,7 +293,10 @@ function run({ garden, brain, brains, eyes, welcome }) {
       if (t > (show.heard ?? -1)) { show.heard = t; sound.quack(duck, tag, snap.ducks[duck]?.tune ?? 1); }
     }
     sound.pond(!!snap.pond, snap.light);
-    sound.music(!!snap.music, snap.music_volume);
+    // the visitor's own songs first, then the YouTube playlist, and the box's own tune if YouTube will not load
+    const ownSongs = sound.tracks.length > 0, useYoutube = !ownSongs && !youtube.failed;
+    youtube.update(useYoutube && !!snap.music, snap.music_volume * (sound.on ? 1 : 0));
+    sound.music(!useYoutube && !!snap.music, snap.music_volume);
   };
 
   const rollKicked = dt => {
@@ -530,7 +535,8 @@ function run({ garden, brain, brains, eyes, welcome }) {
     panels.showBrain(!possessing && snap.brain && snap.brain.duck === selected ? snap.brain : null, d ? d.name : "", dt);
     if (snap.brain) snap.brain.spikes = [];  // each spike glows once
     panels.showRide(possessing ? snap.ride : null);
-    panels.showToasts(snap.toasts, snap.music && sound.title ? `♪ ${sound.title}` : "");
+    const playing = youtube.down && youtube.title ? youtube.title : sound.title;
+    panels.showToasts(snap.toasts, snap.music && playing ? `♪ ${playing}` : "");
     panels.menu.hidden = !helpOn;
     document.body.classList.toggle("riding", possessing);
     document.body.classList.toggle("watching", selected >= 0);

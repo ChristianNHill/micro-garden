@@ -1,5 +1,5 @@
 // viewer/godot/ink.gd, print.gdshader and outline.gdshader: the palette and the two materials everything in the garden
-// is printed with. The look is flat faces shaded by a halftone screen of navy ink; night is a wash of blue over the
+// is printed with. The look is flat faces shaded towards navy ink by the sun; night is a wash of blue over the
 // finished picture, not more ink.
 import * as THREE from "three";
 
@@ -48,10 +48,10 @@ const PRINT_FRAGMENT = /* glsl */ `
       tone = clamp(dot(n, l) * 0.7 + 0.47, 0.0, 1.0);
     }
     tone = clamp(tone + lift, 0.0, 1.0);
-    vec2 g = fract(mat2(0.7071, -0.7071, 0.7071, 0.7071) * gl_FragCoord.xy / (cell * pixel_ratio)) - 0.5;
-    float radius = sqrt(clamp(1.0 - tone, 0.0, 1.0)) * 0.66;
-    float dotted = 1.0 - smoothstep(radius - 0.05, radius + 0.05, length(g));
-    vec3 col = mix(mix(base, ink, dotted * 0.85 * screen), vec3(0.03, 0.05, 0.16), 0.5 * (1.0 - daylight));
+    // The Godot garden prints this tone as a halftone screen of ink dots; here it is a smooth shade, which reads
+    // more calmly in a browser: as much ink as the dots would cover on average.
+    float shade = (1.0 - tone) * 0.66 * 0.66 * 3.14159 * 0.85;
+    vec3 col = mix(mix(base, ink, clamp(shade, 0.0, 1.0) * screen), vec3(0.03, 0.05, 0.16), 0.5 * (1.0 - daylight));
     gl_FragColor = vec4(col, 1.0);
     #include <colorspace_fragment>
   }`;
