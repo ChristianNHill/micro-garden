@@ -4,7 +4,7 @@
 // volume, as in the native garden. Spotify's embed has no volume control, so the box's volume only reaches the
 // ducks, and turning the box off pauses the player.
 
-export const PLAYLIST = "";  // the playlist's id, from its Spotify link: open.spotify.com/playlist/<id>
+export const PLAYLIST = "2vg04PEDQePvRsS7PD3TyS";  // the playlist's id, from its Spotify link: open.spotify.com/playlist/<id>
 const API = "https://open.spotify.com/embed/iframe-api/v1";
 
 export class SpotifyBox {
