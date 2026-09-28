@@ -6,3 +6,4 @@ __pycache__/
 *.md
 !README.md
 web/data/
+web/dist/

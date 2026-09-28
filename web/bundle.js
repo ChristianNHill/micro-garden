@@ -3,7 +3,11 @@
 const TYPES = { f4: Float32Array, f8: Float64Array, i4: Int32Array, u4: Uint32Array, i2: Int16Array, u2: Uint16Array,
                 i1: Int8Array, u1: Uint8Array };
 
+// Some web servers send a .gz file marked as compressed, and the browser unzips it on the way in; then there is
+// nothing left to unzip.
 export async function gunzip(buf) {
+  const head = new Uint8Array(buf, 0, 2);
+  if (head[0] !== 0x1f || head[1] !== 0x8b) return buf;
   const stream = new Blob([buf]).stream().pipeThrough(new DecompressionStream("gzip"));
   return new Response(stream).arrayBuffer();
 }
