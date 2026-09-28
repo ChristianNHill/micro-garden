@@ -52,6 +52,9 @@ def main() -> None:
         shutil.copy(WEB / "data" / name, OUT / "data")
     shutil.copy(ROOT / "docs" / "garden.webp", OUT / "cover.webp")
     stamp(OUT)
+    # for the portfolio pages on the same site: the hover card and the moving picture
+    shutil.copy(WEB / "site" / "card.js", OUT / "card.js")
+    shutil.copy(ROOT / "docs" / "garden.gif", OUT / "cover.gif")
     shutil.copy(ROOT / "LICENSE", OUT / "LICENSE")
     total = sum(p.stat().st_size for p in OUT.rglob("*") if p.is_file())
     print(f"{OUT}: {sum(1 for p in OUT.rglob('*') if p.is_file())} files, {total / 1e6:.1f} MB")
