@@ -24,6 +24,7 @@ export const NIGHT_C = 8.0;
 export const DAWN = 0.15;
 export const TREE = [1.0, 3.0, 0.7];
 export const TRUNK_R = 0.12;  // the fruit tree's trunk, solid like a rock
+export const CLIFF_M = 0.3;  // how far a drawn garden's cliffs stand into the lawn along the north and east edges
 export const WIND_FULL_MS = 1.5;
 export const MUSIC_M = 1.2;
 export const DUCK_SMELL_M = 0.5;

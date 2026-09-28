@@ -76,7 +76,7 @@ export function build(root, snap, viewer) {
       const r = rng.uniform(0.95, 1.5);
       const corner = Math.min(Math.max(1.0 - Math.abs(size - along) / (0.6 * size), 0), 1);
       const h = rng.uniform(1.7, 2.5) + 1.3 * corner;
-      const out = r * 0.78 + rng.uniform(0.0, 0.25);
+      const out = r * 0.78 + 0.3 + rng.uniform(0.0, 0.25);  // 0.3 back: the rocks stand no further into the lawn than CLIFF_M
       const at = edge === 0 ? [along, -0.3, -(size + out)] : [size + out, -0.3, -along];
       placeLump(root, at, r, h, rng);
       const top = [at[0], at[1] + h, at[2]];

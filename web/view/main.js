@@ -158,6 +158,7 @@ function run({ garden, brain, brains, eyes, welcome }) {
   let snap = garden.snapshot();
   const size = snap.size;
   const orbit = { yaw: 2.2, pitch: 0.5, dist: 1.7 * size };
+  const crowd = params.has("crowd");  // with ?record: the camera keeps the flock in the middle of the picture
   // a narrow screen stands further back, so the whole garden fits across it
   orbit.dist *= Math.min(Math.max(1, 0.9 * innerHeight / innerWidth), 2.2);
   const farthest = Math.max(12, orbit.dist);
@@ -333,7 +334,9 @@ function run({ garden, brain, brains, eyes, welcome }) {
     Ink.globals.screen.value = 1.0;
     const sway = Math.sin(performance.now() / 9000) * DRIFT * (calm === 1 ? 1 : 0) * Math.min(Math.max(still - 3, 0), 1);
     const yaw = orbit.yaw + sway;
-    const want = selected >= 0 ? ducks[selected].position.clone().add(new THREE.Vector3(0, 0.15, 0)) : new THREE.Vector3(size / 2, 0.1, -size / 2);
+    const want = selected >= 0 ? ducks[selected].position.clone().add(new THREE.Vector3(0, 0.15, 0))
+      : crowd ? ducks.reduce((m, d) => m.add(d.position), new THREE.Vector3()).divideScalar(ducks.length).add(new THREE.Vector3(0, 0.1, 0))
+      : new THREE.Vector3(size / 2, 0.1, -size / 2);
     centre = centre ? centre.lerp(want, Math.min(1, 3 * dt)) : want;
     camera.position.copy(centre).add(new THREE.Vector3(Math.cos(yaw) * Math.cos(orbit.pitch), Math.sin(orbit.pitch), Math.sin(yaw) * Math.cos(orbit.pitch)).multiplyScalar(orbit.dist));
     camera.lookAt(centre);
@@ -513,8 +516,11 @@ function run({ garden, brain, brains, eyes, welcome }) {
 
   // ---------- each frame ----------
   let before = performance.now(), frames = 0, frameSince = before;
-  // ?record=N sends N frames, ten a second, to a server that saves them (not part of the garden's own hosting)
-  const recording = params.has("record") ? { frames: +params.get("record") || 150, sent: 0, last: 0 } : null;
+  // ?record=N sends N frames, ten a second, to a server that saves them (not part of the garden's own hosting), and
+  // &wait=S holds the first frame back S seconds, to set the garden up and let the ducks get busy first, and &every=MS
+  // spaces the frames further apart, so a device running the brains slower than real time still gives a gif at speed
+  const recording = params.has("record") ? { frames: +params.get("record") || 150, sent: 0, every: +params.get("every") || 100,
+                                             last: performance.now() + 1000 * (+params.get("wait") || 0) } : null;
   // A recording keeps drawing in a background tab, where the browser stops animation frames
   const nextFrame = recording ? fn => sleep(33).then(() => fn(performance.now())) : fn => requestAnimationFrame(fn);
   const frame = () => {
@@ -544,7 +550,7 @@ function run({ garden, brain, brains, eyes, welcome }) {
     }
     canvas.style.cursor = handMode && !possessing ? "none" : "";
     renderer.render(scene, camera);
-    if (recording && now - recording.last > 100 && recording.sent < recording.frames) {  // ?record: frames for a gif
+    if (recording && now - recording.last > recording.every && recording.sent < recording.frames) {  // ?record: frames for a gif
       recording.last = now;
       const n = recording.sent++;
       canvas.toBlob(blob => fetch(`frame?n=${n}`, { method: "POST", body: blob }), "image/png");

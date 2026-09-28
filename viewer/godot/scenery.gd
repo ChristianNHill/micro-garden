@@ -95,7 +95,7 @@ static func build(root: Node3D, snap: Dictionary, falls: Array, viewer: Vector3,
 			var r := rng.randf_range(0.95, 1.5)
 			var corner: float = clamp(1.0 - abs(size - along) / (0.6 * size), 0.0, 1.0)
 			var h: float = rng.randf_range(1.7, 2.5) + 1.3 * corner
-			var out: float = r * 0.78 + rng.randf_range(0.0, 0.25)
+			var out: float = r * 0.78 + 0.3 + rng.randf_range(0.0, 0.25)  # 0.3 back: the rocks stand no further into the lawn than CLIFF_M
 			var at := Vector3(along, -0.3, -(size + out)) if edge == 0 else Vector3(size + out, -0.3, -along)
 			place_lump(root, at, r, h, rng)
 			if summit == Vector3.INF or (at - viewer).length() < (summit - viewer).length():

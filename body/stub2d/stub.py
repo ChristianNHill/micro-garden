@@ -31,7 +31,7 @@ import numpy as np
 from body import frames
 from body.contract import ROBOT_PARAMS, serve
 from body.stub2d import retina
-from world.fields import (DAY_S, DUCK_SMELL_M, SHORE_M, SIZE_M, TREE, DUCK_R, World, contacts, daylight, duck_odor_at,
+from world.fields import (CLIFF_M, DAY_S, DUCK_SMELL_M, SHORE_M, SIZE_M, TREE, DUCK_R, World, contacts, daylight, duck_odor_at,
                           music_at, temperature_at, wind_on)
 
 # The wind turns right round every 0.7 of a day, so each direction comes at every hour: a north wind carries
@@ -493,6 +493,14 @@ class Stub:
     def _scare(self, p):
         self.scared[:] = True  # a clap: everything in the garden hears it
 
+    def _walls(self) -> tuple[float, float]:
+        """The lowest and highest a duck's centre may go on either axis. A drawn duck keeps its whole body inside the
+        fence and off the cliffs, which stand into the lawn along the far edges; a duck in a gate is a point."""
+        if self.personal_m <= 0:
+            return DUCK_R, self.world.size - DUCK_R
+        body = max(DUCK_R, self.personal_m / 2)
+        return body, self.world.size - body - CLIFF_M
+
     def _keep_apart(self) -> None:
         """Two ducks nearer than personal_m each move half the difference apart; a few passes settle a huddle.
         A duck on the floor stays put and the one standing moves the whole way, so it does not slide about."""
@@ -620,7 +628,7 @@ class Stub:
         # lying on the floor is not sitting still, so a duck that gets up is drawn standing, not sitting down
         self.still_for = np.where((np.hypot(vx, vy) > 0.01) | (self.t < self.down_until), 0.0, self.still_for + DT)
         free = self.pose[:, :2].copy()
-        np.clip(self.pose[:, :2], DUCK_R, self.world.size - DUCK_R, out=self.pose[:, :2])
+        np.clip(self.pose[:, :2], *self._walls(), out=self.pose[:, :2])
         blocked = np.linalg.norm(self.pose[:, :2] - free, axis=1) > 1e-6
         self._keep_apart()
         if self.held is not None and self.held[0] == "duck" and self.world.hand is not None:

@@ -1,7 +1,7 @@
 // body/stub2d/stub.py: kinematic ducks on the garden plane behind the microduck contract. The Python serves the
 // contract on Unix sockets; here the brain server calls `robot(i, method, params)` and the page calls
 // `control(method, params)` directly, and `send_frames` hands back what each duck senses this step.
-import { DAY_S, DUCK_R, DUCK_SMELL_M, SHORE_M, SIZE_M, TREE, World, contacts, daylight, duck_odor_at, music_at,
+import { CLIFF_M, DAY_S, DUCK_R, DUCK_SMELL_M, SHORE_M, SIZE_M, TREE, World, contacts, daylight, duck_odor_at, music_at,
          pymod, temperature_at, wind_on } from "./fields.js";
 import { luminance } from "./retina.js";
 import { Rng } from "./rng.js";
@@ -377,6 +377,14 @@ export class Stub {
     return handlers[method]() ?? {};
   }
 
+  // The lowest and highest a duck's centre may go on either axis. A drawn duck keeps its whole body inside the fence
+  // and off the cliffs, which stand into the lawn along the far edges; a duck in a gate is a point.
+  _walls() {
+    if (this.personal_m <= 0) return [DUCK_R, this.world.size - DUCK_R];
+    const body = Math.max(DUCK_R, this.personal_m / 2);
+    return [body, this.world.size - body - CLIFF_M];
+  }
+
   _keep_apart() {
     const n = this.n;
     if (this.personal_m <= 0 || n < 2) return;
@@ -488,7 +496,8 @@ export class Stub {
     }
     this.still_for = this.still_for.map((s, i) => (speeds[i] > 0.01 || this.t < this.down_until[i]) ? 0.0 : s + DT);
     let free = this.pose.map(p => [p[0], p[1]]);
-    for (const p of this.pose) { p[0] = clip(p[0], DUCK_R, this.world.size - DUCK_R); p[1] = clip(p[1], DUCK_R, this.world.size - DUCK_R); }
+    const [lo, hi] = this._walls();
+    for (const p of this.pose) { p[0] = clip(p[0], lo, hi); p[1] = clip(p[1], lo, hi); }
     const blocked = this.pose.map((p, i) => dist(p, free[i]) > 1e-6);
     this._keep_apart();
     if (this.held !== null && this.held[0] === "duck" && this.world.hand !== null) {

@@ -66,7 +66,7 @@ def main() -> None:
     stamp(OUT)
     # for the portfolio pages on the same site: the hover card and the moving picture
     shutil.copy(WEB / "site" / "card.js", OUT / "card.js")
-    shutil.copy(WEB / "site" / "cover.gif", OUT / "cover.gif")  # recorded from this garden with ?record
+    shutil.copy(WEB / "site" / "cover-moving.webp", OUT / "cover-moving.webp")  # recorded from this garden with ?record
     shutil.copy(ROOT / "LICENSE", OUT / "LICENSE")
     total = sum(p.stat().st_size for p in OUT.rglob("*") if p.is_file())
     print(f"{OUT}: {sum(1 for p in OUT.rglob('*') if p.is_file())} files, {total / 1e6:.1f} MB")
