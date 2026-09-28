@@ -64,14 +64,18 @@ uv run python -m body.mujoco.adapter --ducks 5 --brain --godot
 
 The upstream walking policy does not yet track a commanded velocity ([microduck_rl issue 46](https://github.com/pollen-robotics/microduck_rl/issues/46)), so these ducks walk at one pace and turn on the spot.
 
-The brain also runs in a web browser, as a first step toward a garden that needs no install. There is no garden in the browser yet, only a page that checks the brain and times it. Pack the brain once, then serve the `web` folder:
+The whole garden also runs in a web browser, with nothing to install. Each duck's brain runs in its own background thread, and the garden is drawn with three.js in the same style as the Godot one. The browser version is a port of the Python code: the brain, the body, the world and the senses are rewritten in JavaScript, module for module. Pack the garden once, then serve the `web` folder:
 
 ```
 uv run python -m web.pack
 python3 -m http.server -d web 8000
 ```
 
-Open `http://127.0.0.1:8000`. The page runs the brain through the same five seconds of smells, taste and a looming shadow as the Python model, then shows whether every neuron fired the same number of times. It then runs five brains at once and shows how much faster than real time they go.
+Open `http://127.0.0.1:8000` for the garden. The packed files come to about 9 MB, and `web/data` is everything a website needs besides the code. The browser saves the garden in its own storage. On a computer with fewer than eight cores the ducks' eyes start closed, because vision costs as much as the rest of the brain, and `?eyes=1` opens them. A duck with eyes takes about 5 ms of each 20 ms step on an M4 Pro, and 1.3 ms without.
+
+`http://127.0.0.1:8000/check.html` holds the browser to the Python. It puts the same inputs through both and compares the results. The brain matches spike for spike, learning included. The eyes match to within two millionths, because they add their inputs up in another order. The body, the world, the senses, the decoder and the save match to rounding. The page then times five ducks at once.
+
+The ports have to be kept in step by hand. After a change to the Python, run `web.pack` again and open the check page. A check fails if a port has fallen behind, but only for what the checks cover. Anything decided by dice can only be compared by how often it happens, not step by step.
 
 ## How it is checked
 
@@ -93,7 +97,7 @@ The fast gates pass. The last full run passed 14 of 15, failing Gate 5's check t
 - `world/` holds the garden itself: wind, smells, water, weather, fruit and toys.
 - `viewer/` holds the debug window and the Godot garden.
 - `gates/` holds one check per gate.
-- `web/` holds the brain for the browser and the page that checks it.
+- `web/` holds the browser garden: `brain.js` and `lif.js` for the brain, `garden/` for the body, world and senses, `view/` for the drawing, and `check.js` for the comparison with the Python.
 
 ## Credit
 

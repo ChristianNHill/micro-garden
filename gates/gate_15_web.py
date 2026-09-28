@@ -1,12 +1,13 @@
-"""Gate 15: the brain runs in a browser, spike for spike the same as brain/lif.py, and fast enough for five ducks.
+"""Gate 15: the browser garden is the Python garden, and a computer can run five ducks of it at real time.
 
 Run: uv run python -m gates.gate_15_web     (needs Google Chrome; set CHROME if it is not in /Applications)
 
-Packs the connectome with web/pack.py if web/data/ is missing, serves web/, and opens web/index.html in
-headless Chrome. The page runs web/pack.py's reference schedule in a worker and posts back what it got
-along with five brains' speed side by side. The gate asserts every tick's spike count and every neuron's
-total match the Python run, and that the slowest of five brains keeps up with real time. Run by number
-only, since it needs Chrome.
+Packs the garden with web/pack.py if web/data/ is missing, serves web/, and opens web/check.html in headless
+Chrome. The page runs web/check.js, which puts the same inputs through the Python modules (recorded by
+web/pack.py) and their JavaScript ports, then times five brains with their eyes open, each in its own worker.
+The gate asserts every check passes: the brain spike for spike with learning, the eyes within tolerance, the
+body, world and readouts to rounding; and that the slowest of five ducks keeps up with real time. Run by
+number only, since it needs Chrome.
 """
 import http.server
 import json
@@ -41,11 +42,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
 
 def main() -> int:
-    if not (WEB / "data" / "reference.bin").exists():
+    if not (WEB / "data" / "reference.bin.gz").exists():
         subprocess.run([sys.executable, "-m", "web.pack"], check=True)
     server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), partial(Handler, directory=str(WEB)))
     threading.Thread(target=server.serve_forever, daemon=True).start()
-    url = f"http://127.0.0.1:{server.server_port}/index.html?report"
+    url = f"http://127.0.0.1:{server.server_port}/check.html?report"
     with tempfile.TemporaryDirectory() as profile:
         chrome = subprocess.Popen([CHROME, "--headless=new", f"--user-data-dir={profile}", "--no-first-run",
                                    "--remote-debugging-port=0", url],
@@ -61,17 +62,15 @@ def main() -> int:
         print("the page did not report" if r is None else f"the page failed: {r['error']}")
         print("FAIL")
         return 1
-    c, b = r["check"], r["bench"]
-    print(f"reference: {c['ticks']} ticks, browser {c['spikes']:,} spikes, Python {c['refSpikes']:,}")
-    if c["firstTick"] >= 0:
-        print(f"  first differs at tick {c['firstTick']}; {c['neuronsOff']:,} neurons fire a different number of times")
+    rows, b = r["rows"], r["bench"]
+    for row in rows:
+        print(f"  {'ok  ' if row['ok'] else 'FAIL'} {row['name']}: {row['detail']}")
     for i, d in enumerate(b["ducks"]):
-        print(f"duck {i + 1}: {d['msPerTick']:.2f} ms a tick, {d['spikesPerTick']:.0f} spikes a tick")
+        print(f"duck {i + 1}: {d['msPerStep']:.1f} ms a 20 ms step, {d['spikesPerTick']:.0f} spikes a tick")
     print(f"five brains: {b['speed']:.1f}x real time for the slowest")
     return verdict({
-        "every tick fires as many neurons as in Python": c["firstTick"] < 0,
-        "every neuron fires as often as in Python": c["neuronsOff"] == 0,
-        f"five brains at once run at least {MIN_SPEED}x real time": b["speed"] >= MIN_SPEED,
+        f"all {len(rows)} checks against the Python garden pass": all(row["ok"] for row in rows),
+        f"five ducks with eyes run at least {MIN_SPEED}x real time": b["speed"] >= MIN_SPEED,
     })
 
 

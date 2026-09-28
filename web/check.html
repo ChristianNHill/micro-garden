@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Micro Garden Check</title>
+<style>
+  :root { --bg: #f4ead5; --ink: #1c2a4d; --soft: #6d6456; --good: #2f7a3a; --bad: #a3322a; --card: #fbf6ea; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #1d1b18; --ink: #ece4d4; --soft: #a79d8c; --good: #7cc487; --bad: #e0776d; --card: #272420; } }
+  body { background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, sans-serif; margin: 0; padding: 24px 16px; }
+  main { max-width: 760px; margin: 0 auto; }
+  h1 { font-size: 1.4rem; margin: 0 0 4px; }
+  p { color: var(--soft); margin: 0 0 20px; }
+  section { background: var(--card); border-radius: 10px; padding: 14px 16px; margin-bottom: 14px; }
+  h2 { font-size: 1rem; margin: 0 0 8px; }
+  .row { display: grid; grid-template-columns: 3em 1fr; gap: 4px 10px; padding: 3px 0; }
+  .ok { color: var(--good); font-weight: 600; } .fail { color: var(--bad); font-weight: 600; }
+  .detail { color: var(--soft); font-size: 13px; grid-column: 2; }
+  pre { margin: 0; white-space: pre-wrap; font: 14px/1.5 ui-monospace, monospace; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Is the browser garden the Python garden?</h1>
+  <p>The same inputs through the Python modules and their JavaScript ports. The brain must match spike for spike, learning included; the eyes to within a small tolerance, since they add their inputs up in another order; the body, world and readouts to rounding. Then five brains at once, each in its own worker, to see whether this computer keeps up with real time.</p>
+  <section><h2>Matches the Python model</h2><div id="rows">running…</div></section>
+  <section><h2>Five ducks at once</h2><pre id="bench">waiting for the checks…</pre></section>
+</main>
+<script type="module">
+import { runChecks } from "./check.js";
+const report = new URLSearchParams(location.search).has("report");  // Gate 15 is listening
+const STEPS = 250;  // 5 seconds of garden
+
+const call = (worker, job, msg = {}) => new Promise((ok, fail) => {
+  worker.onmessage = ({ data }) => data.error ? fail(new Error(data.error)) : ok(data.ok);
+  worker.onerror = e => fail(new Error(e.message));
+  worker.postMessage({ ...msg, id: 1, job });
+});
+
+async function bench() {
+  const [brain, eyes] = await Promise.all(["data/brain.bin.gz", "data/eyes.bin.gz"].map(u => fetch(u).then(r => r.arrayBuffer())));
+  const workers = Array.from({ length: 5 }, () => new Worker("worker.js", { type: "module" }));
+  await Promise.all(workers.map((w, i) => call(w, "init", { brain, eyes, seed: i })));
+  const ducks = await Promise.all(workers.map(w => call(w, "bench", { steps: STEPS })));
+  workers.forEach(w => w.terminate());
+  const slowest = Math.max(...ducks.map(d => d.msPerStep));
+  return { ducks, slowest, speed: 20 / slowest };
+}
+
+const out = {};
+try {
+  const rows = out.rows = await runChecks(path => fetch(path).then(r => { if (!r.ok) throw new Error(`${path}: ${r.status}`); return r.arrayBuffer(); }));
+  document.getElementById("rows").innerHTML = rows.map(r =>
+    `<div class="row"><span class="${r.ok ? "ok" : "fail"}">${r.ok ? "ok" : "FAIL"}</span><span>${r.name}</span><span class="detail">${r.detail}</span></div>`).join("");
+  document.getElementById("bench").textContent = "running five brains with their eyes open…";
+  const b = out.bench = await bench();
+  document.getElementById("bench").textContent =
+    b.ducks.map((d, i) => `duck ${i + 1}: ${d.msPerStep.toFixed(1)} ms a 20 ms step, ${d.spikesPerTick.toFixed(0)} spikes a tick`).join("\n") +
+    `\n\n${b.speed.toFixed(1)}× real time for the slowest duck`;
+} catch (e) {
+  out.error = String(e);
+  document.getElementById("rows").textContent = String(e);
+}
+if (report) fetch("result", { method: "POST", body: JSON.stringify(out) });
+</script>
+</body>
+</html>
