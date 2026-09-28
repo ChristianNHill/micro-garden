@@ -496,7 +496,7 @@ export class Stub {
     }
     free = this.pose.map(p => [p[0], p[1]]);
     const xy = this.pose.map(p => [p[0], p[1]]);
-    this.world.push_out(xy, DUCK_R);
+    this.world.push_out(xy, Math.max(DUCK_R, this.personal_m / 2));  // a drawn duck keeps its body off the rock
     xy.forEach((p, i) => { this.pose[i][0] = p[0]; this.pose[i][1] = p[1]; if (dist(p, free[i]) > 1e-6) blocked[i] = true; });
     // explicit code: a duck stopped by the fence or a rock turns toward the middle
     for (let i = 0; i < n; i++) {

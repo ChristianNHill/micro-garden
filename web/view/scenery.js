@@ -40,8 +40,8 @@ export function lump(radius, height, rng, sides = 9, rings = 4, taper = 0.8, wob
   return [geo(side), geo(cap)];
 }
 
-export function placeLump(root, at, radius, height, rng, stone = ROCK, top = LAWN, sides = 9, taper = 0.8) {
-  const [s, c] = lump(radius, height, rng, sides, 4, taper);
+export function placeLump(root, at, radius, height, rng, stone = ROCK, top = LAWN, sides = 9, taper = 0.8, wobble = 0.2) {
+  const [s, c] = lump(radius, height, rng, sides, 4, taper, wobble);
   Ink.part(root, s, stone, at, 1, { cell: 8, lift: 0.3 });
   Ink.part(root, c, top, at, 1, { cell: 8, lift: 0.2 });
 }
@@ -133,14 +133,15 @@ function waterfall(root, snap, centre, size, rng, falls) {
   const [, , pr] = snap.pond;
   const len = Math.hypot(size - centre[0], size - centre[1]);
   const toward = [(size - centre[0]) / len, (size - centre[1]) / len], side = [-toward[1], toward[0]];
-  const steps = (snap.rocks || []).map(([x, y, r], i) => [x, y, r, 0.35 + 0.5 * i]);
+  const steps = (snap.rocks || []).map(([x, y, r], i) => [x, y, r, 0.35 + 0.5 * i, true]);  // true: solid in the world
   if (!steps.length) steps.push([centre[0] + toward[0] * (pr + 0.1), centre[1] + toward[1] * (pr + 0.1), 0.55, 0.35]);
   while (steps.length < 5) {
     const last = steps[steps.length - 1];
     steps.push([last[0] + toward[0] * 0.6, last[1] + toward[1] * 0.6, last[2] + 0.12, last[3] + 0.65]);
   }
-  for (const [x, y, r, h] of steps) {
-    placeLump(root, [x, -0.2, -y], r, h + 0.2, rng, PALE_ROCK, WATER, 10, 0.9);
+  for (const [x, y, r, h, solid] of steps) {
+    // a rock the ducks bump into is drawn nearly true to its size, or they would seem to walk into it
+    placeLump(root, [x, -0.2, -y], r, h + 0.2, rng, PALE_ROCK, WATER, 10, 0.9, solid ? 0.05 : 0.2);
     const sheet = Ink.part(root, Ink.box(), WATER, [x - toward[0] * r * 0.93, h / 2, -y + toward[1] * r * 0.93], [0.05, h, 0.5], { cell: 8, tone: 0.97 });
     sheet.rotation.y = Math.atan2(toward[1], toward[0]);
     falls.push(sheet);

@@ -9,7 +9,7 @@ import * as Hats from "./hats.js";
 import { Duck, LOOK, setData, lerpAngle } from "./duck.js";
 import { Panels } from "./ui.js";
 import { Sound } from "./audio.js";
-import { YouTubeBox } from "./youtube.js";
+import { SpotifyBox } from "./spotify.js";
 import { parseBundle } from "../bundle.js";
 import { Garden } from "../garden/garden.js";
 import { DEMO_GARDEN } from "../garden/stub.js";
@@ -143,7 +143,7 @@ function run({ garden, brain, brains, eyes, welcome }) {
   panels.setBrainPoints(brain.arrays["view.xy"], brain.arrays["view.group"], brain.meta.view_groups, brain.meta.neurons);
   const sound = new Sound();
   sound.start();
-  const youtube = new YouTubeBox(document.body);
+  const playlist = new SpotifyBox(document.body);
   if (welcome) panels.say(welcome);
   let pixelRatio = Math.min(devicePixelRatio || 1, 2);
   const resize = () => {
@@ -190,14 +190,18 @@ function run({ garden, brain, brains, eyes, welcome }) {
     }
   };
   step().catch(e => { panels.status.textContent = `the garden stopped: ${e.message}`; console.error(e); });
+  // A new garden throws the save away; nothing may write it back on the way out.
+  let resetting = false, lastWeights = null;
   const save = async () => {
+    if (resetting) return;
     try {
-      const weights = await Promise.all(brains.map(b => b.call("save")));
-      Save.save(garden.server.body, weights, garden.stub);
+      lastWeights = await Promise.all(brains.map(b => b.call("save")));
+      if (!resetting) Save.save(garden.server.body, lastWeights, garden.stub);
     } catch { /* storage refused; the garden goes on */ }
   };
   addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") save(); });
-  addEventListener("pagehide", () => { Save.save(garden.server.body, null, garden.stub); });
+  // the weights from the last save: asking the brains for fresh ones takes longer than a closing page waits
+  addEventListener("pagehide", () => { if (!resetting) Save.save(garden.server.body, lastWeights, garden.stub); });
 
   const act = (method, p = {}) => garden.act(method, p);
 
@@ -293,10 +297,10 @@ function run({ garden, brain, brains, eyes, welcome }) {
       if (t > (show.heard ?? -1)) { show.heard = t; sound.quack(duck, tag, snap.ducks[duck]?.tune ?? 1); }
     }
     sound.pond(!!snap.pond, snap.light);
-    // the visitor's own songs first, then the YouTube playlist, and the box's own tune if YouTube will not load
-    const ownSongs = sound.tracks.length > 0, useYoutube = !ownSongs && !youtube.failed;
-    youtube.update(useYoutube && !!snap.music, snap.music_volume * (sound.on ? 1 : 0));
-    sound.music(!useYoutube && !!snap.music, snap.music_volume);
+    // the visitor's own songs first, then the Spotify playlist, and the box's own tune if Spotify will not load
+    const ownSongs = sound.tracks.length > 0, useSpotify = !ownSongs && !playlist.failed;
+    playlist.update(useSpotify && !!snap.music, snap.music_volume * (sound.on ? 1 : 0));
+    sound.music(!useSpotify && !!snap.music, snap.music_volume);
   };
 
   const rollKicked = dt => {
@@ -476,6 +480,7 @@ function run({ garden, brain, brains, eyes, welcome }) {
       panels.say(handMode ? "the hand is out: hold and drag to pick things up" : "the hand is put away");
     },
     sound: () => { sound.setOn(!sound.on); panels.say(sound.on ? "sound on" : "sound off"); },
+    regenerate: () => { $("regenerate").hidden = false; },
   };
   const KEYS = { Tab: "ride", "/": "help", o: "overlay", c: "clap", f: "shake", m: "music", g: "give", p: "pet", d: "drum", i: "instrument", b: "ball", h: "hand", t: "hat" };
   addEventListener("keydown", e => {
@@ -497,12 +502,23 @@ function run({ garden, brain, brains, eyes, welcome }) {
     b.addEventListener("pointerdown", e => { e.preventDefault(); pad[key] = true; });
     for (const ev of ["pointerup", "pointerleave", "pointercancel"]) b.addEventListener(ev, () => { pad[key] = false; });
   }
+  $("regenerate-keep").addEventListener("click", e => { e.stopPropagation(); $("regenerate").hidden = true; });
+  $("regenerate-go").addEventListener("click", e => {
+    e.stopPropagation();
+    resetting = true;
+    Save.forget();
+    location.reload();
+  });
   $("music-files").addEventListener("change", e => { sound.pickTracks(e.target.files); panels.say(`${e.target.files.length} songs for the music box`); });
 
   // ---------- each frame ----------
   let before = performance.now(), frames = 0, frameSince = before;
+  // ?record=N sends N frames, ten a second, to a server that saves them (not part of the garden's own hosting)
+  const recording = params.has("record") ? { frames: +params.get("record") || 150, sent: 0, last: 0 } : null;
+  // A recording keeps drawing in a background tab, where the browser stops animation frames
+  const nextFrame = recording ? fn => sleep(33).then(() => fn(performance.now())) : fn => requestAnimationFrame(fn);
   const frame = () => {
-    requestAnimationFrame(frame);
+    nextFrame(frame);
     const now = performance.now(), dt = Math.min((now - before) / 1000, 0.1);
     before = now;
     show(dt);
@@ -528,6 +544,11 @@ function run({ garden, brain, brains, eyes, welcome }) {
     }
     canvas.style.cursor = handMode && !possessing ? "none" : "";
     renderer.render(scene, camera);
+    if (recording && now - recording.last > 100 && recording.sent < recording.frames) {  // ?record: frames for a gif
+      recording.last = now;
+      const n = recording.sent++;
+      canvas.toBlob(blob => fetch(`frame?n=${n}`, { method: "POST", body: blob }), "image/png");
+    }
     // panels
     const d = selected >= 0 ? snap.ducks[selected] : null;
     panels.showCard(possessing ? null : d);
@@ -535,7 +556,7 @@ function run({ garden, brain, brains, eyes, welcome }) {
     panels.showBrain(!possessing && snap.brain && snap.brain.duck === selected ? snap.brain : null, d ? d.name : "", dt);
     if (snap.brain) snap.brain.spikes = [];  // each spike glows once
     panels.showRide(possessing ? snap.ride : null);
-    const playing = youtube.down && youtube.title ? youtube.title : sound.title;
+    const playing = playlist.down ? "" : sound.title;
     panels.showToasts(snap.toasts, snap.music && playing ? `♪ ${playing}` : "");
     panels.menu.hidden = !helpOn;
     document.body.classList.toggle("riding", possessing);
@@ -565,7 +586,7 @@ function run({ garden, brain, brains, eyes, welcome }) {
       panels.status.textContent = speed < 0.93 ? `the brains are running at ${speed.toFixed(2)}× real time on this device` : "";
     }
   };
-  requestAnimationFrame(frame);
+  nextFrame(frame);
 }
 
 boot().catch(e => {

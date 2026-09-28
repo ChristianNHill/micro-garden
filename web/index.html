@@ -85,12 +85,21 @@
   .corner { position: fixed; right: 16px; bottom: 60px; display: flex; gap: 6px; }
   body.riding .corner, body.riding .toasts { display: none; }
   .corner input { display: none; }
-  .youtube { position: fixed; right: 16px; bottom: 104px; width: 356px; height: 200px; border-radius: 10px; overflow: hidden;
-    box-shadow: 0 2px 12px rgba(28, 42, 77, 0.35); background: #000; z-index: 3; }
-  .youtube iframe { display: block; }
-  body.riding .youtube { bottom: auto; top: 16px; }
-  @media (max-width: 760px) { .youtube { right: 8px; bottom: 150px; transform: scale(0.75); transform-origin: bottom right; } }
+  .spotify { position: fixed; right: 16px; bottom: 104px; width: 352px; height: 152px; border-radius: 12px; overflow: hidden;
+    box-shadow: 0 2px 12px rgba(28, 42, 77, 0.35); z-index: 3; }
+  .spotify iframe { display: block; border: 0; }
+  body.riding .spotify { bottom: auto; top: 16px; }
+  @media (max-width: 760px) { .spotify { right: 8px; bottom: 150px; transform: scale(0.8); transform-origin: bottom right; } }
 
+  .regenerate { position: fixed; inset: 0; background: rgba(28, 42, 77, 0.55); display: grid; place-items: center; z-index: 5; }
+  .regenerate-card { max-width: 420px; margin: 16px; background: var(--cream); border-radius: 16px; border-bottom: 6px solid var(--navy);
+    padding: 24px 26px; }
+  .regenerate-title { font: 600 24px var(--display); margin-bottom: 8px; }
+  .regenerate-card p { margin: 0 0 18px; }
+  .regenerate-buttons { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
+  .regenerate-buttons button { font: 500 14px var(--body); border: 0; border-radius: 8px; padding: 9px 14px; cursor: pointer;
+    background: var(--stone); color: var(--navy); }
+  .regenerate-buttons .danger { background: var(--coral); color: #fff; }
   #loading { position: fixed; inset: 0; display: grid; place-items: center; background: #a9d8f0; z-index: 10; }
   .intro { max-width: 520px; margin: 16px; background: var(--cream); border-radius: 16px; border-bottom: 6px solid var(--navy); padding: 28px 30px; }
   .intro h1 { font: 600 34px/1.1 var(--display); margin: 0 0 10px; letter-spacing: 0.02em; }
@@ -151,7 +160,19 @@
 <div class="corner">
   <button data-verb="sound" style="font: 500 13px var(--body); color: var(--navy); background: var(--paper); border: 0; border-radius: 8px; padding: 7px 10px; cursor: pointer;">Sound</button>
   <label title="Songs from your computer for the music box; they stay on your device">Your music<input id="music-files" type="file" accept="audio/*" multiple></label>
+  <button data-verb="regenerate" style="font: 500 13px var(--body); color: var(--navy); background: var(--paper); border: 0; border-radius: 8px; padding: 7px 10px; cursor: pointer;">New garden</button>
   <a href="https://github.com/ChristianNHill/micro-garden" target="_blank" rel="noopener">About ↗</a>
+</div>
+
+<div id="regenerate" class="regenerate" hidden>
+  <div class="regenerate-card" role="dialog" aria-modal="true" aria-labelledby="regenerate-title">
+    <div id="regenerate-title" class="regenerate-title">Start a new garden?</div>
+    <p>Five new ducks hatch with new names and personalities. These five, and everything they have learned, their friendships and grudges, and whatever is lying in the garden, will be gone for good.</p>
+    <div class="regenerate-buttons">
+      <button id="regenerate-keep">Keep this garden</button>
+      <button id="regenerate-go" class="danger">Start over</button>
+    </div>
+  </div>
 </div>
 
 <div id="loading">

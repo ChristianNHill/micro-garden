@@ -56,8 +56,8 @@ static func lump(radius: float, height: float, rng: RandomNumberGenerator, sides
 
 
 static func place_lump(root: Node3D, at: Vector3, radius: float, height: float, rng: RandomNumberGenerator,
-		stone := ROCK, top := LAWN, sides := 9, taper := 0.8) -> void:
-	var meshes := lump(radius, height, rng, sides, 4, taper)
+		stone := ROCK, top := LAWN, sides := 9, taper := 0.8, wobble := 0.2) -> void:
+	var meshes := lump(radius, height, rng, sides, 4, taper, wobble)
 	Ink.part(root, meshes[0], stone, at, Vector3.ONE, 8.0).material_override.set_shader_parameter("lift", 0.3)
 	Ink.part(root, meshes[1], top, at, Vector3.ONE, 8.0).material_override.set_shader_parameter("lift", 0.2)
 
@@ -159,18 +159,19 @@ static func waterfall(root: Node3D, snap: Dictionary, centre: Vector2, size: flo
 	var side := Vector2(-toward.y, toward.x)
 	# The lowest steps are the world's solid rocks (DEMO_GARDEN); more columns continue up into the cliff.
 	# A garden without rocks gets columns by rule.
-	var steps := []  # [x, y, radius, height]
+	var steps := []  # [x, y, radius, height, solid in the world]
 	for i in snap.get("rocks", []).size():
 		var rock: Array = snap.rocks[i]
-		steps.append([rock[0], rock[1], rock[2], 0.35 + 0.5 * i])
+		steps.append([rock[0], rock[1], rock[2], 0.35 + 0.5 * i, true])
 	if steps.is_empty():
-		steps.append([centre.x + toward.x * (p[2] + 0.1), centre.y + toward.y * (p[2] + 0.1), 0.55, 0.35])
+		steps.append([centre.x + toward.x * (p[2] + 0.1), centre.y + toward.y * (p[2] + 0.1), 0.55, 0.35, false])
 	while steps.size() < 5:
 		var last: Array = steps[-1]
-		steps.append([last[0] + toward.x * 0.6, last[1] + toward.y * 0.6, last[2] + 0.12, last[3] + 0.65])
+		steps.append([last[0] + toward.x * 0.6, last[1] + toward.y * 0.6, last[2] + 0.12, last[3] + 0.65, false])
 	for i in steps.size():
 		var s: Array = steps[i]
-		place_lump(root, Vector3(s[0], -0.2, -s[1]), s[2], s[3] + 0.2, rng, PALE_ROCK, WATER, 10, 0.9)
+		# a rock the ducks bump into is drawn nearly true to its size, or they would seem to walk into it
+		place_lump(root, Vector3(s[0], -0.2, -s[1]), s[2], s[3] + 0.2, rng, PALE_ROCK, WATER, 10, 0.9, 0.05 if s[4] else 0.2)
 		var sheet := Ink.part(root, BoxMesh.new(), WATER, Vector3(s[0], s[3] / 2, -s[1]) - Vector3(toward.x, 0, -toward.y) * (s[2] * 0.93),
 			Vector3(0.05, s[3], 0.5), 8.0, 0.97)
 		sheet.rotation.y = atan2(toward.y, toward.x)

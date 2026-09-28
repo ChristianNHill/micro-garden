@@ -626,7 +626,7 @@ class Stub:
         if self.held is not None and self.held[0] == "duck" and self.world.hand is not None:
             self.pose[self.held[1], :2] = self.world.hand  # held: it goes nowhere
         free = self.pose[:, :2].copy()
-        self.world.push_out(self.pose[:, :2], DUCK_R)
+        self.world.push_out(self.pose[:, :2], max(DUCK_R, self.personal_m / 2))  # a drawn duck keeps its body off the rock
         blocked |= np.linalg.norm(self.pose[:, :2] - free, axis=1) > 1e-6
         # explicit code: a duck stopped by the fence or a rock turns toward the middle, like the robot's `fence`
         if blocked.any():

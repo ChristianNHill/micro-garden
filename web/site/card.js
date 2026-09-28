@@ -99,7 +99,7 @@
       }
       g.font = "10px ui-monospace, Menlo, monospace";
       g.fillStyle = INK + "0.5)";
-      g.fillText(pointer ? "five ducks · they come for the fruit" : "five ducks · five fly brains", w * 0.055, h - 44);
+      g.fillText("five ducks · five fly brains", w * 0.055, h - 44);
       g.fillStyle = INK + "0.28)";
       g.fillText("139,248 neurons each, live in your browser", w * 0.055, h - 32);
     };

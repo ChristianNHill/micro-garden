@@ -30,6 +30,7 @@ DAY_S = 600.0  # a whole day and night in simulated seconds; short enough that a
 NIGHT_C = 8.0  # how much colder the garden gets when the sun is down
 DAWN = 0.15  # fraction of the cycle that dawn and dusk take; the rest is flat day or flat night
 TREE = (1.0, 3.0, 0.7)  # shade centre x, y and radius, unless a World puts its tree elsewhere
+TRUNK_R = 0.12  # the fruit tree's trunk, solid like a rock; a duck walks under the canopy but not through the trunk
 WIND_FULL_MS = 1.5  # light air; this reads as 1.0 on the antennae
 MUSIC_M = 1.2  # music is half as loud every 0.8 m or so; a garden-wide thing, unlike a duck's smell
 DUCK_SMELL_M = 0.5  # another duck smells half as strong every 0.35 m or so
@@ -163,7 +164,7 @@ class World:
                 if not BALL_R <= pos[axis] <= self.size - BALL_R:
                     pos[axis] = np.clip(pos[axis], BALL_R, self.size - BALL_R)
                     v[axis] *= -BALL_BOUNCE
-            for things, reach, bounce in ((self.rocks, None, True), (duck_xy, DUCK_R, False)):
+            for things, reach, bounce in ((self.solids(), None, True), (duck_xy, DUCK_R, False)):
                 for k, thing in enumerate(things):
                     r = (thing[2] if reach is None else reach) + BALL_R
                     away = pos - thing[:2]
@@ -177,10 +178,14 @@ class World:
                         else:
                             v += max(duck_v[k] @ n + 0.1 - into, 0.0) * n
 
+    def solids(self) -> np.ndarray:
+        """Everything round that a duck or a ball cannot pass, as (x, y, radius) rows: the rocks and the tree's trunk."""
+        return np.vstack([self.rocks, [[self.tree[0], self.tree[1], TRUNK_R]]])
+
     def push_out(self, xy: np.ndarray, clearance: float) -> None:
         """Move any of these (n, 2) points that are inside a rock back to its edge, in place: a rock is a
         wall that happens to be round."""
-        for x, y, r in self.rocks:
+        for x, y, r in self.solids():
             away = xy - (x, y)
             d = np.linalg.norm(away, axis=1)
             inside = d < r + clearance

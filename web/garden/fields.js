@@ -23,6 +23,7 @@ export const DAY_S = 600.0;
 export const NIGHT_C = 8.0;
 export const DAWN = 0.15;
 export const TREE = [1.0, 3.0, 0.7];
+export const TRUNK_R = 0.12;  // the fruit tree's trunk, solid like a rock
 export const WIND_FULL_MS = 1.5;
 export const MUSIC_M = 1.2;
 export const DUCK_SMELL_M = 0.5;
@@ -177,7 +178,7 @@ export class World {
           ball[2 + axis] *= -BALL_BOUNCE;
         }
       }
-      for (const [things, reach, bounce] of [[this.rocks, null, true], [duck_xy, DUCK_R, false]]) {
+      for (const [things, reach, bounce] of [[this.solids(), null, true], [duck_xy, DUCK_R, false]]) {
         things.forEach((thing, k) => {
           const r = (reach === null ? thing[2] : reach) + BALL_R;
           const ax = ball[0] - thing[0], ay = ball[1] - thing[1];
@@ -199,8 +200,11 @@ export class World {
     }
   }
 
+  // Everything round that a duck or a ball cannot pass: the rocks and the tree's trunk.
+  solids() { return [...this.rocks, [this.tree[0], this.tree[1], TRUNK_R]]; }
+
   push_out(xy, clearance) {  // xy: [[x, y], ...], moved in place
-    for (const [x, y, r] of this.rocks) {
+    for (const [x, y, r] of this.solids()) {
       for (const p of xy) {
         const ax = p[0] - x, ay = p[1] - y, d = Math.hypot(ax, ay);
         if (d < r + clearance) {
