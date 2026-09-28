@@ -51,6 +51,7 @@
   .dn-track { width: 120px; height: 12px; background: rgba(28, 42, 77, 0.25); position: relative; display: inline-block; }
   .dn-track span { position: absolute; inset: 0 auto 0 0; background: var(--coral); }
   .hint { position: absolute; right: 16px; bottom: 16px; font-size: 13px; padding: 8px 12px; white-space: pre; }
+  body:not(.riding) .hint { display: none; }  /* the controls are a button in the corner; riding shows how to steer */
   .status { position: absolute; left: 50%; bottom: 72px; transform: translateX(-50%); font-size: 12px; color: var(--navy);
     background: var(--paper); border-radius: 8px; padding: 0 8px; }
   .status:empty { display: none; }
@@ -71,7 +72,7 @@
   .menu-grid { display: grid; grid-template-columns: auto 1fr; gap: 7px 14px; align-items: center; }
   .key { font: 13px ui-monospace, Menlo, monospace; background: var(--stone); border-radius: 5px; padding: 2px 6px; justify-self: start; }
 
-  .toolbar { position: fixed; left: 16px; bottom: 16px; display: flex; gap: 6px; flex-wrap: wrap; max-width: calc(100vw - 200px); }
+  .toolbar { position: fixed; left: 16px; bottom: 16px; display: flex; gap: 6px; flex-wrap: wrap; max-width: calc(100vw - 400px); }
   .toolbar button, .pad button, .corner a, .corner label { font: 500 13px var(--body); color: var(--navy); background: var(--paper);
     border: 0; border-radius: 8px; padding: 7px 10px; cursor: pointer; text-decoration: none; }
   .toolbar button:hover, .pad button:hover, .corner a:hover, .corner label:hover { background: var(--cream); }
@@ -82,10 +83,10 @@
   .pad { position: fixed; left: 16px; bottom: 64px; display: none; grid-template-columns: repeat(3, 48px); gap: 6px; }
   body.riding .pad { display: grid; }
   .pad button { height: 48px; font-size: 18px; touch-action: none; }
-  .corner { position: fixed; right: 16px; bottom: 60px; display: flex; gap: 6px; }
+  .corner { position: fixed; right: 16px; bottom: 16px; display: flex; gap: 6px; flex-wrap: nowrap; }
   body.riding .corner, body.riding .toasts { display: none; }
   .corner input { display: none; }
-  .spotify { position: fixed; right: 16px; bottom: 104px; width: 352px; height: 152px; border-radius: 12px; overflow: hidden;
+  .spotify { position: fixed; right: 16px; bottom: 60px; width: 352px; height: 152px; border-radius: 12px; overflow: hidden;
     box-shadow: 0 2px 12px rgba(28, 42, 77, 0.35); z-index: 3; }
   .spotify iframe { display: block; border: 0; }
   body.riding .spotify { bottom: auto; top: 16px; }
@@ -151,13 +152,13 @@
   <button class="for-duck" data-verb="pet">Pet</button>
   <button class="for-duck" data-verb="give">Give a fruit</button>
   <button class="for-duck" data-verb="ride">Ride</button>
-  <button data-verb="help">Controls</button>
 </div>
 <div class="pad">
   <span></span><button data-steer="fwd" aria-label="forward">↑</button><span></span>
   <button data-steer="left" aria-label="turn left">←</button><button data-steer="back" aria-label="back">↓</button><button data-steer="right" aria-label="turn right">→</button>
 </div>
 <div class="corner">
+  <button data-verb="help" style="font: 500 13px var(--body); color: var(--navy); background: var(--paper); border: 0; border-radius: 8px; padding: 7px 10px; cursor: pointer;">/ controls</button>
   <button data-verb="sound" style="font: 500 13px var(--body); color: var(--navy); background: var(--paper); border: 0; border-radius: 8px; padding: 7px 10px; cursor: pointer;">Sound</button>
   <button data-verb="regenerate" style="font: 500 13px var(--body); color: var(--navy); background: var(--paper); border: 0; border-radius: 8px; padding: 7px 10px; cursor: pointer;">New garden</button>
   <a href="https://github.com/ChristianNHill/micro-garden" target="_blank" rel="noopener">About ↗</a>

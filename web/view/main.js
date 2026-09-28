@@ -457,7 +457,7 @@ function run({ garden, brain, brains, eyes, welcome }) {
   const keys = new Set();
   const verbs = {
     ride: () => { if (possessing || selected >= 0) { possessing = !possessing; if (!possessing) act("garden.wheel", { duck: -1, fwd: 0, turn: 0 }); } },
-    help: () => { helpOn = !helpOn; },
+    help: () => { helpOn = !helpOn; panels.menu.hidden = !helpOn; },
     overlay: () => { panels.overlayOn = !panels.overlayOn; },
     clap: () => act("garden.scare"),
     shake: () => act("garden.shake_tree"),
@@ -496,6 +496,7 @@ function run({ garden, brain, brains, eyes, welcome }) {
 
   // the toolbar, for a touch screen or a mouse
   for (const b of document.querySelectorAll("[data-verb]")) b.addEventListener("click", e => { e.stopPropagation(); sound.start(); fromToolbar = true; verbs[b.dataset.verb](); fromToolbar = false; });
+  panels.menu.addEventListener("pointerdown", e => { e.stopPropagation(); helpOn = false; panels.menu.hidden = true; });  // tap anywhere to close
   const pad = {};  // the ride view's on-screen wheel
   for (const b of document.querySelectorAll("[data-steer]")) {
     const key = b.dataset.steer;
@@ -561,7 +562,7 @@ function run({ garden, brain, brains, eyes, welcome }) {
     document.body.classList.toggle("riding", possessing);
     document.body.classList.toggle("watching", selected >= 0);
     document.body.classList.toggle("hand", handMode);
-    panels.hint.textContent = possessing ? "W A S D  steer      O  hide what it sees      Tab  get off" : "/  controls";
+    panels.hint.textContent = "W A S D  steer      O  hide what it sees      Tab  get off";
     const labels = [];
     if (!possessing) {
       ducks.forEach((duck, i) => {
