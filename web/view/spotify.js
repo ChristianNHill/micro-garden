@@ -37,7 +37,7 @@ export class SpotifyBox {
     this.now.className = "spotify-now";
     this.now.hidden = true;
     const icon = d => `<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor">${d}</svg>`;
-    this.now.innerHTML = `<div class="spotify-row"><div class="spotify-track"><b></b><span></span></div>
+    this.now.innerHTML = `<div class="spotify-row"><img class="spotify-art" alt="" hidden><div class="spotify-track"><b></b><span></span></div>
         <button type="button" data-do="disconnect">Disconnect</button></div>
       <div class="spotify-controls">
         <button type="button" data-do="shuffle" aria-label="Shuffle">${icon('<path d="M11 2l3 2.5L11 7V5.5H9.6L4.6 11H2V9.5h2l5-5.5h2zM2 5h2.6l1.5 1.6-1 1.1L4 6.5H2zm7.4 5.4L11 9v1.5h3L11 13v-1.5H9l-1.5-1.6 1-1.1z"/>')}</button>
@@ -218,5 +218,11 @@ export class SpotifyBox {
     if (!track) return;
     this.now.querySelector("b").textContent = track.name;
     this.now.querySelector("span").textContent = track.artists.map(a => a.name).join(", ");
+    const covers = track.album?.images || [];  // largest first; the smallest that still looks sharp at 40 px
+    const cover = [...covers].reverse().find(c => (c.width || 0) >= 96) || covers[0];
+    const art = this.now.querySelector(".spotify-art");
+    if (cover && art.src !== cover.url) art.src = cover.url;
+    art.alt = track.album?.name || "";
+    art.hidden = !cover;
   }
 }
