@@ -389,6 +389,12 @@ function run({ garden, brain, brains, eyes, welcome }) {
     const tapped = duckAt(x, y);
     if (tapped >= 0) { selected = tapped; return; }
     if (snap.music && Math.hypot(xy[0] - snap.music[0], xy[1] - snap.music[1]) < 0.4) {  // each tap steps the volume
+      if (!playlist.failed) {  // a page cannot set the Spotify player's volume, so a tap turns it off and on
+        const on = snap.music_volume === 0;
+        act("garden.volume", { level: on ? 1 : 0 });
+        panels.say(on ? "music on. Use your device's volume to make it louder or quieter" : "music off");
+        return;
+      }
       const levels = [0, 0.25, 0.5, 0.75, 1];
       const at = levels.findIndex(l => Math.abs(l - snap.music_volume) < 0.13);
       const volume = levels[(at + 1) % levels.length];

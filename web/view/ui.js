@@ -32,7 +32,7 @@ export const CONTROLS = [
     ["D", "set the drum down at the pointer, or pick it back up"],
     ["I", "leave an instrument at the pointer, one of ten, picked at random. The toolbar's may be the drum"],
     ["M", "set the music box down at the pointer, or pick it back up"],
-    ["tap the music box", "turn it up, turn it down, turn it off"],
+    ["tap the music box", "turn it off and on; your device sets how loud Spotify plays"],
     ["C", "clap, which startles every duck"],
   ]],
   ["the view", [
