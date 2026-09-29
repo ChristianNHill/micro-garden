@@ -164,6 +164,7 @@ class Snapshot:
             "kicking": i in kicks and stub.t - kicks[i][0] < KICKING_S,
             "drumming": i in taps and stub.t - taps[i][0] < 0.5,
             "hurt": i in hits and stub.t - hits[i] < HURT_S,
+            "comforting": bool(showing and emote[2] == "comfort"), "loved": False,
             "emote": emote[2] if showing else "", "emote_t": round(emote[0], 2) if showing else -1.0,
             "crying": bool(stub.crying_until[i] > stub.t),
             "label": "", "asleep": False, "mood": "", "strength": 0.0, "hunger": 0.0, "thirst": 0.0, "sleepy": 0.0,
@@ -177,7 +178,8 @@ class Snapshot:
             mood = "content"
         level = lambda name: round(float(getattr(body, name)[i]), 2)
         duck.update(asleep=bool(body.asleep[i]), mood=mood, strength=round(strength, 2), tune=round(float(body.music_skill[i]), 2),
-                    hunger=level("hunger"), thirst=level("thirst"), sleepy=level("sleep_pressure"))
+                    hunger=level("hunger"), thirst=level("thirst"), sleepy=level("sleep_pressure"),
+                    loved=bool(body.loved_until[i] > stub.t))
         if not self.blind:
             duck.update(label=label_of(body.k, i), knobs={k: round(float(body.k[k][i]), 2) for k in SHAPE_KNOBS})
         if i == self.watched:  # selected duck only: ~400 bytes

@@ -4,7 +4,7 @@
 import * as THREE from "three";
 import * as Ink from "./ink.js";
 import * as Hats from "./hats.js";
-import { faceModel } from "./faces.js";
+import { faceModel, heartModel } from "./faces.js";
 
 export const CELL = 5.0;
 export const LOOK = 1.9;
@@ -112,6 +112,9 @@ export class Duck extends THREE.Group {
     this.bandage.scale.setScalar(LOOK);
     this.bandage.visible = false;
     this.add(this.bandage);
+    // a heart over a duck giving comfort, or over one glad to be comforted
+    this.hearts = { giving: heartModel("giving", 0.07), glad: heartModel("glad", 0.07) };
+    for (const h of Object.values(this.hearts)) { h.scale.setScalar(LOOK); h.visible = false; this.add(h); }
     this.tears = [0, 1].map(() => { const t = Ink.part(this, Ink.ball(0.012, 6), new THREE.Color("#4f9fe0"), [0, 0, 0], [1, 1.5, 1], { cell: CELL, tone: 0.9 }); t.visible = false; return t; });
     this.hat = null; this.hatStyle = -1;
     this.state = null;
@@ -319,8 +322,17 @@ export class Duck extends THREE.Group {
     this.mood.scale.setScalar((0.6 + 0.9 * s.strength) * LOOK);
     // the bandage floats over the head, or over the mood face when one shows
     const faceShows = !!shape && s.strength > 0.25 && !s.asleep;
+    // over the head, one above another: the mood face, the bandage, the heart
+    let y = this.moodAt + (faceShows ? 0.075 * this.mood.scale.x / 2 + 0.05 * LOOK : 0);
     this.bandage.visible = !!s.hurt;
-    this.bandage.position.y = this.moodAt + (faceShows ? 0.075 * this.mood.scale.x / 2 + 0.05 * LOOK : 0);
+    this.bandage.position.y = y;
+    if (s.hurt) y += 0.09 * LOOK;
+    this.hearts.giving.visible = !!s.comforting && !s.asleep;
+    this.hearts.glad.visible = !!s.loved && !s.asleep && !s.comforting;
+    for (const h of Object.values(this.hearts)) h.position.y = y;
+    const heart = this.hearts.giving.visible || this.hearts.glad.visible;
+    this.signAt = Math.max(this.moodAt + 0.12, y + (heart ? 0.1 * LOOK : s.hurt ? 0.02 * LOOK : 0));  // the word sits above every mark
+    this.hearts.glad.scale.setScalar(LOOK * (1 + 0.12 * Math.max(0, Math.sin(t * 7)) * this.calm));  // it beats
     const shaking = shape === "spike" || shape === "block";  // a scared face trembles and an angry one shakes
     this.mood.position.x = shaking ? Math.sin(t * (shape === "spike" ? 40 : 18)) * 0.006 * this.calm : 0;
     this.mood.position.y = this.moodAt + (shape === "ball" ? Math.abs(Math.sin(t * 3)) * 0.012 * this.calm : 0);  // joy bobs

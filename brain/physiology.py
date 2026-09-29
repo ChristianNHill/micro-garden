@@ -70,6 +70,7 @@ class Physiology:
         full = lambda v: np.broadcast_to(np.asarray(v, float), n).copy()
         self.hunger, self.thirst = full(hunger), full(thirst)
         self.fatigue, self.sleep_pressure, self.boredom = full(0.0), full(0.0), full(0.0)
+        self.loved_until = full(-1.0)  # the garden time until which a duck glows from comfort it welcomed, for a viewer
         self.body_temp = full(body_temp)
         self.asleep = np.zeros(n, bool)
         self.alone_s = np.zeros(n)

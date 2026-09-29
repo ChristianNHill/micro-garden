@@ -41,6 +41,7 @@ export class Physiology {
     this.k = Object.fromEntries(KNOBS.map(name => [name, each(personality[name] ?? KNOB_DEFAULT)]));
     this.hunger = each(hunger); this.thirst = each(thirst);
     this.fatigue = each(0); this.sleep_pressure = each(0); this.boredom = each(0);
+    this.loved_until = each(-1);  // the garden time until which a duck glows from comfort it welcomed, for a viewer
     this.body_temp = each(body_temp);
     this.asleep = each(false);
     this.alone_s = each(0);

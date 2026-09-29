@@ -116,6 +116,7 @@ export class Snapshot {
       eating: recent(bites, EATING_S), kicking: recent(kicks, KICKING_S), drumming: recent(taps, 0.5),
       emote: showing ? emote[2] : "", emote_t: showing ? emote[0] : -1.0, crying: stub.crying_until[i] > stub.t,
       hurt: hits.has(i) && stub.t - hits.get(i) < HURT_S,
+      comforting: showing && emote[2] === "comfort", loved: false,
       label: "", asleep: false, mood: "", strength: 0.0, hunger: 0, thirst: 0, sleepy: 0, knobs: {}, readout: [], among: {},
     };
     if (body === null) return duck;
@@ -124,6 +125,7 @@ export class Snapshot {
     if (strength < MOOD_AT) mood = "content";
     Object.assign(duck, {
       asleep: body.asleep[i], mood, strength: r2(strength), tune: r2(body.music_skill[i]),
+      loved: body.loved_until[i] > stub.t,
       hunger: r2(body.hunger[i]), thirst: r2(body.thirst[i]), sleepy: r2(body.sleep_pressure[i]),
       label: label_of(body.k, i), knobs: Object.fromEntries(SHAPE_KNOBS.map(k => [k, r2(body.k[k][i])])),
     });

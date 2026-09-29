@@ -2,7 +2,7 @@
 // needs, moods and wants, the news, the brain as it fires, the ride view's retinas and descending neurons, the
 // controls, and a toolbar for a touch screen. All HTML over the canvas.
 import { HEX } from "../garden/snapshot.js";
-import { faceImage } from "./faces.js";
+import { faceImage, heartImage } from "./faces.js";
 
 export const FEELS = { joy: "happy", fear: "scared", anger: "angry", sorrow: "sad" };
 const SKILLS = ["swimming", "walking", "dancing", "eating", "fighting", "fashion", "music"];
@@ -23,6 +23,8 @@ const MARKS = {
   drop: face("sorrow", "sad face"),
   zs: svg('<text x="2" y="18" font-family="sans-serif" font-weight="700" font-size="13" fill="#1c2a4d">Z</text><text x="12" y="11" font-family="sans-serif" font-weight="700" font-size="9" fill="#1c2a4d">z</text>', "Z z z"),
   bandage: svg('<g transform="rotate(45 11 11)"><rect x="2" y="8" width="18" height="6" rx="2" fill="#f0c8a0" stroke="#1c2a4d" stroke-width="1.2"/></g><g transform="rotate(-45 11 11)"><rect x="2" y="8" width="18" height="6" rx="2" fill="#f0c8a0" stroke="#1c2a4d" stroke-width="1.2"/></g><rect x="8.5" y="8.5" width="5" height="5" transform="rotate(45 11 11)" fill="#dca27a"/>', "bandage"),
+  giving: { label: "pink heart", html: heartImage("giving") },
+  glad: { label: "red heart", html: heartImage("glad") },
   ring: svg('<ellipse cx="11" cy="14" rx="9" ry="4" fill="none" stroke="#ee6f5c" stroke-width="2.5"/>', "red ring"),
 };
 
@@ -66,6 +68,8 @@ export const CONTROLS = [
     [MARKS.drop, "the duck is sad. Blue tears fall when it cries"],
     [MARKS.zs, "the duck is asleep"],
     [MARKS.bandage, "the duck was knocked over, by a shove, a throw or a trip, and has not got over it yet"],
+    [MARKS.giving, "the duck is comforting a friend who is upset"],
+    [MARKS.glad, "the duck was comforted and is glad of it. The heart beats"],
     ["hungry, laughs, dances", "a word shows for a few seconds when the duck feels or does something"],
     [MARKS.ring, "this marks the duck you are following"],
   ]],

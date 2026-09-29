@@ -11,6 +11,7 @@ export const SCENT_HALF = 0.05;
 export const SCENT_CONTRAST = 8.0;
 export const INTENT_S = 20.0;
 export const ARRIVE = { comfort: 0.6, shove: 0.7 };
+export const LOVED_S = 6.0;  // how long a comforted duck that welcomed it shows a heart
 export const MOOD_STEP = 0.25;
 
 export const stimulus = (kind, actor, target = -1, heat = 1.0) => ({ kind, actor, target, heat });
@@ -102,6 +103,7 @@ export class Reactions {
     } else if (response === "cheer") {
       body.joy[w] = Math.min(body.joy[w] + MOOD_STEP, 1.0);
       body.bond[w][s.actor] += 0.05;
+      if (s.kind === "comfort" && w === s.target) body.loved_until[w] = t + LOVED_S;  // the duck comforted, and glad of it
     } else if (response === "anger" || response === "sadden" || response === "fear") {
       const mood = body[{ anger: "anger", sadden: "sorrow", fear: "fear" }[response]];
       mood[w] = Math.min(mood[w] + MOOD_STEP, 1.0);

@@ -31,6 +31,7 @@ SCENT_HALF = 0.05  # as brain/social.py: a duck about 1.5 m off smells half as p
 SCENT_CONTRAST = 8.0
 INTENT_S = 20.0  # how long a duck keeps trying to get there, long enough to get up first if it was knocked down
 ARRIVE = {"comfort": 0.6, "shove": 0.7}  # near_* summed (1 - metres apart) at which it has got there
+LOVED_S = 6.0  # how long a comforted duck that welcomed it shows a heart
 MOOD_STEP = 0.25  # what an angry duck nearby does to a witness's mood, and a comfort to an onlooker's joy
 
 
@@ -139,6 +140,8 @@ class Reactions:
         elif response == "cheer":
             body.joy[w] = min(body.joy[w] + MOOD_STEP, 1.0)
             body.bond[w, s.actor] += 0.05
+            if s.kind == "comfort" and w == s.target:  # the duck comforted, and glad of it
+                body.loved_until[w] = t + LOVED_S
         elif response in ("anger", "sadden", "fear"):
             mood = getattr(body, {"anger": "anger", "sadden": "sorrow", "fear": "fear"}[response])
             mood[w] = min(mood[w] + MOOD_STEP, 1.0)

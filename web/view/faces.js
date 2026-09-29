@@ -90,3 +90,26 @@ export function faceImage(mood, n = 22) {
   drawFace(canvas.getContext("2d"), mood, n * 2);
   return canvas.toDataURL();
 }
+
+// A puffy heart `size` across, facing +z like the faces: pink for a duck giving comfort, red for one glad to get it.
+export const HEART_COLOURS = { giving: "#f28ca6", glad: "#e0435b" };
+export function heartModel(kind, size) {
+  const s = new THREE.Shape();  // a heart 2 wide, point down, drawn around its middle
+  s.moveTo(0, -1);
+  s.bezierCurveTo(-0.35, -0.6, -1, -0.2, -1, 0.3);
+  s.bezierCurveTo(-1, 0.8, -0.45, 1.05, 0, 0.6);
+  s.bezierCurveTo(0.45, 1.05, 1, 0.8, 1, 0.3);
+  s.bezierCurveTo(1, -0.2, 0.35, -0.6, 0, -1);
+  const geo = new THREE.ExtrudeGeometry(s, { depth: 0.35, bevelEnabled: true, bevelThickness: 0.25, bevelSize: 0.2, bevelSegments: 4, curveSegments: 14 });
+  geo.center();
+  geo.scale(size / 2, size / 2, size / 2);
+  const g = new THREE.Group();
+  Ink.part(g, geo, new THREE.Color(HEART_COLOURS[kind]), [0, 0, 0], 1, { cell: 6, lift: 0.35, outlined: true });
+  return g;
+}
+
+// The heart as a picture for the controls card.
+export function heartImage(kind, n = 22) {
+  const c = HEART_COLOURS[kind];
+  return `<svg width="${n}" height="${n}" viewBox="0 0 22 22" aria-hidden="true"><path d="M11 19 C7 15 3 12 3 8 C3 5 6 3.5 8.5 4.5 C10 5 11 6.5 11 6.5 C11 6.5 12 5 13.5 4.5 C16 3.5 19 5 19 8 C19 12 15 15 11 19 Z" fill="${c}" stroke="#1c2a4d" stroke-width="1.4" stroke-linejoin="round"/></svg>`;
+}

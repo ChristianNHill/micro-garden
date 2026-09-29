@@ -187,6 +187,7 @@ function run({ garden, brain, brains, eyes, welcome }) {
       snap = garden.snapshot();
       if (midday) { snap.light = 1; snap.day = 0.5; }  // ?record&midday: film in daylight whatever the garden's hour
       if (params.has("hurt")) for (const d of snap.ducks) d.hurt = true;  // ?hurt: every duck bandaged, to check how it looks
+      if (params.has("hearts")) snap.ducks.forEach((d, i) => { d.comforting = i % 2 === 0; d.loved = i % 2 === 1; });  // ?hearts: both hearts, to check how they look
       simSteps++;
       next += STEP_MS;
       const lag = next - performance.now();
@@ -568,6 +569,7 @@ function run({ garden, brain, brains, eyes, welcome }) {
       d.update(dt, now / 1000);
       d.mood.lookAt(camera.position);
       d.bandage.lookAt(camera.position);
+      for (const h of Object.values(d.hearts)) h.lookAt(camera.position);
       d.mood.rotateY(Math.sin(now / 1000 * 1.3 + 2 * i) * 0.45 * calm);
     });
     cameraTo(dt);
