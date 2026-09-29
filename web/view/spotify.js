@@ -6,7 +6,7 @@
 
 export const PLAYLIST = "2vg04PEDQePvRsS7PD3TyS";  // the playlist's id, from its Spotify link: open.spotify.com/playlist/<id>
 // The Client ID of the Spotify app registered for the garden (developer.spotify.com/dashboard). Empty: no Connect button.
-export const CLIENT_ID = "";
+export const CLIENT_ID = "af3086c3d8c945d1b7e156b5d4b3aca4";
 const EMBED_API = "https://open.spotify.com/embed/iframe-api/v1";
 const SDK = "https://sdk.scdn.co/spotify-player.js";
 const SCOPES = "streaming user-read-email user-read-private user-read-playback-state user-modify-playback-state";
