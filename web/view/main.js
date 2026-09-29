@@ -258,8 +258,8 @@ function run({ garden, brain, brains, eyes, welcome }) {
     rebuildIfChanged("instruments", snap.instruments, Props.instrument);
     syncProps("balls", snap.balls, Props.ballProp);
     rebuildIfChanged("balls", snap.balls, Props.ballProp);
-    for (const n of props.balls || []) {  // roll by the distance moved
-      const was = n.userData.was || n.position.clone(), moved = n.position.clone().sub(was);
+    for (const n of props.balls || []) {  // roll by the distance moved along the ground; lifting it does not turn it
+      const was = n.userData.was || n.position.clone(), moved = n.position.clone().sub(was).setY(0);
       n.userData.was = n.position.clone();
       if (moved.length() > 1e-5 && n.userData.ball) n.userData.ball.rotateOnWorldAxis(new THREE.Vector3(moved.z, 0, -moved.x).normalize(), moved.length() / (0.06 * 1.9));
     }

@@ -356,9 +356,9 @@ func _show_props() -> void:
 			for old in props.balls[i].get_children():
 				old.queue_free()
 			_ball(props.balls[i], balls[i])
-	for n in props.get("balls", []):  # roll by the distance moved
+	for n in props.get("balls", []):  # roll by the distance moved along the ground; lifting it does not turn it
 		var ball: Node3D = n.get_child(0)
-		var moved: Vector3 = n.position - n.get_meta("was", n.position)
+		var moved: Vector3 = (n.position - n.get_meta("was", n.position)) * Vector3(1, 0, 1)
 		n.set_meta("was", n.position)
 		if moved.length() > 1e-5:
 			ball.rotate(Vector3(moved.z, 0, -moved.x).normalized(), moved.length() / (0.06 * 1.9))
