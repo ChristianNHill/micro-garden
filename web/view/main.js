@@ -320,10 +320,10 @@ function run({ garden, brain, brains, eyes, welcome }) {
       if (t > (show.heard ?? -1)) { show.heard = t; sound.quack(duck, tag, snap.ducks[duck]?.tune ?? 1); }
     }
     sound.pond(!!snap.pond, snap.light);
-    // the Spotify playlist, or the box's own tune if Spotify will not load
-    const useSpotify = !playlist.failed;
+    // a connected Spotify account plays the playlist; otherwise the box plays its own tune
+    const useSpotify = playlist.connected;
     const musicOn = soundMode === 0;
-    playlist.update(useSpotify && !!snap.music, snap.music_volume * (musicOn ? 1 : 0));
+    playlist.update(!!snap.music, snap.music_volume * (musicOn ? 1 : 0));
     sound.music(!useSpotify && !!snap.music && musicOn, snap.music_volume);
   };
 
@@ -413,12 +413,6 @@ function run({ garden, brain, brains, eyes, welcome }) {
     const tapped = duckAt(x, y);
     if (tapped >= 0) { selected = tapped; return; }
     if (snap.music && Math.hypot(xy[0] - snap.music[0], xy[1] - snap.music[1]) < 0.4) {  // each tap steps the volume
-      if (!playlist.failed && !playlist.canSetVolume) {  // a page cannot set the embedded player's volume, so a tap turns it off and on
-        const on = snap.music_volume === 0;
-        act("garden.volume", { level: on ? 1 : 0 });
-        panels.say(on ? "Music on. Use your device's volume to change how loud it is" : "Music off");
-        return;
-      }
       const levels = [0, 0.25, 0.5, 0.75, 1];
       const at = levels.findIndex(l => Math.abs(l - snap.music_volume) < 0.13);
       const volume = levels[(at + 1) % levels.length];
@@ -606,7 +600,7 @@ function run({ garden, brain, brains, eyes, welcome }) {
     panels.showBrain(!possessing && snap.brain && snap.brain.duck === selected ? snap.brain : null, d ? d.name : "", dt);
     if (snap.brain) snap.brain.spikes = [];  // each spike glows once
     panels.showRide(possessing ? snap.ride : null);
-    const playing = playlist.down ? "" : sound.title;
+    const playing = playlist.connected ? "" : sound.title;
     panels.showToasts(snap.toasts, snap.told, snap.music && playing ? `♪ ${playing}` : "");
     panels.menu.hidden = !helpOn;
     document.body.classList.toggle("menu-open", helpOn);

@@ -80,7 +80,8 @@ export const CONTROLS = [
     ["D", "put the drum down where the pointer is, or pick it back up"],
     ["I", "drop a random instrument, one of ten, where the pointer is. The Instrument button sometimes gives you the drum"],
     ["M", "put the music box down where the pointer is, or pick it back up"],
-    ["tap the music box", "turn the music off or on. Your device's volume sets how loud it plays"],
+    ["tap the music box", "make it louder, step by step, then off"],
+    ["Connect Spotify", "for Spotify Premium accounts Chris has added: the box plays his playlist, and you can skip and shuffle"],
     ["C", "clap your hands, which startles every duck"],
   ]],
   ["the view", [
