@@ -23,7 +23,7 @@ const PITCH = [0.35, 1.25];
 const DRIFT = 0.12;
 const DUCK_TALL = 0.42;
 const KICKED_M = 0.3, KICKED_S = 0.7;
-const SOUND_MODES = [["Sound", "sound on"], ["No music", "music off; the ducks can still be heard"], ["Muted", "all sound off"]];
+const SOUND_MODES = [["Sound", "Sound on"], ["No music", "Music off. You can still hear the ducks"], ["Muted", "All sound off"]];
 const LID_OPEN_M = 0.7;  // how near a garbage can the hand has to bring a thing for the lid to open
 const SAVE_EVERY_S = 60;
 const TAU = 2 * Math.PI;
@@ -126,7 +126,7 @@ async function boot() {
     const [gap, weights] = Save.load(state, garden.server.body, garden.stub);
     garden.server.decoder.stink_affinity = [...garden.server.body.k.stink_affinity];
     if (weights) await Promise.all(brains.map((b, i) => b.call("load", weights[i]).then(() => b.call("rest", { s: gap }))));
-    welcome = gap > 90 ? `welcome back: ${Math.round(gap / 60)} minutes away` : "welcome back";
+    welcome = gap > 90 ? `Welcome back. You were away for ${Math.round(gap / 60)} minutes` : "Welcome back";
   }
   loading.classList.add("ready");
   show("Tap to enter the garden", 1);
@@ -194,7 +194,7 @@ function run({ garden, brain, brains, eyes, welcome }) {
       if (now - lastSave > SAVE_EVERY_S * 1000) { lastSave = now; save(); }
     }
   };
-  step().catch(e => { panels.status.textContent = `the garden stopped: ${e.message}`; console.error(e); });
+  step().catch(e => { panels.status.textContent = `The garden stopped because of an error: ${e.message}`; console.error(e); });
   // A new garden throws the save away; nothing may write it back on the way out.
   let resetting = false, lastWeights = null;
   const save = async () => {
@@ -412,14 +412,14 @@ function run({ garden, brain, brains, eyes, welcome }) {
       if (!playlist.failed) {  // a page cannot set the Spotify player's volume, so a tap turns it off and on
         const on = snap.music_volume === 0;
         act("garden.volume", { level: on ? 1 : 0 });
-        panels.say(on ? "music on. Use your device's volume to make it louder or quieter" : "music off");
+        panels.say(on ? "Music on. Use your device's volume to change how loud it is" : "Music off");
         return;
       }
       const levels = [0, 0.25, 0.5, 0.75, 1];
       const at = levels.findIndex(l => Math.abs(l - snap.music_volume) < 0.13);
       const volume = levels[(at + 1) % levels.length];
       act("garden.volume", { level: volume });
-      panels.say(volume === 0 ? "music off" : `music volume ${Math.round(volume * 100)}%`);
+      panels.say(volume === 0 ? "Music off" : `Music volume ${Math.round(volume * 100)}%`);
       return;
     }
     if (Math.hypot(xy[0] - snap.tree[0], xy[1] - snap.tree[1]) < 0.35) act("garden.shake_tree");
@@ -506,7 +506,7 @@ function run({ garden, brain, brains, eyes, welcome }) {
     hand: () => {
       handMode = !handMode;
       if (!handMode && gripping) { gripping = false; letGo(); }
-      panels.say(handMode ? "the hand is out: hold and drag to pick things up" : "the hand is put away");
+      panels.say(handMode ? "Your hand is in the garden. Hold and drag to pick something up with it" : "Your hand is out of the garden");
     },
     sound: () => {  // everything, then the ducks without the music, then nothing
       soundMode = (soundMode + 1) % SOUND_MODES.length;
@@ -627,7 +627,7 @@ function run({ garden, brain, brains, eyes, welcome }) {
       const fps = frames * 1000 / (now - frameSince);
       frames = 0; frameSince = now;
       if (fps < 30 && pixelRatio > 1) { pixelRatio = Math.max(1, pixelRatio - 0.5); resize(); }
-      panels.status.textContent = speed < 0.93 ? `the brains are running at ${speed.toFixed(2)}× real time on this device` : "";
+      panels.status.textContent = speed < 0.93 ? `This device runs the brains at ${speed.toFixed(2)} times real speed, so the ducks move slowly` : "";
     }
   };
   nextFrame(frame);

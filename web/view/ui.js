@@ -19,7 +19,7 @@ const face = (mood, label) => ({ label, html: `<img src="${faceImage(mood)}" wid
 const MARKS = {
   ball: face("joy", "happy face"),
   spike: face("fear", "scared face"),
-  block: face("anger", "cross face"),
+  block: face("anger", "angry face"),
   drop: face("sorrow", "sad face"),
   zs: svg('<text x="2" y="18" font-family="sans-serif" font-weight="700" font-size="13" fill="#1c2a4d">Z</text><text x="12" y="11" font-family="sans-serif" font-weight="700" font-size="9" fill="#1c2a4d">z</text>', "Z z z"),
   ring: svg('<ellipse cx="11" cy="14" rx="9" ry="4" fill="none" stroke="#ee6f5c" stroke-width="2.5"/>', "red ring"),
@@ -27,42 +27,42 @@ const MARKS = {
 
 export const CONTROLS = [
   ["the ducks", [
-    ["tap a duck", "watch this one: its needs, its moods, its brain and who its friends are"],
-    ["tap the grass", "stop watching"],
-    ["Tab", "ride the duck you are watching. W A S D steer it, O hides what it sees"],
-    ["P", "pet it"],
-    ["G", "hand it a fruit"],
+    ["tap a duck", "follow that duck and see its needs, moods, brain and friends"],
+    ["tap the grass", "stop following it"],
+    ["Tab", "ride the duck you are following. W A S D steers it, and O hides what it sees"],
+    ["P", "pet the duck you are following"],
+    ["G", "give the duck you are following a fruit"],
   ]],
   ["your hand", [
     ["H", "reach into the garden, or take your hand back out"],
     ["hold and drag", "carry a fruit, a hat, a ball, an instrument, the music box or a duck"],
-    ["let go while moving", "throw it, except a fruit, which just drops. A duck you throw thinks less of you"],
-    ["the garbage can", "carry a thing to it and the lid opens. Drop or throw it in and it is gone. Ducks cannot go in"],
+    ["let go while moving", "throw what you are carrying. A fruit drops instead of flying. A duck you throw will trust you less"],
+    ["the garbage can", "carry something to it and the lid opens. Drop or throw it in to get rid of it. Ducks cannot go in"],
   ]],
-  ["over a duck's head", [
-    [MARKS.ball, "joy. The bigger the face, the happier it is"],
-    [MARKS.spike, "fear. The face trembles while the duck is scared"],
-    [MARKS.block, "anger. The face shakes while the duck is cross"],
-    [MARKS.drop, "sorrow. Blue tears fall when it cries"],
-    [MARKS.zs, "it is asleep"],
-    ["hungry, thirsty", "a word for a moment: what it feels, or what it does, like laughs, sings or dances"],
-    [MARKS.ring, "the duck you are watching, under its feet"],
+  ["above a duck's head", [
+    [MARKS.ball, "the duck is happy. The bigger the face, the happier it is"],
+    [MARKS.spike, "the duck is scared. The face trembles until it calms down"],
+    [MARKS.block, "the duck is angry. The face shakes until it calms down"],
+    [MARKS.drop, "the duck is sad. Blue tears fall when it cries"],
+    [MARKS.zs, "the duck is asleep"],
+    ["hungry, laughs, dances", "a word shows for a few seconds when the duck feels or does something"],
+    [MARKS.ring, "this marks the duck you are following"],
   ]],
   ["the garden", [
-    ["F, or tap the tree", "shake fruit down"],
-    ["T", "leave a hat at the pointer, for whoever wants it"],
-    ["B", "leave a ball at the pointer"],
-    ["D", "set the drum down at the pointer, or pick it back up"],
-    ["I", "leave an instrument at the pointer, one of ten, picked at random. The toolbar's may be the drum"],
-    ["M", "set the music box down at the pointer, or pick it back up"],
-    ["tap the music box", "turn it off and on; your device sets how loud Spotify plays"],
-    ["C", "clap, which startles every duck"],
+    ["F, or tap the tree", "shake some fruit off the tree"],
+    ["T", "drop a hat where the pointer is, for any duck that wants it"],
+    ["B", "drop a ball where the pointer is"],
+    ["D", "put the drum down where the pointer is, or pick it back up"],
+    ["I", "drop a random instrument, one of ten, where the pointer is. The Instrument button sometimes gives you the drum"],
+    ["M", "put the music box down where the pointer is, or pick it back up"],
+    ["tap the music box", "turn the music off or on. Your device's volume sets how loud it plays"],
+    ["C", "clap your hands, which startles every duck"],
   ]],
   ["the view", [
-    ["drag", "turn the camera. Right-drag instead while your hand is out"],
+    ["drag", "turn the camera. While your hand is in the garden, drag with the right button instead"],
     ["scroll or pinch", "zoom in and out"],
-    ["Sound", "tap to step through: everything, the ducks without the music, and no sound at all"],
-    ["/", "open and close this"],
+    ["Sound", "tap to switch between all sound, the ducks with no music, and silence"],
+    ["/", "open or close this card"],
   ]],
 ];
 
@@ -107,7 +107,7 @@ export class Panels {
     const menu = el("div", "menu", root);
     const card = el("div", "menu-card", menu);
     el("div", "menu-title", card, "MICRO GARDEN");
-    el("div", "menu-under", card, "the controls");
+    el("div", "menu-under", card, "controls");
     const spread = el("div", "menu-spread", card);
     const sides = [el("div", "menu-side", spread), el("div", "menu-side", spread)];
     CONTROLS.forEach(([head, rows], s) => {
@@ -154,8 +154,8 @@ export class Panels {
     const on = !!brain && !!this.points;
     this.brain.hidden = !on;
     if (!on) { this.glow.clear(); return; }
-    this.brainTitle.textContent = `${name}'s Brain`;
-    this.brainUnder.textContent = `${this.points.n.toLocaleString()} of its ${this.points.of.toLocaleString()} neurons, as they fire`;
+    this.brainTitle.textContent = `${name}'s brain`;
+    this.brainUnder.textContent = `${this.points.n.toLocaleString()} of its ${this.points.of.toLocaleString()} neurons, lighting up as they fire`;
     for (const k of brain.spikes || []) this.glow.set(k, 1);
     const c = this.brainCanvas, g = c.getContext("2d"), { across, top, dpr } = this.brainScale, { xy, group } = this.points;
     g.setTransform(1, 0, 0, 1, 0, 0);

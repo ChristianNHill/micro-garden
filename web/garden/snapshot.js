@@ -20,7 +20,7 @@ export const FRUIT_NAMES = ["oranges", "apples", "bananas", "pears", "cherries",
 const TOAST_FORMATS = [["eaten", "{who} ate"], ["headbutts", "{who} shoved {other}"], ["pets", "{who} was petted"], ["emotes", "{who} {other}"],
                        ["kicks", "{who} kicked the ball"], ["drums", "{who} played the {other}"], ["given", "{who} was handed a fruit"],
                        ["throws", "{who} was thrown"], ["donned", "{who} put a hat on"], ["preened", "{who} shook its hat off"], ["fails", "{who} {other}"],
-                       ["binned", "{who} went in the bin"]];
+                       ["binned", "{who} went in the garbage can"]];
 // where each of an eye's 721 columns looks, from -1 to 1 across the eye's field
 const WIDE = Math.max(...HEX_AZ.map(Math.abs));
 export const HEX = { az: Array.from(HEX_AZ, a => a / WIDE), el: Array.from(HEX_EL, e => e / WIDE) };

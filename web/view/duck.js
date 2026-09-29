@@ -307,7 +307,7 @@ export class Duck extends THREE.Group {
     const s = this.state, shape = MOOD_SHAPES[s.mood] ?? "";
     for (const [name, mesh] of Object.entries(this.moodShapes)) mesh.visible = name === shape && s.strength > 0.25 && !s.asleep;
     this.mood.scale.setScalar((0.6 + 0.9 * s.strength) * LOOK);
-    const shaking = shape === "spike" || shape === "block";  // a scared face trembles and a cross one shakes
+    const shaking = shape === "spike" || shape === "block";  // a scared face trembles and an angry one shakes
     this.mood.position.x = shaking ? Math.sin(t * (shape === "spike" ? 40 : 18)) * 0.006 * this.calm : 0;
     this.mood.position.y = this.moodAt + (shape === "ball" ? Math.abs(Math.sin(t * 3)) * 0.012 * this.calm : 0);  // joy bobs
     this.sign = s.asleep ? "" : (this.emoteAge < EMOTE_S + 0.6 ? DOES[this.emote] ?? this.emote : "");
