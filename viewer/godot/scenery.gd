@@ -148,21 +148,41 @@ static func build(root: Node3D, snap: Dictionary, falls: Array, viewer: Vector3,
 	return [summit, far_summit]
 
 
+# A cave mouth's outline, flat on the ground with straight sides and a rounded top, facing +z. Both windings, since
+# the print shader draws front faces only.
+static func arch_mesh(width: float, side: float, segments := 14) -> ArrayMesh:
+	var r := width / 2.0
+	var rim: Array[Vector3] = [Vector3(-r, 0, 0), Vector3(r, 0, 0)]
+	for k in segments + 1:
+		var a := PI * k / segments
+		rim.append(Vector3(r * cos(a), side + r * sin(a), 0))
+	rim.append(Vector3(-r, 0, 0))
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var centre := Vector3(0, side * 0.5, 0)
+	for k in rim.size() - 1:
+		for tri in [[centre, rim[k], rim[k + 1]], [centre, rim[k + 1], rim[k]]]:
+			for v in tri:
+				st.add_vertex(v)
+	st.generate_normals()
+	return st.commit()
+
+
 # The falls come out of the cliff: a wide mass of rock like the cliffs round it, standing on the highest step and
-# leaning back into the corner cliffs, with a dark arch in its face and the water running out over the lip.
+# leaning back into the corner cliffs, with a cave mouth in its face and the water running out over the lip.
 static func cave(root: Node3D, s: Array, toward: Vector2, rng: RandomNumberGenerator) -> void:
 	var r: float = s[2]
 	var h: float = s[3]
-	var turn := atan2(toward.y, toward.x)
 	var at := func(d: float, y: float) -> Vector3: return Vector3(s[0] + toward.x * d, y, -(s[1] + toward.y * d))
 	var big := 0.95 * r
 	var back := 0.25 * r
 	place_lump(root, at.call(back, h - 0.1), big, 1.4, rng, ROCK, LAWN, 11, 0.75, 0.04)
-	var face := back - 1.07 * big  # just proud of the rock
-	var mouth := Ink.part(root, Ink.cone(0.36, 0.02, 0.36, 18), Ink.NAVY, at.call(face, h + 0.01), Vector3.ONE, 7.0, 0.05)
-	mouth.rotation = Vector3(0, turn, PI / 2)  # a dark disc, its lower half sunk in the step: an arch
-	var spill := Ink.part(root, BoxMesh.new(), WATER, at.call((face - 0.93 * r) / 2.0, h + 0.02), Vector3(maxf(face + 0.93 * r, 0.05), 0.03, 0.5), 8.0, 0.97)
-	spill.rotation.y = turn
+	var face := back - 1.07 * big  # just in front of the rock, so none of the mouth is hidden
+	var out := atan2(-toward.x, toward.y)  # turns +z to face the pond
+	Ink.part(root, arch_mesh(0.74, 0.3), ROCK, at.call(face, h - 0.02), Vector3.ONE, 7.0, 0.35).rotation.y = out  # a darker rim
+	Ink.part(root, arch_mesh(0.6, 0.24), Ink.NAVY, at.call(face - 0.01, h - 0.02), Vector3.ONE, 7.0, 0.02).rotation.y = out
+	var spill := Ink.part(root, BoxMesh.new(), WATER, at.call((face - 0.93 * r) / 2.0, h + 0.01), Vector3(maxf(face + 0.93 * r, 0.05), 0.03, 0.5), 8.0, 0.97)
+	spill.rotation.y = atan2(toward.y, toward.x)
 
 
 static func waterfall(root: Node3D, snap: Dictionary, centre: Vector2, size: float, rng: RandomNumberGenerator, falls: Array) -> void:
@@ -192,7 +212,6 @@ static func waterfall(root: Node3D, snap: Dictionary, centre: Vector2, size: flo
 		falls.append(sheet)
 		if i == steps.size() - 1:
 			cave(root, s, toward, rng)
-	for flank in [-1.0, 1.0]:  # darker rock and a palm either side of the fall
+	for flank in [-1.0, 1.0]:  # darker rock either side of the fall; a palm here would stand inside the cliffs
 		var at3: Vector2 = centre + toward * (p[2] + 0.9) + side * flank * 1.25
 		place_lump(root, Vector3(at3.x, -0.2, -at3.y), 0.75, 1.5, rng)
-		palm(root, Vector3(at3.x, 1.25, -at3.y), 0.7, rng)

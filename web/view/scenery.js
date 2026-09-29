@@ -127,18 +127,32 @@ export function build(root, snap, viewer) {
   return { summits: [summit, far], falls, reeds };
 }
 
+// A cave mouth's outline, flat on the ground with straight sides and a rounded top, facing +z.
+function archGeometry(width, side, segments = 14) {
+  const r = width / 2, shape = new THREE.Shape();
+  shape.moveTo(-r, 0);
+  shape.lineTo(r, 0);
+  shape.lineTo(r, side);
+  shape.absarc(0, side, r, 0, Math.PI, false);
+  shape.lineTo(-r, 0);
+  return new THREE.ShapeGeometry(shape, segments);
+}
+
 // The falls come out of the cliff: a wide mass of rock like the cliffs round it, standing on the highest step and
-// leaning back into the corner cliffs, with a dark arch in its face and the water running out over the lip.
-function cave(root, [x, y, r, h], toward, turn, rng) {
+// leaning back into the corner cliffs, with a cave mouth in its face and the water running out over the lip.
+function cave(root, [x, y, r, h], toward, rng) {
   const at = d => [x + toward[0] * d, -(y + toward[1] * d)];
-  const R = 0.95 * r, back = 0.25 * r;
+  const big = 0.95 * r, back = 0.25 * r;
   const [cx, cz] = at(back);
-  placeLump(root, [cx, h - 0.1, cz], R, 1.4, rng, ROCK, LAWN, 11, 0.75, 0.04);
-  const face = back - 1.07 * R;  // just proud of the rock
-  const [mx, mz] = at(face);  // the arch: a dark disc, its lower half sunk in the step
-  Ink.part(root, Ink.cone(0.36, 0.02, 0.36, 18), Ink.NAVY, [mx, h + 0.01, mz], 1, { tone: 0.05 }).rotation.set(0, turn, Math.PI / 2);
-  const [wx, wz] = at((face - 0.93 * r) / 2);  // the water, from the arch over the lip of the step
-  Ink.part(root, Ink.box(), WATER, [wx, h + 0.02, wz], [Math.max(face + 0.93 * r, 0.05), 0.03, 0.5], { cell: 8, tone: 0.97 }).rotation.y = turn;
+  placeLump(root, [cx, h - 0.1, cz], big, 1.4, rng, ROCK, LAWN, 11, 0.75, 0.04);
+  const face = back - 1.07 * big;  // just in front of the rock, so none of the mouth is hidden
+  const out = Math.atan2(-toward[0], toward[1]);  // turns +z to face the pond
+  const [rx, rz] = at(face);
+  Ink.part(root, archGeometry(0.74, 0.3), ROCK, [rx, h - 0.02, rz], 1, { tone: 0.35 }).rotation.y = out;  // a darker rim
+  const [mx, mz] = at(face - 0.01);
+  Ink.part(root, archGeometry(0.6, 0.24), Ink.NAVY, [mx, h - 0.02, mz], 1, { tone: 0.02 }).rotation.y = out;
+  const [wx, wz] = at((face - 0.93 * r) / 2);  // the water, from the mouth over the lip of the step
+  Ink.part(root, Ink.box(), WATER, [wx, h + 0.01, wz], [Math.max(face + 0.93 * r, 0.05), 0.03, 0.5], { cell: 8, tone: 0.97 }).rotation.y = Math.atan2(toward[1], toward[0]);
 }
 
 // Pale columns stepping down from the cliff into the pond, with water sheets on them.
@@ -159,11 +173,10 @@ function waterfall(root, snap, centre, size, rng, falls) {
     const sheet = Ink.part(root, Ink.box(), WATER, [x - toward[0] * r * 0.93, h / 2, -y + toward[1] * r * 0.93], [0.05, h, 0.5], { cell: 8, tone: 0.97 });
     sheet.rotation.y = turn;
     falls.push(sheet);
-    if (k === steps.length - 1) cave(root, [x, y, r, h], toward, turn, rng);
+    if (k === steps.length - 1) cave(root, [x, y, r, h], toward, rng);
   });
-  for (const flank of [-1, 1]) {  // darker rock and a palm either side of the fall
+  for (const flank of [-1, 1]) {  // darker rock either side of the fall; a palm here would stand inside the cliffs
     const at = [centre[0] + toward[0] * (pr + 0.9) + side[0] * flank * 1.25, centre[1] + toward[1] * (pr + 0.9) + side[1] * flank * 1.25];
     placeLump(root, [at[0], -0.2, -at[1]], 0.75, 1.5, rng);
-    palm(root, [at[0], 1.25, -at[1]], 0.7, rng);
   }
 }
