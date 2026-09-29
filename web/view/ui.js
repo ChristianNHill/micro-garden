@@ -26,6 +26,25 @@ const MARKS = {
   ring: svg('<ellipse cx="11" cy="14" rx="9" ry="4" fill="none" stroke="#ee6f5c" stroke-width="2.5"/>', "red ring"),
 };
 
+// On a touch screen the card names the on-screen buttons instead of keys, and leaves out what only a keyboard does.
+const TOUCH = {
+  "Tab": ["Ride", "ride the duck you are following. The arrows on screen steer it"],
+  "P": ["Pet", "pet the duck you are following"],
+  "G": ["Give a fruit", "give the duck you are following a fruit"],
+  "H": ["Hand", "reach into the garden, or take your hand back out"],
+  "F, or tap the tree": ["Shake the tree, or tap the tree", "shake some fruit off the tree"],
+  "T": ["Hat", "drop a hat in the garden, for any duck that wants it"],
+  "B": ["Ball", "drop a ball in the garden"],
+  "D": null,
+  "I": ["Instrument", "drop a random instrument, one of ten, in the garden. Sometimes it is the drum"],
+  "M": ["Music box", "put the music box in the garden, or take it away"],
+  "C": ["Clap", "clap your hands, which startles every duck"],
+  "drag": ["drag", "turn the camera"],
+  "scroll or pinch": ["pinch", "zoom in and out"],
+  "/": ["/ controls", "open or close this card"],
+};
+const touch = matchMedia("(pointer: coarse)").matches;
+
 export const CONTROLS = [
   ["the ducks", [
     ["tap a duck", "follow that duck and see its needs, moods, brain and friends"],
@@ -116,7 +135,11 @@ export class Panels {
       const holder = el("div", "menu-section", sides[s < CONTROLS.length / 2 ? 0 : 1]);
       el("div", "menu-head", holder, head);
       const grid = el("div", "menu-grid", holder);
-      for (const [key, what] of rows) {
+      for (let [key, what] of rows) {
+        if (touch && typeof key === "string" && key in TOUCH) {
+          if (!TOUCH[key]) continue;
+          [key, what] = TOUCH[key];
+        }
         if (typeof key === "string") el("span", "key", grid, key);
         else { const mark = el("span", "key mark", grid); mark.innerHTML = key.html; el("span", null, mark, key.label); }
         el("span", "what", grid, what);

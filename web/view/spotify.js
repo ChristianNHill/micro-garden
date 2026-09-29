@@ -29,7 +29,8 @@ export class SpotifyBox {
     const before = window.onSpotifyIframeApiReady;
     window.onSpotifyIframeApiReady = api => {
       if (before) before(api);
-      api.createController(slot, { uri: `spotify:playlist:${this.playlist}`, width: 352, height: 152 }, controller => {
+      const narrow = matchMedia("(max-width: 760px)").matches;  // a phone gets Spotify's compact player
+      api.createController(slot, { uri: `spotify:playlist:${this.playlist}`, width: narrow ? "100%" : 352, height: narrow ? 80 : 152 }, controller => {
         this.controller = controller;
         controller.addListener("ready", () => { this.ready = true; this._apply(); });
       });

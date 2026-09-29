@@ -607,6 +607,7 @@ function run({ garden, brain, brains, eyes, welcome }) {
     const playing = playlist.down ? "" : sound.title;
     panels.showToasts(snap.toasts, snap.told, snap.music && playing ? `♪ ${playing}` : "");
     panels.menu.hidden = !helpOn;
+    document.body.classList.toggle("menu-open", helpOn);
     document.body.classList.toggle("riding", possessing);
     document.body.classList.toggle("watching", selected >= 0);
     document.body.classList.toggle("hand", handMode);
