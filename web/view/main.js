@@ -567,6 +567,7 @@ function run({ garden, brain, brains, eyes, welcome }) {
     ducks.forEach((d, i) => {  // a mood face looks at you, turning a little from side to side so it reads as a ball
       d.update(dt, now / 1000);
       d.mood.lookAt(camera.position);
+      d.bandage.lookAt(camera.position);
       d.mood.rotateY(Math.sin(now / 1000 * 1.3 + 2 * i) * 0.45 * calm);
     });
     cameraTo(dt);

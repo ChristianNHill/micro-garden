@@ -89,17 +89,6 @@ export class Duck extends THREE.Group {
       }
     }
     this.head = this.frames[robot.hat.body];
-    // a bandage, two crossed strips with a pad, across the top of the head a little to one side, for a duck that was hit
-    this.bandage = new THREE.Group();
-    const seat = robot.hat.at;
-    this.bandage.position.set(seat[0] - 0.008, 0.016, seat[2] + 0.006);  // the head's up is +x, so the strips lie across y and z
-    const tan = new THREE.Color("#f0c8a0"), pad = new THREE.Color("#dca27a");
-    for (const turn of [Math.PI / 4, -Math.PI / 4]) {
-      Ink.part(this.bandage, Ink.box(), tan, [0, 0, 0], [0.004, 0.05, 0.013], { cell: CELL, outlined: true }).rotation.x = turn;
-    }
-    Ink.part(this.bandage, Ink.box(), pad, [0.0015, 0, 0], [0.004, 0.015, 0.015], { cell: CELL }).rotation.x = Math.PI / 4;
-    this.bandage.visible = false;
-    this.head.add(this.bandage);
     this.frames.neck_pitch.scale.setScalar(0.9 + 0.3 * k("vanity"));
     const foot = 0.1 * LOOK * size * girth;
     this.shadow = Ink.part(this, Ink.cone(foot, 0.001, foot, 12), Ink.GRASS, [0, 0.003, 0], 1, { tone: 0.35 });
@@ -113,6 +102,16 @@ export class Duck extends THREE.Group {
     const face = mood => { const f = faceModel(mood, 0.075); this.mood.add(f); return f; };  // turned to the camera by the page
     this.moodShapes = { ball: face("joy"), spike: face("fear"), block: face("anger"), drop: face("sorrow") };
     this.signAt = this.mood.position.y + 0.12;
+    // a bandage floating over the head of a duck that was hit, two crossed strips with a pad, facing +z like the faces
+    this.bandage = new THREE.Group();
+    const tan = new THREE.Color("#f0c8a0"), pad = new THREE.Color("#dca27a");
+    for (const turn of [Math.PI / 4, -Math.PI / 4]) {
+      Ink.part(this.bandage, Ink.box(), tan, [0, 0, 0], [0.075, 0.022, 0.008], { cell: CELL, outlined: true }).rotation.z = turn;
+    }
+    Ink.part(this.bandage, Ink.box(), pad, [0, 0, 0.003], [0.022, 0.022, 0.008], { cell: CELL }).rotation.z = Math.PI / 4;
+    this.bandage.scale.setScalar(LOOK);
+    this.bandage.visible = false;
+    this.add(this.bandage);
     this.tears = [0, 1].map(() => { const t = Ink.part(this, Ink.ball(0.012, 6), new THREE.Color("#4f9fe0"), [0, 0, 0], [1, 1.5, 1], { cell: CELL, tone: 0.9 }); t.visible = false; return t; });
     this.hat = null; this.hatStyle = -1;
     this.state = null;
@@ -149,7 +148,6 @@ export class Duck extends THREE.Group {
     for (const leg of ["yaw2roll", "bearing_roll"]) this.frames[leg].visible = !s.swimming;
     this.shadow.visible = !s.swimming;
     this._wear();
-    this.bandage.visible = !!this.state.hurt;
     this._nod(angle, t);
     for (const [name, [node, axis]] of Object.entries(this.hinges)) {
       node.quaternion.slerp(new THREE.Quaternion().setFromAxisAngle(axis, angle[name] ?? 0), Math.min(1, 9 * dt));
@@ -319,6 +317,10 @@ export class Duck extends THREE.Group {
     const s = this.state, shape = MOOD_SHAPES[s.mood] ?? "";
     for (const [name, mesh] of Object.entries(this.moodShapes)) mesh.visible = name === shape && s.strength > 0.25 && !s.asleep;
     this.mood.scale.setScalar((0.6 + 0.9 * s.strength) * LOOK);
+    // the bandage floats over the head, or over the mood face when one shows
+    const faceShows = !!shape && s.strength > 0.25 && !s.asleep;
+    this.bandage.visible = !!s.hurt;
+    this.bandage.position.y = this.moodAt + (faceShows ? 0.075 * this.mood.scale.x / 2 + 0.05 * LOOK : 0);
     const shaking = shape === "spike" || shape === "block";  // a scared face trembles and an angry one shakes
     this.mood.position.x = shaking ? Math.sin(t * (shape === "spike" ? 40 : 18)) * 0.006 * this.calm : 0;
     this.mood.position.y = this.moodAt + (shape === "ball" ? Math.abs(Math.sin(t * 3)) * 0.012 * this.calm : 0);  // joy bobs
