@@ -79,6 +79,7 @@ static func build(root: Node3D, snap: Dictionary, falls: Array, viewer: Vector3,
 	var size: float = snap.size
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 11
+	var layout := falls_layout(snap, size)
 	# the plateau: one big lump under the lawn
 	var under := lump(0.75 * size, 2.0, rng, 14, 3, 1.08, 0.04, 0.0)  # flat on top: the lawn is y = 0 everywhere
 	var mid := Vector3(size / 2, -2.002, -size / 2)  # just under the pond and the shade, which lie on it
@@ -97,6 +98,17 @@ static func build(root: Node3D, snap: Dictionary, falls: Array, viewer: Vector3,
 			var h: float = rng.randf_range(1.7, 2.5) + 1.3 * corner
 			var out: float = r * 0.78 + 0.3 + rng.randf_range(0.0, 0.25)  # 0.3 back: the rocks stand no further into the lawn than CLIFF_M
 			var at := Vector3(along, -0.3, -(size + out)) if edge == 0 else Vector3(size + out, -0.3, -along)
+			for tries in (20 if not layout.is_empty() else 0):  # back away from the falls, or the cliff would swallow them
+				var hit := false
+				for c in layout.clear:
+					if Vector2(at.x - c[0], -at.z - c[1]).length() < 1.15 * r + c[2]:
+						hit = true
+				if not hit:
+					break
+				if edge == 0:
+					at.z -= 0.1
+				else:
+					at.x += 0.1
 			place_lump(root, at, r, h, rng)
 			if summit == Vector3.INF or (at - viewer).length() < (summit - viewer).length():
 				summit = at + Vector3(0, h, 0)
@@ -120,8 +132,8 @@ static func build(root: Node3D, snap: Dictionary, falls: Array, viewer: Vector3,
 		var p: Array = snap.pond
 		var centre := Vector2(p[0], p[1])
 		Ink.part(root, Ink.cone(p[2], 0.004, p[2], 28), WATER, Vector3(p[0], 0.003, -p[1]), Vector3.ONE, 8.0, 0.9)
-		if centre.distance_to(Vector2(size, size)) < p[2] + 2.4:
-			waterfall(root, snap, centre, size, rng, falls)
+		if not layout.is_empty():
+			waterfall(root, snap, centre, rng, falls, layout)
 		for i in int(10 * p[2] / 0.35):  # reeds round the open shore
 			var a := rng.randf_range(0.0, TAU)
 			var at := Vector3(p[0] + cos(a) * (p[2] + 0.05), 0.0, -p[1] - sin(a) * (p[2] + 0.05))
@@ -185,15 +197,19 @@ static func cave(root: Node3D, s: Array, toward: Vector2, rng: RandomNumberGener
 	spill.rotation.y = atan2(toward.y, toward.x)
 
 
-static func waterfall(root: Node3D, snap: Dictionary, centre: Vector2, size: float, rng: RandomNumberGenerator, falls: Array) -> void:
-	# Pale columns stepping down from the cliff into the pond, with water sheets on them.
+# Where the falls stand, if the pond is near the corner: the direction up them, each step as [x, y, radius, height,
+# solid], and what the cliffs must keep clear of as [x, y, radius]: each step, and the rock the cave is cut in.
+static func falls_layout(snap: Dictionary, size: float) -> Dictionary:
+	if snap.pond == null:
+		return {}
 	var p: Array = snap.pond
-	var corner := Vector2(size, size)
-	var toward := (corner - centre).normalized()
-	var side := Vector2(-toward.y, toward.x)
+	var centre := Vector2(p[0], p[1])
+	if centre.distance_to(Vector2(size, size)) >= p[2] + 2.4:
+		return {}
+	var toward := (Vector2(size, size) - centre).normalized()
 	# The lowest steps are the world's solid rocks (DEMO_GARDEN); more columns continue up into the cliff.
 	# A garden without rocks gets columns by rule.
-	var steps := []  # [x, y, radius, height, solid in the world]
+	var steps := []
 	for i in snap.get("rocks", []).size():
 		var rock: Array = snap.rocks[i]
 		steps.append([rock[0], rock[1], rock[2], 0.35 + 0.5 * i, true])
@@ -202,6 +218,20 @@ static func waterfall(root: Node3D, snap: Dictionary, centre: Vector2, size: flo
 	while steps.size() < 3:  # any higher and the corner cliffs hide the top, and its cave
 		var last: Array = steps[-1]
 		steps.append([last[0] + toward.x * 0.6, last[1] + toward.y * 0.6, last[2] + 0.12, last[3] + 0.65, false])
+	var top: Array = steps[-1]
+	var clear := []
+	for s in steps:
+		clear.append([s[0], s[1], 1.25 * s[2]])
+	clear.append([top[0] + toward.x * 0.25 * top[2], top[1] + toward.y * 0.25 * top[2], 1.1 * top[2]])
+	return {"toward": toward, "steps": steps, "clear": clear}
+
+
+static func waterfall(root: Node3D, snap: Dictionary, centre: Vector2, rng: RandomNumberGenerator, falls: Array, layout: Dictionary) -> void:
+	# Pale columns stepping down from the cliff into the pond, with water sheets on them.
+	var p: Array = snap.pond
+	var toward: Vector2 = layout.toward
+	var side := Vector2(-toward.y, toward.x)
+	var steps: Array = layout.steps
 	for i in steps.size():
 		var s: Array = steps[i]
 		# a rock the ducks bump into is drawn nearly true to its size, or they would seem to walk into it
@@ -212,6 +242,10 @@ static func waterfall(root: Node3D, snap: Dictionary, centre: Vector2, size: flo
 		falls.append(sheet)
 		if i == steps.size() - 1:
 			cave(root, s, toward, rng)
+	var top: Array = steps[-1]
+	for back in [[2.1, 0.0, 1.3, 3.4], [1.6, -1.1, 1.0, 2.9], [1.6, 1.1, 1.0, 2.9]]:  # tall rock behind, where the cliffs stood back
+		var at2: Vector2 = Vector2(top[0], top[1]) + toward * (back[0] + top[2]) + side * back[1]
+		place_lump(root, Vector3(at2.x, -0.3, -at2.y), back[2], back[3] + top[3] * 0.5, rng)
 	for flank in [-1.0, 1.0]:  # darker rock either side of the fall; a palm here would stand inside the cliffs
 		var at3: Vector2 = centre + toward * (p[2] + 0.9) + side * flank * 1.25
 		place_lump(root, Vector3(at3.x, -0.2, -at3.y), 0.75, 1.5, rng)

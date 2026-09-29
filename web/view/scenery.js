@@ -60,7 +60,7 @@ export function palm(root, at, height, rng) {
 
 // Builds the setting from the first snapshot. Returns the flags' two summits, the waterfall sheets and the reeds.
 export function build(root, snap, viewer) {
-  const rng = new Rng(11), size = snap.size, falls = [], reeds = [];
+  const rng = new Rng(11), size = snap.size, falls = [], reeds = [], layout = fallsLayout(snap, size);
   let summit = null, far = null;
   const d = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
   // the plateau, flat on top at the lawn, and the sea round it
@@ -78,6 +78,11 @@ export function build(root, snap, viewer) {
       const h = rng.uniform(1.7, 2.5) + 1.3 * corner;
       const out = r * 0.78 + 0.3 + rng.uniform(0.0, 0.25);  // 0.3 back: the rocks stand no further into the lawn than CLIFF_M
       const at = edge === 0 ? [along, -0.3, -(size + out)] : [size + out, -0.3, -along];
+      for (let tries = 0; layout && tries < 20; tries++) {  // back away from the falls, or the cliff would swallow them
+        const hit = layout.clear.find(([x, y, c]) => Math.hypot(at[0] - x, -at[2] - y) < 1.15 * r + c);
+        if (!hit) break;
+        if (edge === 0) at[2] -= 0.1; else at[0] += 0.1;
+      }
       placeLump(root, at, r, h, rng);
       const top = [at[0], at[1] + h, at[2]];
       if (summit === null || d(at, viewer) < d(summit, viewer)) summit = top;
@@ -101,7 +106,7 @@ export function build(root, snap, viewer) {
   if (snap.pond) {
     const [px, py, pr] = snap.pond;
     Ink.part(root, Ink.cone(pr, 0.004, pr, 28), WATER, [px, 0.003, -py], 1, { cell: 8, tone: 0.9 });
-    if (Math.hypot(px - size, py - size) < pr + 2.4) waterfall(root, snap, [px, py], size, rng, falls);
+    if (layout) waterfall(root, snap, [px, py], size, rng, falls, layout);
     for (let i = 0; i < Math.trunc(10 * pr / 0.35); i++) {  // reeds round the open shore
       const a = rng.uniform(0, TAU), at = [px + Math.cos(a) * (pr + 0.05), 0, -py - Math.sin(a) * (pr + 0.05)];
       if (at[0] > 0.1 && at[0] < size - 0.4 && -at[2] > 0.1 && -at[2] < size - 0.4) {
@@ -156,16 +161,28 @@ function cave(root, [x, y, r, h], toward, rng) {
 }
 
 // Pale columns stepping down from the cliff into the pond, with water sheets on them.
-function waterfall(root, snap, centre, size, rng, falls) {
-  const [, , pr] = snap.pond;
-  const len = Math.hypot(size - centre[0], size - centre[1]);
-  const toward = [(size - centre[0]) / len, (size - centre[1]) / len], side = [-toward[1], toward[0]];
+// Where the falls stand, if the pond is near the corner: the direction up them and each step as [x, y, r, h, solid].
+function fallsLayout(snap, size) {
+  if (!snap.pond) return null;
+  const [px, py, pr] = snap.pond;
+  if (Math.hypot(px - size, py - size) >= pr + 2.4) return null;
+  const len = Math.hypot(size - px, size - py);
+  const toward = [(size - px) / len, (size - py) / len];
   const steps = (snap.rocks || []).map(([x, y, r], i) => [x, y, r, 0.35 + 0.5 * i, true]);  // true: solid in the world
-  if (!steps.length) steps.push([centre[0] + toward[0] * (pr + 0.1), centre[1] + toward[1] * (pr + 0.1), 0.55, 0.35]);
+  if (!steps.length) steps.push([px + toward[0] * (pr + 0.1), py + toward[1] * (pr + 0.1), 0.55, 0.35]);
   while (steps.length < 3) {  // any higher and the corner cliffs hide the top, and its cave
     const last = steps[steps.length - 1];
     steps.push([last[0] + toward[0] * 0.6, last[1] + toward[1] * 0.6, last[2] + 0.12, last[3] + 0.65]);
   }
+  const [tx, ty, tr] = steps[steps.length - 1];
+  // what the cliffs must keep clear of, as [x, y, radius]: each step, and the rock the cave is cut in
+  const clear = [...steps.map(([x, y, r]) => [x, y, 1.25 * r]), [tx + toward[0] * 0.25 * tr, ty + toward[1] * 0.25 * tr, 1.1 * tr]];
+  return { toward, steps, clear };
+}
+
+function waterfall(root, snap, centre, size, rng, falls, { toward, steps }) {
+  const [, , pr] = snap.pond;
+  const side = [-toward[1], toward[0]];
   const turn = Math.atan2(toward[1], toward[0]);
   steps.forEach(([x, y, r, h, solid], k) => {
     // a rock the ducks bump into is drawn nearly true to its size, or they would seem to walk into it
@@ -175,6 +192,11 @@ function waterfall(root, snap, centre, size, rng, falls) {
     falls.push(sheet);
     if (k === steps.length - 1) cave(root, [x, y, r, h], toward, rng);
   });
+  const [tx, ty, tr, th] = steps[steps.length - 1];
+  for (const [d, across, r, h] of [[2.1, 0, 1.3, 3.4], [1.6, -1.1, 1.0, 2.9], [1.6, 1.1, 1.0, 2.9]]) {  // tall rock behind, where the cliffs stood back
+    const x = tx + toward[0] * (d + tr) + side[0] * across, y = ty + toward[1] * (d + tr) + side[1] * across;
+    placeLump(root, [x, -0.3, -y], r, h + th * 0.5, rng);
+  }
   for (const flank of [-1, 1]) {  // darker rock either side of the fall; a palm here would stand inside the cliffs
     const at = [centre[0] + toward[0] * (pr + 0.9) + side[0] * flank * 1.25, centre[1] + toward[1] * (pr + 0.9) + side[1] * flank * 1.25];
     placeLump(root, [at[0], -0.2, -at[1]], 0.75, 1.5, rng);
