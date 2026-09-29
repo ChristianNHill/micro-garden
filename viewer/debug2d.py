@@ -4,7 +4,7 @@ The garden on the left: food-odor haze, shade tree, pond, stink patches, music, 
 and the ducks as circles with a heading line, a retina fan and a mood halo; it darkens at night. The panel
 on the right shows the selected duck's drives and descending neurons, and a list of recent events.
 
-Debug only, never a gate check. Click a duck to follow it, click the tree to shake it. Keys: Tab take the
+Debug only. Click a duck to follow it, click the tree to shake it. Keys: Tab take the
 wheel of the selected duck (W A S D drive, Tab gives it back), P pet, C clap, F feed at the mouse, M music at
 the mouse, H hat.
 
@@ -31,7 +31,7 @@ EYE_DEG = 55.0
 
 class Viewer:
     def __init__(self, world=None):
-        """`world` gives the garden's size and tree; None means the gates' garden."""
+        """`world` gives the garden's size and tree; None means a default World."""
         self.size, self.tree = (world.size, world.tree) if world is not None else (SIZE_M, TREE)
         self.px = WINDOW_PX / self.size  # pixels per metre
         pygame.init()

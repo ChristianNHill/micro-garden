@@ -378,7 +378,7 @@ export class Stub {
   }
 
   // The lowest and highest a duck's centre may go on either axis. A drawn duck keeps its whole body inside the fence
-  // and off the cliffs, which stand into the lawn along the far edges; a duck in a gate is a point.
+  // and off the cliffs, which stand into the lawn along the far edges; an undrawn duck is a point.
   _walls() {
     if (this.personal_m <= 0) return [DUCK_R, this.world.size - DUCK_R];
     const body = Math.max(DUCK_R, this.personal_m / 2);

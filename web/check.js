@@ -1,5 +1,5 @@
 // Holds the browser garden to the Python one. `runChecks(load)` fetches what web/pack.py wrote (load(path) gives an
-// ArrayBuffer) and returns one row per check: {name, ok, detail}. web/check.html shows them; Gate 15 reads them.
+// ArrayBuffer) and returns one row per check: {name, ok, detail}. web/check.html shows them.
 //
 // The brain must match spike for spike. The eyes are compared within a tolerance, since flyvis sums its inputs in
 // another order. The body, world and readouts run the same inputs as web/parity.py and must agree to rounding.

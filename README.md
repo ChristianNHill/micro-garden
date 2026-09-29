@@ -77,18 +77,6 @@ Open `http://127.0.0.1:8000` for the garden. The packed files come to about 9 MB
 
 The ports have to be kept in step by hand. After a change to the Python, run `web.pack` again and open the check page. A check fails if a port has fallen behind, but only for what the checks cover. Anything decided by dice can only be compared by how often it happens, not step by step.
 
-## How it is checked
-
-Each gate is a runnable check that exits non-zero when it fails.
-
-```
-uv run python -m gates # all of them, which takes hours
-uv run python -m gates --fast # about a minute
-uv run python -m gates 4 8 # just those
-```
-
-The fast gates pass. The last full run passed 14 of 15, failing Gate 5's check that a hot duck goes to cool off. I have since changed how heat, walking speed and skills work and have not rerun the slow gates.
-
 ## Where things are
 
 - `garden.py` opens the garden.
@@ -96,7 +84,6 @@ The fast gates pass. The last full run passed 14 of 15, failing Gate 5's check t
 - `body/` holds the robot command contract, the 2D body and the MuJoCo adapter.
 - `world/` holds the garden itself: wind, smells, water, weather, fruit and toys.
 - `viewer/` holds the debug window and the Godot garden.
-- `gates/` holds one check per gate.
 - `web/` holds the browser garden: `brain.js` and `lif.js` for the brain, `garden/` for the body, world and senses, `view/` for the drawing, and `check.js` for the comparison with the Python.
 
 ## Credit

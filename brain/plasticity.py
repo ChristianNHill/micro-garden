@@ -131,7 +131,7 @@ def strip(W, sets: dict):
 
 
 def demo() -> None:
-    """Coincidence depresses, either alone does not, and the weights come back (Gate 7)."""
+    """Coincidence depresses, either alone does not, and the weights come back."""
     from scipy import sparse
 
     n, kc, mbon = 60, np.arange(0, 50), np.arange(50, 58)

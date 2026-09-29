@@ -1,11 +1,11 @@
-"""The garden for the 2D stub: diffusing smells, temperature, a pond, food dishes, contact (Gates 3, 4b).
+"""The garden for the 2D stub: diffusing smells, temperature, a pond, food dishes, contact.
 
 Coordinates are metres, origin at a corner, x right, y up. Grid cell (i, j) covers x in [i, i+1) * CELL_M.
 Two smells diffuse on their own grids: food (from dishes) and danger (from stink patches).
 """
 import numpy as np
 
-SIZE_M = 4.0  # the garden every gate is measured in; a World can be another size (the demo garden is)
+SIZE_M = 4.0  # a World's default size; the demo garden is 6 m
 GRID = 64
 CELL_M = SIZE_M / GRID  # the same cell whatever the size, so smells spread alike in any garden
 DIFFUSION = 0.2  # per substep, stable below 0.25
@@ -26,7 +26,7 @@ EMIT = 1.0
 DISH_R = 0.08
 DUCK_R = 0.07
 SUN_C, SHADE_C = 30.0, 20.0
-DAY_S = 600.0  # a whole day and night in simulated seconds; short enough that a gate can watch one
+DAY_S = 600.0  # a whole day and night in simulated seconds; short enough to watch a whole one
 NIGHT_C = 8.0  # how much colder the garden gets when the sun is down
 DAWN = 0.15  # fraction of the cycle that dawn and dusk take; the rest is flat day or flat night
 TREE = (1.0, 3.0, 0.7)  # shade centre x, y and radius, unless a World puts its tree elsewhere
@@ -64,7 +64,7 @@ class World:
         self.size, self.tree = float(size), tuple(tree)  # metres along a side, and the tree's (x, y, shade radius)
         self.drum = None  # (x, y) of a drum put down for the ducks, or None
         self.instruments = []  # [x, y, kind] of each other instrument put down (body/stub2d/stub.py INSTRUMENTS)
-        self.balls = np.zeros((0, 4))  # x, y, vx, vy each: toys, which roll (Gate 8b)
+        self.balls = np.zeros((0, 4))  # x, y, vx, vy each: toys, which roll
         self.rocks = np.asarray(rocks, float).reshape(-1, 3)  # (x, y, radius) each: round, solid, and in the way
         self.grid = round(self.size / CELL_M)
         self.wind0 = self.wind = None if wind is None else np.asarray(wind, float)
@@ -78,7 +78,7 @@ class World:
         self.set_food(food_xy, bites)
         self.danger = np.asarray(danger_xy, float).reshape(-1, 2)
         self.pond = pond
-        self.hand = None  # (x, y) while the player's hand is in the garden (Gate 8)
+        self.hand = None  # (x, y) while the player's hand is in the garden
         self.music = None if music is None else (float(music[0]), float(music[1]))
         self.music_volume = 0.75  # 0 to 1: how loud the box plays, to the ducks as to the player
         self.odor = np.zeros((self.grid, self.grid))
@@ -232,7 +232,7 @@ def wind_on(heading, wind) -> tuple[np.ndarray, np.ndarray]:
 
 
 def music_at(sensor_xy, source) -> np.ndarray:
-    """How loud the music is at a point, 1 at the speaker and falling off with distance (Gate 8b)."""
+    """How loud the music is at a point, 1 at the speaker and falling off with distance."""
     if source is None:
         return np.zeros(len(np.atleast_2d(sensor_xy)))
     d = np.linalg.norm(np.atleast_2d(np.asarray(sensor_xy, float)) - np.asarray(source, float), axis=-1)
@@ -240,7 +240,7 @@ def music_at(sensor_xy, source) -> np.ndarray:
 
 
 def duck_odor_at(sensor_xy, duck_xy, exclude: int) -> np.ndarray:
-    """How strongly one duck's antenna smells the others (Gate 8).
+    """How strongly one duck's antenna smells the others.
 
     Worked out per pair rather than diffused on a grid: ducks move every step, and a shared grid would
     have each duck smelling itself loudest. A distance kernel excludes the smeller and is exact.
@@ -252,7 +252,7 @@ def duck_odor_at(sensor_xy, duck_xy, exclude: int) -> np.ndarray:
 
 
 def daylight(t: float) -> float:
-    """How light the garden is, 0 at night and 1 in the day, with a dawn and a dusk (Gate 3).
+    """How light the garden is, 0 at night and 1 in the day, with a dawn and a dusk.
 
     A flat-topped cycle rather than a sine, so most of the day is full daylight.
     """

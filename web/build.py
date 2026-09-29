@@ -5,6 +5,7 @@ Run: uv run python -m web.build     (after web.pack)
 Everything the garden page loads and nothing else: the page, its scripts, the packed brain and eyes, the duck's
 rig and motions, a cover picture, and the licences. The check page and its reference data stay behind.
 """
+import gzip
 import hashlib
 import re
 import shutil
@@ -27,7 +28,9 @@ def stamp(out: Path) -> None:
     its imports' versions, so a change gives new addresses to that file and to what imports it, and nothing else."""
     pages = list(out.rglob("*.js")) + [out / "index.html"]
     source = {p: p.read_text() for p in pages}
-    data = {f"data/{p.name}": hashlib.sha256(p.read_bytes()).hexdigest()[:10] for p in (out / "data").iterdir()}
+    # a zipped file is versioned by what it holds, so repacking the same data keeps its address
+    data = {f"data/{p.name}": hashlib.sha256(gzip.decompress(p.read_bytes()) if p.suffix == ".gz" else p.read_bytes()).hexdigest()[:10]
+            for p in (out / "data").iterdir()}
     done: dict[Path, str] = {}
 
     def target(p: Path, rel: str) -> Path:

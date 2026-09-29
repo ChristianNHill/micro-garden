@@ -1,4 +1,4 @@
-"""MuJoCo microduck body: the garden of the 2D stub around real simulated robots (Gate 10).
+"""MuJoCo microduck body: the garden of the 2D stub around real simulated robots.
 
 The brain sees the same sockets and frames as with the stub. Behind them a real `robotd` runs the robot's
 50 Hz loop and walking policy on a body in MuJoCo (pollen-robotics/microduck, `scripts/duck-sim`,

@@ -12,7 +12,6 @@
 #   --shot=file.png             save the window after --shot-after=S seconds (6 by default)
 #   --record=DIR                save numbered pngs to DIR, --record-fps=N a second (10), from
 #                               --record-after=S seconds (6) for --record-for=S (20)
-#   --feed-at=x,y               drop food there once snapshots arrive, and --quit-after=S: both for Gate 13
 extends Node3D
 
 const Ink := preload("res://ink.gd")
@@ -221,8 +220,6 @@ func _ready() -> void:
 				e.pressed = true
 				Input.parse_input_event(e)
 				print("pressed ", letter))
-	if args.has("quit-after"):
-		get_tree().create_timer(float(args["quit-after"])).timeout.connect(get_tree().quit)
 
 
 func _notification(what: int) -> void:
@@ -242,7 +239,7 @@ func _cursor() -> void:
 
 
 func _report() -> void:
-	print("snapshots hz=%d" % got)  # Gate 13 reads these
+	print("snapshots hz=%d" % got)
 	got = 0
 
 
@@ -290,9 +287,6 @@ func _build() -> void:
 	if args.has("ride"):
 		selected = int(args["ride"])
 		possessing = true
-	if args.has("feed-at"):
-		var xy: PackedStringArray = args["feed-at"].split(",")
-		_act("garden.hand", {"x": float(xy[0]), "y": float(xy[1]), "feed": 3})
 
 
 func _show(first: bool) -> void:

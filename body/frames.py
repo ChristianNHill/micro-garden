@@ -1,4 +1,4 @@
-"""Sensory frame: one fixed-layout little-endian record per duck per body step, sent over UDP (Gate 3).
+"""Sensory frame: one fixed-layout little-endian record per duck per body step, sent over UDP.
 
 t is the body's monotonic clock in seconds (simulated time on the stub). Directional senses come as a
 _left/_right pair sampled at each antenna (touch: which side the other duck is on). `lum` is the
@@ -84,7 +84,7 @@ def unpack(data: bytes) -> np.void:
 def free_port_base(wanted: int, count: int, tries: int = 40) -> int:
     """A block of `count` UDP ports nobody else holds, starting at or after `wanted`.
 
-    Two gates, or a gate and a watched garden, would otherwise collide on the default ports.
+    Two gardens running at once would otherwise collide on the default ports.
     """
     for attempt in range(tries):
         base = wanted + attempt * 64

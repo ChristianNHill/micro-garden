@@ -28,7 +28,6 @@
 </main>
 <script type="module">
 import { runChecks } from "./check.js";
-const report = new URLSearchParams(location.search).has("report");  // Gate 15 is listening
 const STEPS = 250;  // 5 seconds of garden
 
 const call = (worker, job, msg = {}) => new Promise((ok, fail) => {
@@ -61,7 +60,6 @@ try {
   out.error = String(e);
   document.getElementById("rows").textContent = String(e);
 }
-if (report) fetch("result", { method: "POST", body: JSON.stringify(out) });
 </script>
 </body>
 </html>

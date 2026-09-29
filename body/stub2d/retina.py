@@ -1,4 +1,4 @@
-"""The garden rendered onto flyvis's 721-column hex lattice, one eye per side (Gate 6).
+"""The garden rendered onto flyvis's 721-column hex lattice, one eye per side.
 
 Each world object is a vertical cylinder, so a column sees it when the angle between the column's
 gaze direction and the object's bearing is under the object's angular radius atan(r / d). Approach
@@ -22,7 +22,7 @@ ROCK_I = 0.5
 BALL_I = 0.95  # a ball is a bright thing, nearly as bright as food
 HAND_I, HAND_R = 0.9, 0.12  # the player's hand, a pale thing about the size of two dishes
 POND_I = 0.85  # water reflecting the sky; bright, but not as bright as food
-EYE_H = 0.10  # metres off the ground. ponytail: a guess at microduck eye height; measure it at Gate 10
+EYE_H = 0.10  # metres off the ground. ponytail: a guess at microduck eye height
 HORIZON_DEG = 1.5  # below this the ground point is past the garden anyway, and one column covers acres of it
 
 HEX_U, HEX_V = get_hex_coords(EXTENT)

@@ -1,4 +1,4 @@
-"""2D stub body: kinematic ducks on the garden plane behind the microduck contract (Gate 3).
+"""2D stub body: kinematic ducks on the garden plane behind the microduck contract.
 
 One Unix socket per duck (duck-a.sock ...), like duck-sim, plus control.sock with stub-only
 sim.step {n} and sim.state. Every body step sends each duck's sensory frame over UDP to
@@ -36,7 +36,7 @@ from world.fields import (CLIFF_M, DAY_S, DUCK_SMELL_M, SHORE_M, SIZE_M, TREE, D
 
 # The wind turns right round every 0.7 of a day, so each direction comes at every hour: a north wind carries
 # food smells to a duck at the pond, a south wind carries the pond's damp air to ducks that are eating.
-# A fruit every 10 s feeds five ducks; at 20 s some starved (Gate 9b). Laid out after the Chao gardens of
+# A fruit every 10 s feeds five ducks; at 20 s some starved. Laid out after the Chao gardens of
 # Sonic Adventure 2. The rocks are the solid foot of a waterfall a viewer draws there, on the shore.
 DEMO_GARDEN = dict(size=6.0, tree=(1.5, 4.3, 0.9), food_xy=((3.0, 2.2),), bites=10, danger_xy=((4.9, 1.3),),
                    pond=(4.5, 4.4, 1.2), rocks=((5.5, 5.47, 0.42), (5.95, 5.9, 0.55)), fruit_every_s=10.0, wind=(0.0, -1.0), wind_turns_s=0.7 * DAY_S,
@@ -44,7 +44,7 @@ DEMO_GARDEN = dict(size=6.0, tree=(1.5, 4.3, 0.9), food_xy=((3.0, 2.2),), bites=
                    music=None)  # the player puts the music box down (M)
 
 DT = 0.02
-# ponytail: guessed limits standing in for robotd's clamps; replace with the sim's real ones at Gate 10
+# ponytail: guessed limits standing in for robotd's clamps
 MAX_V, MAX_VY, MAX_VYAW = 0.45, 0.15, 2.0  # MAX_V leaves room for a practised walker's run (0.3 x 1.4)
 ANTENNA = np.array([0.06, 0.05])  # forward, lateral offset of each odor sample, metres
 CONTROL_PARAMS = {"sim.step": {"n": 1}, "sim.state": {}, "garden.shake_tree": {}, "garden.pet": {"duck": 0},
@@ -160,7 +160,7 @@ class Stub:
         self.world = World(food_xy, danger_xy, pond, bites, wind, wind_turns_s, music, size, tree, rocks)
         self.ball_rng = np.random.default_rng(seed + 4)
         self.ball_styles = []  # one per ball in world.balls, for a viewer
-        for x, y in balls:  # toys placed at start, for a gate
+        for x, y in balls:  # toys placed at start
             self.world.balls = np.vstack([self.world.balls, [x, y, 0.0, 0.0]])
             self.ball_styles.append(int(self.ball_rng.integers(BALL_STYLES)))
         self.pose = np.column_stack([rng.uniform(0.5, size - 0.5, (n, 2)), rng.uniform(-np.pi, np.pi, n)])
@@ -209,7 +209,7 @@ class Stub:
         self.relaxed = np.zeros(n, bool)
         self.seen = None
         self.touch_m = 2 * DUCK_R  # how near two ducks' centres are when they touch
-        # How near two ducks' centres can come; 0 lets them pass through each other, as in the gates.
+        # How near two ducks' centres can come; 0 lets them pass through each other.
         # Touching is a little beyond it, so shoves and company still reach.
         self.personal_m = float(personal_m)
         if self.personal_m > 0:
@@ -378,7 +378,7 @@ class Stub:
 
     def posture(self) -> list[str]:
         """Per duck, "up", "sat" or "down", for a viewer. Here "sat" is only drawn: the duck can walk at
-        once, so no gate measurement changes."""
+        once."""
         return ["down" if self.t < until else "sat" if still > SIT_AFTER_S else "up"
                 for until, still in zip(self.down_until, self.still_for)]
 
@@ -495,7 +495,7 @@ class Stub:
 
     def _walls(self) -> tuple[float, float]:
         """The lowest and highest a duck's centre may go on either axis. A drawn duck keeps its whole body inside the
-        fence and off the cliffs, which stand into the lawn along the far edges; a duck in a gate is a point."""
+        fence and off the cliffs, which stand into the lawn along the far edges; an undrawn duck is a point."""
         if self.personal_m <= 0:
             return DUCK_R, self.world.size - DUCK_R
         body = max(DUCK_R, self.personal_m / 2)
@@ -799,7 +799,7 @@ def main() -> None:
                          "were away, and saved here on exit")
     ap.add_argument("--fresh", action="store_true", help="ignore the save and hatch new ducks")
     ap.add_argument("--blind", action="store_true",
-                    help="the Gate 5 blind test: deal the personalities (from --labels, or drawn) in an order nobody is told, "
+                    help="a blind test: deal the personalities (from --labels, or drawn) in an order nobody is told, "
                          "ignore any save, and print who was who on exit")
     args = ap.parse_args()
     os.makedirs(args.sock_dir, exist_ok=True)

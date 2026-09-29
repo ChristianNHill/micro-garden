@@ -1,4 +1,4 @@
-"""A simulated microduck's head camera, as the fly's two eyes see it (Gate 11).
+"""A simulated microduck's head camera, as the fly's two eyes see it.
 
 `duck-body --cameras a` serves each camera on its own TCP port, 7901 + n: four bytes of little-endian
 length, then a 640x360 UYVY frame, at 15 fps. The camera is mounted a quarter turn off, as on the real
