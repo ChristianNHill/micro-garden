@@ -2,6 +2,7 @@
 // needs, moods and wants, the news, the brain as it fires, the ride view's retinas and descending neurons, the
 // controls, and a toolbar for a touch screen. All HTML over the canvas.
 import { HEX } from "../garden/snapshot.js";
+import { faceImage } from "./faces.js";
 
 export const FEELS = { joy: "happy", fear: "scared", anger: "angry", sorrow: "sad" };
 const SKILLS = ["swimming", "walking", "dancing", "eating", "fighting", "fashion", "music"];
@@ -14,11 +15,12 @@ const RECENT_MS = 4000;  // how long a piece of news counts as new
 
 // The marks drawn over a duck's head (view/duck.js), drawn again small for the controls card.
 const svg = (inner, label) => ({ label, html: `<svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true">${inner}</svg>` });
+const face = (mood, label) => ({ label, html: `<img src="${faceImage(mood)}" width="22" height="22" alt="">` });
 const MARKS = {
-  ball: svg('<circle cx="11" cy="11" r="7" fill="#e6b54a" stroke="#1c2a4d" stroke-width="1.5"/>', "yellow ball"),
-  spike: svg('<path d="M5 4 H17 L11 19 Z" fill="#2f9c8f" stroke="#1c2a4d" stroke-width="1.5" stroke-linejoin="round"/>', "teal spike"),
-  block: svg('<rect x="5" y="5" width="12" height="12" transform="rotate(20 11 11)" fill="#ee6f5c" stroke="#1c2a4d" stroke-width="1.5"/>', "red block"),
-  drop: svg('<path d="M11 3 C14 9 17 11 17 14 A6 6 0 0 1 5 14 C5 11 8 9 11 3 Z" fill="#1c2a4d"/>', "dark drop"),
+  ball: face("joy", "happy face"),
+  spike: face("fear", "scared face"),
+  block: face("anger", "cross face"),
+  drop: face("sorrow", "sad face"),
   zs: svg('<text x="2" y="18" font-family="sans-serif" font-weight="700" font-size="13" fill="#1c2a4d">Z</text><text x="12" y="11" font-family="sans-serif" font-weight="700" font-size="9" fill="#1c2a4d">z</text>', "Z z z"),
   ring: svg('<ellipse cx="11" cy="14" rx="9" ry="4" fill="none" stroke="#ee6f5c" stroke-width="2.5"/>', "red ring"),
 };
@@ -38,9 +40,9 @@ export const CONTROLS = [
     ["the garbage can", "carry a thing to it and the lid opens. Drop or throw it in and it is gone. Ducks cannot go in"],
   ]],
   ["over a duck's head", [
-    [MARKS.ball, "joy. The bigger the ball, the happier it is"],
-    [MARKS.spike, "fear. It shakes while the duck is scared"],
-    [MARKS.block, "anger. It spins while the duck is cross"],
+    [MARKS.ball, "joy. The bigger the face, the happier it is"],
+    [MARKS.spike, "fear. The face trembles while the duck is scared"],
+    [MARKS.block, "anger. The face shakes while the duck is cross"],
     [MARKS.drop, "sorrow. Blue tears fall when it cries"],
     [MARKS.zs, "it is asleep"],
     ["hungry, thirsty", "a word for a moment: what it feels, or what it does, like laughs, sings or dances"],

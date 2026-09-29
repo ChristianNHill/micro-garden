@@ -561,7 +561,11 @@ function run({ garden, brain, brains, eyes, welcome }) {
     before = now;
     show(dt);
     rollKicked(dt);
-    ducks.forEach(d => d.update(dt, now / 1000));
+    ducks.forEach((d, i) => {  // a mood face looks at you, turning a little from side to side so it reads as a ball
+      d.update(dt, now / 1000);
+      d.mood.lookAt(camera.position);
+      d.mood.rotateY(Math.sin(now / 1000 * 1.3 + 2 * i) * 0.45 * calm);
+    });
     cameraTo(dt);
     if (possessing && selected >= 0) {
       const fwd = (keys.has("w") || pad.fwd ? 1 : 0) - (keys.has("s") || pad.back ? 1 : 0);

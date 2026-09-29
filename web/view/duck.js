@@ -4,6 +4,7 @@
 import * as THREE from "three";
 import * as Ink from "./ink.js";
 import * as Hats from "./hats.js";
+import { faceModel } from "./faces.js";
 
 export const CELL = 5.0;
 export const LOOK = 1.9;
@@ -96,11 +97,10 @@ export class Duck extends THREE.Group {
     this.ring = Ink.part(this, ringGeo, Ink.CORAL, [0, 0.004, 0], [1, 0.2, 1], { tone: 1.0 });
     this.ring.visible = false;
     this.mood = new THREE.Group();
-    this.mood.position.y = 0.46 * LOOK * size;
+    this.mood.position.y = this.moodAt = 0.48 * LOOK * size;  // just over the head
     this.add(this.mood);
-    const m = (geo, colour, scale = 1) => Ink.part(this.mood, geo, colour, [0, 0, 0], scale, { cell: CELL, outlined: true });
-    this.moodShapes = { ball: m(Ink.ball(0.03), Ink.MUSTARD), spike: m(Ink.cone(0.0, 0.08, 0.03, 4), Ink.TEAL),
-                        block: m(Ink.box(), Ink.CORAL, 0.05), drop: m(Ink.cone(0.03, 0.07, 0.0, 8), Ink.NAVY) };
+    const face = mood => { const f = faceModel(mood, 0.075); this.mood.add(f); return f; };  // turned to the camera by the page
+    this.moodShapes = { ball: face("joy"), spike: face("fear"), block: face("anger"), drop: face("sorrow") };
     this.signAt = this.mood.position.y + 0.12;
     this.tears = [0, 1].map(() => { const t = Ink.part(this, Ink.ball(0.012, 6), new THREE.Color("#4f9fe0"), [0, 0, 0], [1, 1.5, 1], { cell: CELL, tone: 0.9 }); t.visible = false; return t; });
     this.hat = null; this.hatStyle = -1;
@@ -307,8 +307,9 @@ export class Duck extends THREE.Group {
     const s = this.state, shape = MOOD_SHAPES[s.mood] ?? "";
     for (const [name, mesh] of Object.entries(this.moodShapes)) mesh.visible = name === shape && s.strength > 0.25 && !s.asleep;
     this.mood.scale.setScalar((0.6 + 0.9 * s.strength) * LOOK);
-    this.mood.rotation.y += dt * (shape === "block" ? 4 : 1) * this.calm;
-    this.mood.position.x = shape === "spike" ? Math.sin(t * 40) * 0.006 * this.calm : 0;
+    const shaking = shape === "spike" || shape === "block";  // a scared face trembles and a cross one shakes
+    this.mood.position.x = shaking ? Math.sin(t * (shape === "spike" ? 40 : 18)) * 0.006 * this.calm : 0;
+    this.mood.position.y = this.moodAt + (shape === "ball" ? Math.abs(Math.sin(t * 3)) * 0.012 * this.calm : 0);  // joy bobs
     this.sign = s.asleep ? "" : (this.emoteAge < EMOTE_S + 0.6 ? DOES[this.emote] ?? this.emote : "");
     this.tears.forEach((tear, k) => {
       tear.visible = !!s.crying;
