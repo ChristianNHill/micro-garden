@@ -1,5 +1,5 @@
 # The garden's setting, inspired by the Chao gardens of Sonic Adventure 2: a lawn in a bowl of rounded rock,
-# a waterfall of pale columns down to the pond, a cave mouth, palms, a rail fence, sea and sky. Every shape
+# a waterfall of pale columns down to the pond, palms, a rail fence, sea and sky. Every shape
 # is made by rule from lumps.
 #
 # None of it is in the world: the cliffs sit outside the garden's square and the fence runs along its edge,
@@ -105,9 +105,6 @@ static func build(root: Node3D, snap: Dictionary, falls: Array, viewer: Vector3,
 			if rng.randf() < 0.3:
 				palm(root, at + Vector3(rng.randf_range(-0.3, 0.3), h - 0.25, rng.randf_range(-0.3, 0.3)), rng.randf_range(0.5, 0.9), rng)
 			along += r * 1.25
-	# a cave mouth in the north cliff
-	Ink.part(root, Ink.ball(0.34, 10), Ink.NAVY, Vector3(0.3 * size, 0.2, -(size + 0.05)), Vector3(1.0, 1.4, 0.6), 7.0, 0.05)
-
 	# the rail fence along the open south and west edges
 	for edge in 2:
 		var posts := int(size / 0.75)
@@ -151,6 +148,19 @@ static func build(root: Node3D, snap: Dictionary, falls: Array, viewer: Vector3,
 	return [summit, far_summit]
 
 
+# A hump of rock on the highest step, its back sunk in the cliff, with the water running out of the arch in its face.
+static func cave(root: Node3D, s: Array, toward: Vector2, rng: RandomNumberGenerator) -> void:
+	var r: float = s[2]
+	var h: float = s[3]
+	var turn := atan2(toward.y, toward.x)
+	var at := func(d: float, y: float) -> Vector3: return Vector3(s[0] + toward.x * d, y, -(s[1] + toward.y * d))
+	place_lump(root, at.call(0.1 * r, h - 0.05), 0.75 * r, 1.1, rng, PALE_ROCK, LAWN, 10, 0.9, 0.05)
+	var mouth := Ink.part(root, Ink.cone(0.32, 0.02, 0.32, 16), Ink.NAVY, at.call(-0.72 * r, h + 0.02), Vector3.ONE, 7.0, 0.05)
+	mouth.rotation = Vector3(0, turn, PI / 2)  # a dark disc half sunk in the step: an arch
+	var spill := Ink.part(root, BoxMesh.new(), WATER, at.call(-0.83 * r, h + 0.02), Vector3(0.22 * r, 0.03, 0.34), 8.0, 0.97)
+	spill.rotation.y = turn
+
+
 static func waterfall(root: Node3D, snap: Dictionary, centre: Vector2, size: float, rng: RandomNumberGenerator, falls: Array) -> void:
 	# Pale columns stepping down from the cliff into the pond, with water sheets on them.
 	var p: Array = snap.pond
@@ -165,7 +175,7 @@ static func waterfall(root: Node3D, snap: Dictionary, centre: Vector2, size: flo
 		steps.append([rock[0], rock[1], rock[2], 0.35 + 0.5 * i, true])
 	if steps.is_empty():
 		steps.append([centre.x + toward.x * (p[2] + 0.1), centre.y + toward.y * (p[2] + 0.1), 0.55, 0.35, false])
-	while steps.size() < 5:
+	while steps.size() < 3:  # any higher and the corner cliffs hide the top, and its cave
 		var last: Array = steps[-1]
 		steps.append([last[0] + toward.x * 0.6, last[1] + toward.y * 0.6, last[2] + 0.12, last[3] + 0.65, false])
 	for i in steps.size():
@@ -176,6 +186,8 @@ static func waterfall(root: Node3D, snap: Dictionary, centre: Vector2, size: flo
 			Vector3(0.05, s[3], 0.5), 8.0, 0.97)
 		sheet.rotation.y = atan2(toward.y, toward.x)
 		falls.append(sheet)
+		if i == steps.size() - 1:
+			cave(root, s, toward, rng)
 	for flank in [-1.0, 1.0]:  # darker rock and a palm either side of the fall
 		var at3: Vector2 = centre + toward * (p[2] + 0.9) + side * flank * 1.25
 		place_lump(root, Vector3(at3.x, -0.2, -at3.y), 0.75, 1.5, rng)

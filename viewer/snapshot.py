@@ -47,7 +47,7 @@ _b64 = lambda a: base64.b64encode(np.asarray(a).tobytes()).decode()
 # where each of an eye's 721 columns looks, as signed bytes across the eye's field
 HEX = _b64(np.round(np.concatenate([HEX_AZ, HEX_EL]) / np.abs(HEX_AZ).max() * 127).astype(np.int8))
 TOAST_FORMATS = (("eaten", "{who} ate"), ("headbutts", "{who} shoved {other}"), ("pets", "{who} was petted"),
-                 ("emotes", "{who} {other}"), ("kicks", "{who} kicked the ball"), ("drums", "{who} played the {other}"), ("given", "{who} was handed a fruit"), ("throws", "{who} was thrown"), ("donned", "{who} put a hat on"), ("preened", "{who} shook its hat off"), ("fails", "{who} {other}"))
+                 ("emotes", "{who} {other}"), ("kicks", "{who} kicked the ball"), ("drums", "{who} played the {other}"), ("given", "{who} was handed a fruit"), ("throws", "{who} was thrown"), ("donned", "{who} put a hat on"), ("preened", "{who} shook its hat off"), ("fails", "{who} {other}"), ("binned", "{who} went in the bin"))
 
 
 FRUIT_NAMES = ("oranges", "apples", "bananas", "pears", "cherries", "grapes", "strawberries", "lemons", "plums", "peaches")

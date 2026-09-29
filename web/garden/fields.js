@@ -24,6 +24,7 @@ export const NIGHT_C = 8.0;
 export const DAWN = 0.15;
 export const TREE = [1.0, 3.0, 0.7];
 export const TRUNK_R = 0.12;  // the fruit tree's trunk, solid like a rock
+export const CAN_R = 0.12;  // the garbage can at each stink patch, solid like a rock
 export const CLIFF_M = 0.3;  // how far a drawn garden's cliffs stand into the lawn along the north and east edges
 export const WIND_FULL_MS = 1.5;
 export const MUSIC_M = 1.2;
@@ -202,7 +203,7 @@ export class World {
   }
 
   // Everything round that a duck or a ball cannot pass: the rocks and the tree's trunk.
-  solids() { return [...this.rocks, [this.tree[0], this.tree[1], TRUNK_R]]; }
+  solids() { return [...this.rocks, [this.tree[0], this.tree[1], TRUNK_R], ...this.danger.map(([x, y]) => [x, y, CAN_R])]; }
 
   push_out(xy, clearance) {  // xy: [[x, y], ...], moved in place
     for (const [x, y, r] of this.solids()) {

@@ -31,6 +31,7 @@ NIGHT_C = 8.0  # how much colder the garden gets when the sun is down
 DAWN = 0.15  # fraction of the cycle that dawn and dusk take; the rest is flat day or flat night
 TREE = (1.0, 3.0, 0.7)  # shade centre x, y and radius, unless a World puts its tree elsewhere
 TRUNK_R = 0.12  # the fruit tree's trunk, solid like a rock; a duck walks under the canopy but not through the trunk
+CAN_R = 0.12  # the garbage can at each stink patch, solid like a rock
 CLIFF_M = 0.3  # how far a drawn garden's cliffs stand into the lawn along the far (north and east) edges
 WIND_FULL_MS = 1.5  # light air; this reads as 1.0 on the antennae
 MUSIC_M = 1.2  # music is half as loud every 0.8 m or so; a garden-wide thing, unlike a duck's smell
@@ -180,8 +181,10 @@ class World:
                             v += max(duck_v[k] @ n + 0.1 - into, 0.0) * n
 
     def solids(self) -> np.ndarray:
-        """Everything round that a duck or a ball cannot pass, as (x, y, radius) rows: the rocks and the tree's trunk."""
-        return np.vstack([self.rocks, [[self.tree[0], self.tree[1], TRUNK_R]]])
+        """Everything round that a duck or a ball cannot pass, as (x, y, radius) rows: the rocks, the tree's trunk and
+        the garbage cans."""
+        cans = np.column_stack([self.danger, np.full(len(self.danger), CAN_R)])
+        return np.vstack([self.rocks, [[self.tree[0], self.tree[1], TRUNK_R]], cans])
 
     def push_out(self, xy: np.ndarray, clearance: float) -> None:
         """Move any of these (n, 2) points that are inside a rock back to its edge, in place: a rock is a

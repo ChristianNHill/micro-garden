@@ -35,6 +35,8 @@ export const EARSHOT_M = 2.0;
 export const WITNESS_M = 1.5;
 export const GRAB_M = 0.3;
 export const THROW_MS = 0.8, THROW_MAX_MS = 3.0, THROW_S = 0.35;
+export const BIN_M = 0.25;  // how near a garbage can a thing has to come down to go in it
+const BINNED_AS = { ball: "a ball", hat: "a hat", food: "a fruit", music: "the music box", drum: "the drum", instrument: "an instrument" };
 export const HAND_S = 4.0;
 export const HAND_SEEN_M = 1.5;
 export const CRY_S = 6.0;
@@ -128,7 +130,7 @@ export class Stub {
     this.hand_until = 0.0;
     this.held = null;  // [kind, index]
     this.thrown = fill(n, false);
-    this.throws = []; this.given = [];
+    this.throws = []; this.given = []; this.binned = [];
     this.velocity = Array.from({ length: n }, () => [0, 0]);
     this.hat_rng = new Rng(seed + 2);
     this.preened = []; this.pets = []; this.fails = [];
@@ -465,7 +467,9 @@ export class Stub {
     const at = [+p.x, +p.y];
     const [kind, which] = this.held;
     const thrown = speed > THROW_MS && kind !== "food";
-    if (kind === "ball") this._carry(at, thrown ? v : [0, 0]);
+    const down = [at[0] + (thrown ? v[0] * THROW_S : 0), at[1] + (thrown ? v[1] * THROW_S : 0)];
+    if (kind !== "duck" && this.world.danger.some(([x, y]) => Math.hypot(down[0] - x, down[1] - y) < BIN_M)) this._bin(kind, which);
+    else if (kind === "ball") this._carry(at, thrown ? v : [0, 0]);
     else {
       const land = [clip(at[0] + (thrown ? v[0] * THROW_S : 0), 0.1, this.world.size - 0.1),
                     clip(at[1] + (thrown ? v[1] * THROW_S : 0), 0.1, this.world.size - 0.1)];
@@ -473,6 +477,17 @@ export class Stub {
       if (kind === "duck" && thrown) { this.thrown[which] = true; this.throws.push([this.t, which]); this.knock_down(which); }
     }
     this.held = null;
+  }
+
+  _bin(kind, which) {  // a thing goes in a garbage can and out of the garden
+    const w = this.world;
+    if (kind === "ball") { w.balls.splice(which, 1); this.ball_styles.splice(which, 1); }
+    else if (kind === "hat") this.hat_items.splice(which, 1);
+    else if (kind === "food") { w.food.splice(which, 1); w.bites.splice(which, 1); w.kinds.splice(which, 1); }
+    else if (kind === "music") w.music = null;
+    else if (kind === "drum") w.drum = null;
+    else if (kind === "instrument") w.instruments.splice(which, 1);
+    this.binned.push([this.t, BINNED_AS[kind]]);
   }
 
   _hand(p) {

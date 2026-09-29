@@ -58,6 +58,7 @@ const HELP_RIDING := "W A S D  steer      O  hide what it sees      Tab  get off
 const PAPER_ROUND := 10  # every panel is the same cream paper: corner radius and padding
 const PAPER_PAD := 12
 const BARS_W := 302.0  # the selected duck's readout, under its card
+const LID_OPEN_M := 0.7  # how near a garbage can the hand has to bring a thing for the lid to open
 const STINK_PUFFS := 9  # puffs rising off a stink patch, three to a strand
 const DUCK_TALL := 0.42  # how tall a duck is drawn, for taps that land on the duck itself
 const KICKED_M := 0.3  # a fruit that jumps further than this in one step was kicked, not carried
@@ -85,6 +86,8 @@ var cam := Camera3D.new()
 var orbit := Vector3(0.75, 0.7, 8.8)  # yaw, pitch, distance
 var centre := Vector3.INF  # camera orbit centre
 var glove := Node3D.new()  # the player's hand
+var knuckles: Array[Node3D] = []  # the glove's four fingers and thumb, which bend to grip
+var grip := 0.0  # how closed the glove is, 0 to 1
 var hand_mode := false  # H: the cursor is the glove and the left button grips; off, the left button turns the camera
 var mouse_inside := true
 var gripping := false
@@ -165,12 +168,30 @@ func _ready() -> void:
 	toasts.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	toasts.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_build_menu(ui)
-	# a white glove with a cuff: a palm, four fingers and a thumb
-	Ink.part(glove, Ink.ball(0.07, 8), Color.WHITE, Vector3.ZERO, Vector3(1.0, 0.55, 1.1), 5.0, -1.0, true).material_override.set_shader_parameter("lift", 0.4)
+	# a cartoon glove, palm up so what it carries sits in it: a palm, four fingers and a thumb that bend at the
+	# knuckle, three stitched lines on the back, and a cuff with a rolled rim
+	var hand := Node3D.new()
+	hand.rotation.x = PI
+	glove.add_child(hand)
+	Ink.part(hand, Ink.ball(0.07, 14), Color.WHITE, Vector3.ZERO, Vector3(1.0, 0.5, 0.95), 5.0, -1.0, true).material_override.set_shader_parameter("lift", 0.4)
+	var lengths := [0.055, 0.065, 0.062, 0.05]
 	for k in 4:
-		Ink.part(glove, Ink.cone(0.018, 0.09, 0.015, 6), Color.WHITE, Vector3(0.075, -0.01, -0.05 + 0.033 * k), Vector3.ONE, 5.0, -1.0, true).rotation.z = -PI / 2 - 0.35
-	Ink.part(glove, Ink.cone(0.02, 0.07, 0.016, 6), Color.WHITE, Vector3(0.01, -0.005, 0.085), Vector3.ONE, 5.0, -1.0, true).rotation.x = PI / 2 - 0.4
-	Ink.part(glove, Ink.cone(0.055, 0.05, 0.05, 8), Ink.CORAL, Vector3(-0.075, 0, 0), Vector3.ONE, 5.0, -1.0, true).rotation.z = PI / 2
+		var knuckle := Node3D.new()
+		knuckle.position = Vector3(0.05, 0.004, -0.046 + 0.031 * k)
+		hand.add_child(knuckle)
+		knuckles.append(knuckle)
+		Ink.part(knuckle, _finger(lengths[k], 0.017), Color.WHITE, Vector3(lengths[k] / 2 + 0.012, 0, 0), Vector3.ONE, 5.0, -1.0, true).rotation.z = -PI / 2
+	var thumb := Node3D.new()
+	thumb.position = Vector3(0.005, -0.004, 0.058)
+	thumb.rotation = Vector3(0.3, -0.9, 0)
+	hand.add_child(thumb)
+	knuckles.append(thumb)
+	Ink.part(thumb, _finger(0.04, 0.019), Color.WHITE, Vector3(0.03, 0, 0), Vector3.ONE, 5.0, -1.0, true).rotation.z = -PI / 2
+	for k in [-1, 0, 1]:
+		Ink.part(hand, BoxMesh.new(), Ink.NAVY, Vector3(-0.01, 0.034, 0.02 * k), Vector3(0.05, 0.004, 0.005), 5.0, 0.2)
+	Ink.part(hand, Ink.cone(0.058, 0.05, 0.052, 14), Ink.CORAL, Vector3(-0.085, 0, 0), Vector3.ONE, 5.0, -1.0, true).rotation.z = PI / 2
+	Ink.part(hand, Ink.cone(0.066, 0.014, 0.066, 14), Ink.CORAL, Vector3(-0.11, 0, 0), Vector3.ONE, 5.0, -1.0, true).rotation.z = PI / 2
+	_curl(0.0)
 	glove.scale = Vector3.ONE * 1.6
 	glove.visible = false
 	add_child(glove)
@@ -346,26 +367,58 @@ func _show_props() -> void:
 		Ink.part(n, Ink.cone(0.135, 0.02, 0.135, 10), Color("f6f1e6"), Vector3(0, 0.2, 0), Vector3.ONE, 6.0, -1.0, true).material_override.set_shader_parameter("lift", 0.4)
 		for k in 3:
 			Ink.part(n, Ink.cone(0.012, 0.06, 0.012, 4), Scenery.WOOD, Vector3(cos(TAU * k / 3.0) * 0.09, 0.03, sin(TAU * k / 3.0) * 0.09), Vector3.ONE, 6.0))
+	# an instrument a duck is playing bounces with each note
+	for n in props.get("instruments", []) + props.get("drum", []):
+		var playing := false
+		for d in snap.ducks:
+			if d.get("drumming", false) and Vector2(d.x - n.position.x, d.y + n.position.z).length() < 0.45:
+				playing = true
+		n.scale.y = 1.0 + 0.12 * absf(sin(Time.get_ticks_msec() / 70.0)) if playing else 1.0
 	_props("danger", snap.danger, func(n: Node3D, f: Array) -> void:
 		Ink.part(n, Ink.cone(0.22, 0.002, 0.22, 10), Ink.MUSTARD, Vector3(0, 0.003, 0), Vector3.ONE, 5.0, 0.3)
-		for k in STINK_PUFFS:  # puffs of stink, drifting up off the patch and thinning out
-			Ink.part(n, Ink.ball(0.035, 7), Ink.MUSTARD, Vector3.ZERO, Vector3.ONE, 4.0, 0.7))
+		for k in STINK_PUFFS:  # puffs of stink, drifting up off the can and thinning out
+			Ink.part(n, Ink.ball(0.035, 7), Ink.MUSTARD, Vector3.ZERO, Vector3.ONE, 4.0, 0.7)
+		# the garbage can: things put in it are gone
+		var tin := Color("8fa3a8")
+		var lid := Color("6c7f86")
+		Ink.part(n, Ink.cone(0.1, 0.26, 0.12, 12), tin, Vector3(0, 0.13, 0), Vector3.ONE, 6.0, -1.0, true).material_override.set_shader_parameter("lift", 0.3)
+		for y in [0.07, 0.19]:
+			Ink.part(n, Ink.cone(0.117, 0.012, 0.117, 12), lid, Vector3(0, y, 0), Vector3(1.02, 1, 1.02), 6.0)
+		Ink.part(n, Ink.cone(0.108, 0.004, 0.108, 12), Ink.NAVY, Vector3(0, 0.259, 0), Vector3.ONE, 7.0, 0.02)  # the dark inside, seen with the lid up
+		var swivel := Node3D.new()  # turned each frame so the hinge is on the far side and the lid opens to the viewer
+		swivel.name = "Swivel"
+		n.add_child(swivel)
+		var hinge := Node3D.new()  # the lid swings up on a hinge at the back of the rim
+		hinge.name = "Lid"
+		hinge.position = Vector3(-0.13, 0.275, 0)
+		swivel.add_child(hinge)
+		Ink.part(hinge, Ink.cone(0.13, 0.03, 0.13, 12), lid, Vector3(0.13, 0, 0), Vector3.ONE, 6.0, -1.0, true).material_override.set_shader_parameter("lift", 0.3)
+		Ink.part(hinge, BoxMesh.new(), lid, Vector3(0.13, 0.025, 0), Vector3(0.07, 0.02, 0.02), 6.0, -1.0, true))
 	var gust = snap.get("wind")  # the stink goes where the wind takes it, like the smell itself
 	var drift := Vector3(gust[0], 0.0, -gust[1]) * 0.35 if gust != null else Vector3.ZERO
+	# a can's lid opens while the hand carries something that could go in it nearby
+	var held = snap.get("held")
+	var hand = snap.get("hand")
+	var carrying: bool = held != null and held[0] != "duck" and hand != null
 	for n in props.get("danger", []):
-		for k in range(1, n.get_child_count()):  # each puff rises, curls aside and thins away
+		var near := carrying and Vector2(hand[0] - n.position.x, hand[1] + n.position.z).length() < LID_OPEN_M
+		(n.get_node("Swivel") as Node3D).rotation.y = orbit.x
+		var lid: Node3D = n.get_node("Swivel/Lid")
+		lid.rotation.z = lerpf(lid.rotation.z, 1.9 if near else 0.0, minf(1.0, 10.0 * get_process_delta_time()))
+		for k in range(1, 1 + STINK_PUFFS):  # each puff rises, curls aside and thins away
 			var puff: Node3D = n.get_child(k)
 			var strand := float((k - 1) % 3)
 			var up: float = fposmod(Time.get_ticks_msec() / 2600.0 * calm + float(k) / STINK_PUFFS, 1.0)
 			var swing := sin(up * TAU + strand * 2.1) * 0.07
 			var a := TAU * strand / 3.0 + 0.4
-			puff.position = Vector3(cos(a) * 0.08 + swing, 0.04 + up * 0.55, sin(a) * 0.08 + swing * 0.6) + drift * up * up
+			puff.position = Vector3(cos(a) * 0.08 + swing, 0.3 + up * 0.55, sin(a) * 0.08 + swing * 0.6) + drift * up * up
 			puff.scale = Vector3.ONE * (1.0 - 0.75 * up)
 	_props("music", [snap.music] if snap.music != null else [], func(n: Node3D, f: Array) -> void:
 		Ink.part(n, BoxMesh.new(), Ink.CORAL, Vector3(0, 0.05, 0), Vector3(0.14, 0.1, 0.14), 7.0, -1.0, true)
 		Ink.part(n, Ink.cone(0.02, 0.16, 0.1, 8), Ink.MUSTARD, Vector3(0.03, 0.18, 0), Vector3.ONE, 7.0, -1.0, true).rotation.z = -0.5)
 	for n in props.get("music", []):
-		n.scale = Vector3.ONE * (1.0 + 0.06 * calm * sin(Time.get_ticks_msec() / 90.0))
+		var on: bool = snap.get("music_volume", 1.0) > 0.0  # still while off
+		n.scale = Vector3.ONE * (1.0 + 0.06 * calm * sin(Time.get_ticks_msec() / 90.0) if on else 1.0)
 
 
 func _show_weather() -> void:
@@ -970,7 +1023,9 @@ func _hand(_dt: float) -> void:
 	if xy == null:
 		return
 	var at: Vector2 = xy.clamp(Vector2.ZERO, Vector2(snap.size, snap.size))
-	glove.position = glove.position.lerp(Vector3(at.x, 0.22 if gripping else 0.4, -at.y), 0.5)
+	glove.position = glove.position.lerp(Vector3(at.x, 0.24 if gripping else 0.4, -at.y), 0.5)  # gripping, just under what it lifts
+	grip = lerpf(grip, 1.0 if gripping else 0.0, minf(1.0, 12.0 * get_process_delta_time()))
+	_curl(grip)
 	glove.rotation.y = orbit.x + PI  # fingers away from the camera
 	var now := Time.get_ticks_msec() / 1000.0
 	trail.append([now, at])
@@ -1163,3 +1218,20 @@ func _say(line: String) -> void:
 
 func _act(method: String, params: Dictionary) -> void:
 	out.put_packet(JSON.stringify({"method": method, "params": params}).to_utf8_buffer())
+
+
+func _finger(length: float, radius: float) -> CapsuleMesh:
+	var m := CapsuleMesh.new()
+	m.radius = radius
+	m.height = length + 2.0 * radius
+	m.radial_segments = 8
+	m.rings = 2
+	return m
+
+
+func _curl(amount: float) -> void:
+	for k in knuckles.size():
+		if k < 4:
+			knuckles[k].rotation.z = -0.25 - 1.35 * amount  # a finger bends in over the palm
+		else:
+			knuckles[k].rotation.z = -0.9 * amount  # the thumb tucks in

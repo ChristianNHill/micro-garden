@@ -77,8 +77,23 @@ export function drum(n) {
 }
 
 export const STINK_PUFFS = 9;
+// The garbage can at a stink patch: things put in it are gone, and the stink still rises off it.
+export const CAN_TOP = 0.3;
 export function stink(n) {
+  const tin = C("#8fa3a8"), lid = C("#6c7f86");
   Ink.part(n, Ink.cone(0.22, 0.002, 0.22, 10), Ink.MUSTARD, [0, 0.003, 0], 1, { cell: 5, tone: 0.3 });
+  Ink.part(n, Ink.cone(0.1, 0.26, 0.12, 12), tin, [0, 0.13, 0], 1, { cell: 6, lift: 0.3, outlined: true });
+  for (const y of [0.07, 0.19]) Ink.part(n, Ink.cone(0.117, 0.012, 0.117, 12), lid, [0, y, 0], [1.02, 1, 1.02], { cell: 6 });
+  Ink.part(n, Ink.cone(0.108, 0.004, 0.108, 12), Ink.NAVY, [0, 0.259, 0], 1, { tone: 0.02 });  // the dark inside, seen with the lid up
+  const swivel = new THREE.Group();  // turned each frame so the hinge is on the far side and the lid opens to the viewer
+  n.add(swivel);
+  n.userData.swivel = swivel;
+  const hinge = new THREE.Group();  // the lid swings up on a hinge at the back of the rim
+  hinge.position.set(-0.13, 0.275, 0);
+  swivel.add(hinge);
+  Ink.part(hinge, Ink.cone(0.13, 0.03, 0.13, 12), lid, [0.13, 0, 0], 1, { cell: 6, lift: 0.3, outlined: true });
+  Ink.part(hinge, Ink.box(), lid, [0.13, 0.025, 0], [0.07, 0.02, 0.02], { cell: 6, outlined: true });
+  n.userData.lid = hinge;
   n.userData.puffs = Array.from({ length: STINK_PUFFS }, () => Ink.part(n, Ink.ball(0.035, 7), Ink.MUSTARD, [0, 0, 0], 1, { cell: 4, tone: 0.7 }));
 }
 
@@ -171,13 +186,44 @@ export function flag(root, summit) {
 }
 
 // A white glove with a coral cuff: a palm, four fingers and a thumb.
+// The player's hand: a cartoon glove, palm down with the fingers pointing along +x. Its fingers bend at the knuckle,
+// so `curl(glove, 0 to 1)` opens and closes it.
 export function glove() {
-  const g = new THREE.Group(), o = { cell: 5, outlined: true };
-  Ink.part(g, Ink.ball(0.07, 8), Ink.WHITE, [0, 0, 0], [1.0, 0.55, 1.1], { ...o, lift: 0.4 });
-  for (let k = 0; k < 4; k++) Ink.part(g, Ink.cone(0.018, 0.09, 0.015, 6), Ink.WHITE, [0.075, -0.01, -0.05 + 0.033 * k], 1, o).rotation.z = -Math.PI / 2 - 0.35;
-  Ink.part(g, Ink.cone(0.02, 0.07, 0.016, 6), Ink.WHITE, [0.01, -0.005, 0.085], 1, o).rotation.x = Math.PI / 2 - 0.4;
-  Ink.part(g, Ink.cone(0.055, 0.05, 0.05, 8), Ink.CORAL, [-0.075, 0, 0], 1, o).rotation.z = Math.PI / 2;
+  const g = new THREE.Group(), o = { cell: 5, outlined: true }, white = Ink.WHITE;
+  const hand = new THREE.Group();  // palm up, so what it carries sits in it and the fingers close up round it
+  hand.rotation.x = Math.PI;
+  g.add(hand);
+  const finger = (length, radius) => new THREE.CapsuleGeometry(radius, length, 4, 8).rotateZ(-Math.PI / 2);
+  Ink.part(hand, Ink.ball(0.07, 14), white, [0, 0, 0], [1.0, 0.5, 0.95], { ...o, lift: 0.4 });  // the palm
+  g.userData.knuckles = [0.055, 0.065, 0.062, 0.05].map((length, k) => {
+    const knuckle = new THREE.Group();
+    knuckle.position.set(0.05, 0.004, -0.046 + 0.031 * k);
+    hand.add(knuckle);
+    Ink.part(knuckle, finger(length, 0.017), white, [length / 2 + 0.012, 0, 0], 1, o);
+    return knuckle;
+  });
+  const thumb = new THREE.Group();
+  thumb.position.set(0.005, -0.004, 0.058);
+  thumb.rotation.set(0.3, -0.9, 0);
+  hand.add(thumb);
+  Ink.part(thumb, finger(0.04, 0.019), white, [0.03, 0, 0], 1, o);
+  g.userData.knuckles.push(thumb);
+  for (let k = -1; k <= 1; k++) {  // three stitched lines down the back
+    Ink.part(hand, Ink.box(), Ink.NAVY, [-0.01, 0.034, 0.02 * k], [0.05, 0.004, 0.005], { cell: 5, tone: 0.2 });
+  }
+  const cuff = Ink.part(hand, Ink.cone(0.058, 0.05, 0.052, 14), Ink.CORAL, [-0.085, 0, 0], 1, o);
+  cuff.rotation.z = Math.PI / 2;
+  const rim = Ink.part(hand, Ink.cone(0.066, 0.014, 0.066, 14), Ink.CORAL, [-0.11, 0, 0], 1, { ...o, lift: 0.3 });
+  rim.rotation.z = Math.PI / 2;
   g.scale.setScalar(1.6);
   g.visible = false;
+  curl(g, 0);
   return g;
+}
+
+export function curl(g, amount) {
+  g.userData.knuckles.forEach((knuckle, k) => {
+    if (k < 4) knuckle.rotation.z = -0.25 - 1.35 * amount;  // a finger bends in over the palm
+    else knuckle.rotation.z = -0.9 * amount;  // the thumb tucks in
+  });
 }

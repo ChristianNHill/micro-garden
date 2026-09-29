@@ -218,7 +218,7 @@ export class Duck extends THREE.Group {
     if (s.down) return "go_limp";
     if (low || s.swimming) return "sitting";
     if (s.kicking) return "kick";
-    if (s.eating) return "peck";
+    if (s.eating || s.drumming) return "peck";  // an instrument is played with the beak
     if (this.emote === "playful" && this.emoteAge < 0.4) return "roll";
     if (this.speed > 0.015) return "walk";
     if (Math.abs(yawRate) > 0.4) return yawRate > 0 ? "turn_left" : "turn_right";
@@ -266,6 +266,7 @@ export class Duck extends THREE.Group {
     let nod = [told[0], told[1] + Math.sin(t * 0.9) * 0.03 * c, told[2] + Math.sin(t * 0.37) * 0.1 * c, told[3]];
     if (s.asleep) nod = [0.45, 0.6, 0.9, 0.0];
     else if (s.eating) nod = [0.45 + Math.sin(t * 9.0) * 0.2, 0.5, 0.0, 0.0];
+    else if (s.drumming) nod = [0.3 + Math.abs(Math.sin(t * 14.0)) * 0.3, 0.4, 0.0, 0.0];  // quick taps
     ["neck_pitch", "head_pitch", "head_yaw", "head_roll"].forEach((name, k) => { angle[name] = (angle[name] ?? 0) + nod[k]; });
   }
 

@@ -24,6 +24,17 @@ export const CONTROLS = [
     ["H", "reach into the garden, or take your hand back out"],
     ["hold and drag", "carry a fruit, a hat, a ball, an instrument, the music box or a duck"],
     ["let go while moving", "throw it, except a fruit, which just drops. A duck you throw thinks less of you"],
+    ["the garbage can", "carry a thing to it and the lid opens. Drop or throw it in and it is gone. Ducks cannot go in"],
+  ]],
+  ["over a duck's head", [
+    ["Z z z", "it is asleep"],
+    ["hungry, thirsty, sleepy", "a need is getting strong"],
+    ["happy, playful, proud, curious", "a good mood"],
+    ["bored, sad, lonely", "a low mood. A lonely duck wants company, a sad one does not"],
+    ["scared, angry", "something upset it: a clap, a shove, being thrown"],
+    ["laughs, sings, dances", "it is having fun, and others may join in"],
+    ["cries, cowers, stomps", "it is upset, and a friend may come to comfort it"],
+    ["yawns, splashes", "just being itself"],
   ]],
   ["the garden", [
     ["F, or tap the tree", "shake fruit down"],
@@ -38,6 +49,7 @@ export const CONTROLS = [
   ["the view", [
     ["drag", "turn the camera. Right-drag instead while your hand is out"],
     ["scroll or pinch", "zoom in and out"],
+    ["Sound", "tap to step through: everything, the ducks without the music, and no sound at all"],
     ["/", "open and close this"],
   ]],
 ];

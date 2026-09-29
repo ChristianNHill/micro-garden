@@ -322,7 +322,7 @@ func _wanted_clip(dt: float) -> String:
 		return "sitting"
 	if state.get("kicking", false):
 		return "kick"
-	if state.eating:
+	if state.eating or state.get("drumming", false):  # an instrument is played with the beak
 		return "peck"
 	if emote == "playful" and emote_age < 0.4:
 		return "roll"
@@ -380,6 +380,8 @@ func _nod(angle: Dictionary, t: float) -> void:
 		nod = [0.45, 0.6, 0.9, 0.0]
 	elif state.eating:
 		nod = [0.45 + sin(t * 9.0) * 0.2, 0.5, 0.0, 0.0]
+	elif state.get("drumming", false):  # quick taps
+		nod = [0.3 + absf(sin(t * 14.0)) * 0.3, 0.4, 0.0, 0.0]
 	var names := ["neck_pitch", "head_pitch", "head_yaw", "head_roll"]
 	for k in 4:
 		angle[names[k]] = angle.get(names[k], 0.0) + nod[k]

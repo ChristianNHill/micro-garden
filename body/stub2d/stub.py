@@ -73,6 +73,9 @@ EARSHOT_M = 2.0  # how far an alarm, a whoop or a cry carries
 WITNESS_M = 1.5  # how near a duck must be to a shove or a hat taken to see it
 GRAB_M = 0.3  # how near the hand must be to pick a thing up
 THROW_MS, THROW_MAX_MS, THROW_S = 0.8, 3.0, 0.35  # release speed that throws, the cap, and flight time
+BIN_M = 0.25  # how near a garbage can a thing has to come down to go in it
+BINNED_AS = {"ball": "a ball", "hat": "a hat", "food": "a fruit", "music": "the music box", "drum": "the drum",
+             "instrument": "an instrument"}
 HAND_S = 4.0  # how long the player's hand stays in the garden
 HAND_SEEN_M = 1.5  # a hand this far off is half as plain as one at the beak
 CRY_S = 6.0  # how long a cry lasts
@@ -193,6 +196,7 @@ class Stub:
         self.held = None  # what the player's hand carries: (kind, index)
         self.thrown = np.zeros(n, bool)
         self.throws = []  # (t, duck) each time the player throws one
+        self.binned = []  # (t, what) each time the player puts a thing in a garbage can
         self.given = []  # (t, duck) each time the player hands one a fruit
         self.velocity = np.zeros((n, 2))  # m/s over the ground, for what a duck walks into
         self.hat_rng = np.random.default_rng(seed + 2)
@@ -578,7 +582,10 @@ class Stub:
         at = np.array([float(p["x"]), float(p["y"])])
         kind, which = self.held
         thrown = speed > THROW_MS and kind != "food"
-        if kind == "ball":
+        down = at + (v * THROW_S if thrown else 0.0)
+        if kind != "duck" and any(np.hypot(*(down - can)) < BIN_M for can in self.world.danger):
+            self._bin(kind, which)
+        elif kind == "ball":
             self._carry(tuple(at), tuple(v) if thrown else (0.0, 0.0))
         else:
             land = np.clip(at + (v * THROW_S if thrown else 0.0), 0.1, self.world.size - 0.1)
@@ -588,6 +595,24 @@ class Stub:
                 self.throws.append((self.t, which))
                 self.knock_down(which)
         self.held = None
+
+    def _bin(self, kind: str, which: int) -> None:
+        """A thing goes in a garbage can and out of the garden."""
+        w = self.world
+        if kind == "ball":
+            w.balls = np.delete(w.balls, which, axis=0)
+            self.ball_styles.pop(which)
+        elif kind == "hat":
+            self.hat_items.pop(which)
+        elif kind == "food":
+            w.food, w.bites, w.kinds = (np.delete(a, which, axis=0) for a in (w.food, w.bites, w.kinds))
+        elif kind == "music":
+            w.music = None
+        elif kind == "drum":
+            w.drum = None
+        elif kind == "instrument":
+            w.instruments.pop(which)
+        self.binned.append((self.t, BINNED_AS[kind]))
 
     def _give(self, p):
         """The player holds a fruit out to one duck: the hand comes to it, with a few bites at its beak."""

@@ -1,5 +1,5 @@
 // viewer/godot/scenery.gd: the garden's setting, after the Chao gardens of Sonic Adventure 2. A lawn in a bowl of
-// rounded rock, a waterfall of pale columns down to the pond, a cave mouth, palms, a rail fence, sea and sky, every
+// rounded rock, a waterfall of pale columns down to the pond, palms, a rail fence, sea and sky, every
 // shape made by rule from lumps. None of it is in the world: it only draws the walls the ducks already have.
 import * as THREE from "three";
 import * as Ink from "./ink.js";
@@ -86,7 +86,6 @@ export function build(root, snap, viewer) {
       along += r * 1.25;
     }
   }
-  Ink.part(root, Ink.ball(0.34, 10), Ink.NAVY, [0.3 * size, 0.2, -(size + 0.05)], [1.0, 1.4, 0.6], { tone: 0.05 });  // a cave mouth
   // the rail fence along the open south and west edges
   for (let edge = 0; edge < 2; edge++) {
     const posts = Math.trunc(size / 0.75);
@@ -128,6 +127,17 @@ export function build(root, snap, viewer) {
   return { summits: [summit, far], falls, reeds };
 }
 
+// A hump of rock on top of the highest step, with the water running out of the arch in its face and over the edge.
+function cave(root, [x, y, r, h], toward, turn, rng) {
+  const at = d => [x + toward[0] * d, -(y + toward[1] * d)];
+  const [hx, hz] = at(0.1 * r);  // its back sunk in the cliff behind
+  placeLump(root, [hx, h - 0.05, hz], 0.75 * r, 1.1, rng, PALE_ROCK, LAWN, 10, 0.9, 0.05);
+  const [mx, mz] = at(-0.72 * r);  // the arch is a dark disc half sunk in the step
+  Ink.part(root, Ink.cone(0.32, 0.02, 0.32, 16), Ink.NAVY, [mx, h + 0.02, mz], 1, { tone: 0.05 }).rotation.set(0, turn, Math.PI / 2);
+  const [wx, wz] = at(-0.83 * r);
+  Ink.part(root, Ink.box(), WATER, [wx, h + 0.02, wz], [0.22 * r, 0.03, 0.34], { cell: 8, tone: 0.97 }).rotation.y = turn;
+}
+
 // Pale columns stepping down from the cliff into the pond, with water sheets on them.
 function waterfall(root, snap, centre, size, rng, falls) {
   const [, , pr] = snap.pond;
@@ -135,17 +145,19 @@ function waterfall(root, snap, centre, size, rng, falls) {
   const toward = [(size - centre[0]) / len, (size - centre[1]) / len], side = [-toward[1], toward[0]];
   const steps = (snap.rocks || []).map(([x, y, r], i) => [x, y, r, 0.35 + 0.5 * i, true]);  // true: solid in the world
   if (!steps.length) steps.push([centre[0] + toward[0] * (pr + 0.1), centre[1] + toward[1] * (pr + 0.1), 0.55, 0.35]);
-  while (steps.length < 5) {
+  while (steps.length < 3) {  // any higher and the corner cliffs hide the top, and its cave
     const last = steps[steps.length - 1];
     steps.push([last[0] + toward[0] * 0.6, last[1] + toward[1] * 0.6, last[2] + 0.12, last[3] + 0.65]);
   }
-  for (const [x, y, r, h, solid] of steps) {
+  const turn = Math.atan2(toward[1], toward[0]);
+  steps.forEach(([x, y, r, h, solid], k) => {
     // a rock the ducks bump into is drawn nearly true to its size, or they would seem to walk into it
     placeLump(root, [x, -0.2, -y], r, h + 0.2, rng, PALE_ROCK, WATER, 10, 0.9, solid ? 0.05 : 0.2);
     const sheet = Ink.part(root, Ink.box(), WATER, [x - toward[0] * r * 0.93, h / 2, -y + toward[1] * r * 0.93], [0.05, h, 0.5], { cell: 8, tone: 0.97 });
-    sheet.rotation.y = Math.atan2(toward[1], toward[0]);
+    sheet.rotation.y = turn;
     falls.push(sheet);
-  }
+    if (k === steps.length - 1) cave(root, [x, y, r, h], toward, turn, rng);
+  });
   for (const flank of [-1, 1]) {  // darker rock and a palm either side of the fall
     const at = [centre[0] + toward[0] * (pr + 0.9) + side[0] * flank * 1.25, centre[1] + toward[1] * (pr + 0.9) + side[1] * flank * 1.25];
     placeLump(root, [at[0], -0.2, -at[1]], 0.75, 1.5, rng);

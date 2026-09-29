@@ -23,6 +23,8 @@ const PITCH = [0.35, 1.25];
 const DRIFT = 0.12;
 const DUCK_TALL = 0.42;
 const KICKED_M = 0.3, KICKED_S = 0.7;
+const SOUND_MODES = [["Sound", "sound on"], ["No music", "music off; the ducks can still be heard"], ["Muted", "all sound off"]];
+const LID_OPEN_M = 0.7;  // how near a garbage can the hand has to bring a thing for the lid to open
 const SAVE_EVERY_S = 60;
 const TAU = 2 * Math.PI;
 const params = new URLSearchParams(location.search);
@@ -158,7 +160,9 @@ function run({ garden, brain, brains, eyes, welcome }) {
   let snap = garden.snapshot();
   const size = snap.size;
   const orbit = { yaw: 2.2, pitch: 0.5, dist: 1.7 * size };
+  let soundMode = 0;  // an index into SOUND_MODES
   const crowd = params.has("crowd");  // with ?record: the camera keeps the flock in the middle of the picture
+  const aim = params.has("aim") ? params.get("aim").split(",").map(Number) : null;  // with ?record: x,y,height to look at
   // a narrow screen stands further back, so the whole garden fits across it
   orbit.dist *= Math.min(Math.max(1, 0.9 * innerHeight / innerWidth), 2.2);
   const farthest = Math.max(12, orbit.dist);
@@ -256,19 +260,33 @@ function run({ garden, brain, brains, eyes, welcome }) {
       if (moved.length() > 1e-5 && n.userData.ball) n.userData.ball.rotateOnWorldAxis(new THREE.Vector3(moved.z, 0, -moved.x).normalize(), moved.length() / (0.06 * 1.9));
     }
     syncProps("drum", snap.drum ? [snap.drum] : [], Props.drum);
+    // an instrument a duck is playing bounces with each note
+    const players = snap.ducks.filter(d => d.drumming);
+    for (const n of [...(props.instruments || []), ...(props.drum || [])]) {
+      const played = players.some(d => Math.hypot(d.x - n.position.x, d.y + n.position.z) < 0.45);
+      n.scale.y = played ? 1 + 0.12 * Math.abs(Math.sin(performance.now() / 70)) : 1;
+    }
     syncProps("danger", snap.danger, Props.stink);
     const gust = snap.wind, drift = gust ? new THREE.Vector3(gust[0], 0, -gust[1]).multiplyScalar(0.35) : new THREE.Vector3();
     const tnow = performance.now();
+    // a can's lid opens while the hand carries something that could go in it nearby
+    const carrying = snap.held && snap.held[0] !== "duck" && snap.hand;
+    for (const n of props.danger || []) {
+      const near = carrying && Math.hypot(snap.hand[0] - n.position.x, snap.hand[1] + n.position.z) < LID_OPEN_M;
+      n.userData.swivel.rotation.y = -orbit.yaw;
+      const lid = n.userData.lid.rotation;
+      lid.z += ((near ? 1.9 : 0) - lid.z) * Math.min(1, 10 * dt);
+    }
     for (const n of props.danger || []) {
       n.userData.puffs.forEach((puff, k) => {
         const strand = k % 3, up = ((tnow / 2600 * calm + (k + 1) / Props.STINK_PUFFS) % 1);
         const swing = Math.sin(up * TAU + strand * 2.1) * 0.07, a = TAU * strand / 3 + 0.4;
-        puff.position.set(Math.cos(a) * 0.08 + swing, 0.04 + up * 0.55, Math.sin(a) * 0.08 + swing * 0.6).addScaledVector(drift, up * up);
+        puff.position.set(Math.cos(a) * 0.08 + swing, Props.CAN_TOP + up * 0.55, Math.sin(a) * 0.08 + swing * 0.6).addScaledVector(drift, up * up);
         puff.scale.setScalar(1 - 0.75 * up);
       });
     }
     syncProps("music", snap.music ? [snap.music] : [], Props.musicBox);
-    for (const n of props.music || []) n.scale.setScalar(1 + 0.06 * calm * Math.sin(tnow / 90));
+    for (const n of props.music || []) n.scale.setScalar(snap.music_volume > 0 ? 1 + 0.06 * calm * Math.sin(tnow / 90) : 1);  // still while off
     // the wind: flags turn and flutter, reeds lean, the falls pulse
     const blowing = gust && Math.hypot(gust[0], gust[1]) > 0.05;
     flags.forEach((flag, i) => {
@@ -300,8 +318,9 @@ function run({ garden, brain, brains, eyes, welcome }) {
     sound.pond(!!snap.pond, snap.light);
     // the Spotify playlist, or the box's own tune if Spotify will not load
     const useSpotify = !playlist.failed;
-    playlist.update(useSpotify && !!snap.music, snap.music_volume * (sound.on ? 1 : 0));
-    sound.music(!useSpotify && !!snap.music, snap.music_volume);
+    const musicOn = soundMode === 0;
+    playlist.update(useSpotify && !!snap.music, snap.music_volume * (musicOn ? 1 : 0));
+    sound.music(!useSpotify && !!snap.music && musicOn, snap.music_volume);
   };
 
   const rollKicked = dt => {
@@ -335,6 +354,7 @@ function run({ garden, brain, brains, eyes, welcome }) {
     const sway = Math.sin(performance.now() / 9000) * DRIFT * (calm === 1 ? 1 : 0) * Math.min(Math.max(still - 3, 0), 1);
     const yaw = orbit.yaw + sway;
     const want = selected >= 0 ? ducks[selected].position.clone().add(new THREE.Vector3(0, 0.15, 0))
+      : aim ? new THREE.Vector3(aim[0], aim[2] || 0, -aim[1])
       : crowd ? ducks.reduce((m, d) => m.add(d.position), new THREE.Vector3()).divideScalar(ducks.length).add(new THREE.Vector3(0, 0.1, 0))
       : new THREE.Vector3(size / 2, 0.1, -size / 2);
     centre = centre ? centre.lerp(want, Math.min(1, 3 * dt)) : want;
@@ -488,7 +508,13 @@ function run({ garden, brain, brains, eyes, welcome }) {
       if (!handMode && gripping) { gripping = false; letGo(); }
       panels.say(handMode ? "the hand is out: hold and drag to pick things up" : "the hand is put away");
     },
-    sound: () => { sound.setOn(!sound.on); panels.say(sound.on ? "sound on" : "sound off"); },
+    sound: () => {  // everything, then the ducks without the music, then nothing
+      soundMode = (soundMode + 1) % SOUND_MODES.length;
+      sound.setOn(soundMode < 2);
+      const [label, said] = SOUND_MODES[soundMode];
+      document.querySelector('[data-verb="sound"]').textContent = label;
+      panels.say(said);
+    },
     regenerate: () => { $("regenerate").hidden = false; },
   };
   const KEYS = { Tab: "ride", "/": "help", o: "overlay", c: "clap", f: "shake", m: "music", g: "give", p: "pet", d: "drum", i: "instrument", b: "ball", h: "hand", t: "hat" };
@@ -548,8 +574,10 @@ function run({ garden, brain, brains, eyes, welcome }) {
     glove.visible = !!xy;
     if (xy) {
       const at = [Math.min(Math.max(xy[0], 0), size), Math.min(Math.max(xy[1], 0), size)];
-      glove.position.lerp(new THREE.Vector3(at[0], gripping ? 0.22 : 0.4, -at[1]), 0.5);
-      glove.rotation.y = orbit.yaw + Math.PI;
+      glove.position.lerp(new THREE.Vector3(at[0], gripping ? 0.24 : 0.4, -at[1]), 0.5);  // gripping, just under what it lifts
+      glove.rotation.y = Math.PI - orbit.yaw - 0.8;  // reaching in and to the right, the hand ahead of the cuff
+      glove.userData.grip = (glove.userData.grip ?? 0) + ((gripping ? 1 : 0) - (glove.userData.grip ?? 0)) * Math.min(1, 12 * dt);
+      Props.curl(glove, glove.userData.grip);
       trail.push([now / 1000, at]);
       while (trail.length > 1 && now / 1000 - trail[0][0] > 0.12) trail.shift();
       if (gripping) act("garden.hand_at", { x: at[0], y: at[1] });
