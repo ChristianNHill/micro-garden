@@ -89,6 +89,17 @@ export class Duck extends THREE.Group {
       }
     }
     this.head = this.frames[robot.hat.body];
+    // a bandage, two crossed strips with a pad, across the top of the head a little to one side, for a duck that was hit
+    this.bandage = new THREE.Group();
+    const seat = robot.hat.at;
+    this.bandage.position.set(seat[0] - 0.008, 0.016, seat[2] + 0.006);  // the head's up is +x, so the strips lie across y and z
+    const tan = new THREE.Color("#f0c8a0"), pad = new THREE.Color("#dca27a");
+    for (const turn of [Math.PI / 4, -Math.PI / 4]) {
+      Ink.part(this.bandage, Ink.box(), tan, [0, 0, 0], [0.004, 0.05, 0.013], { cell: CELL, outlined: true }).rotation.x = turn;
+    }
+    Ink.part(this.bandage, Ink.box(), pad, [0.0015, 0, 0], [0.004, 0.015, 0.015], { cell: CELL }).rotation.x = Math.PI / 4;
+    this.bandage.visible = false;
+    this.head.add(this.bandage);
     this.frames.neck_pitch.scale.setScalar(0.9 + 0.3 * k("vanity"));
     const foot = 0.1 * LOOK * size * girth;
     this.shadow = Ink.part(this, Ink.cone(foot, 0.001, foot, 12), Ink.GRASS, [0, 0.003, 0], 1, { tone: 0.35 });
@@ -138,6 +149,7 @@ export class Duck extends THREE.Group {
     for (const leg of ["yaw2roll", "bearing_roll"]) this.frames[leg].visible = !s.swimming;
     this.shadow.visible = !s.swimming;
     this._wear();
+    this.bandage.visible = !!this.state.hurt;
     this._nod(angle, t);
     for (const [name, [node, axis]] of Object.entries(this.hinges)) {
       node.quaternion.slerp(new THREE.Quaternion().setFromAxisAngle(axis, angle[name] ?? 0), Math.min(1, 9 * dt));

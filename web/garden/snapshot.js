@@ -12,6 +12,7 @@ export const MOOD_AT = 0.25;
 export const SHAPE_KNOBS = ["appetite", "aggressiveness", "timidity", "vanity", "chattiness", "energy", "sleepiness"];
 export const EMOTE_S = 3.0;
 export const EATING_S = 1.0;
+export const HURT_S = 60.0;  // how long a duck wears a bandage after it is shoved or thrown
 export const KICKING_S = 0.4;
 export const HEARD_S = 1.0;
 export const TOASTS = 6;
@@ -87,7 +88,9 @@ export class Snapshot {
     const n = stub.n;
     const last = events => { const m = new Map(); for (const e of events.slice(-4 * n)) m.set(e[1], e); return m; };
     const recent = { emotes: last(stub.emotes), bites: last(stub.eaten), kicks: last(stub.kicks), taps: last(stub.drums),
-                     posture: stub.posture(), down_left: stub.down_left(), swimming: stub._swimming() };
+                     posture: stub.posture(), down_left: stub.down_left(), swimming: stub._swimming(), hits: new Map() };
+    for (const [t, , j] of stub.headbutts.slice(-4 * n)) recent.hits.set(j, t);  // shoved by another duck
+    for (const [t, j] of stub.throws.slice(-4 * n)) recent.hits.set(j, Math.max(t, recent.hits.get(j) ?? -Infinity));  // thrown by you
     const w = stub.world, body = server ? server.body : null;
     const ducks = Array.from({ length: n }, (_, i) => this._duck(stub, body, i, watched, recent));
     return {
@@ -102,7 +105,7 @@ export class Snapshot {
     };
   }
 
-  _duck(stub, body, i, watched, { emotes, bites, kicks, taps, posture, down_left, swimming }) {
+  _duck(stub, body, i, watched, { emotes, bites, kicks, taps, posture, down_left, swimming, hits }) {
     const emote = emotes.get(i);
     const showing = emote !== undefined && stub.t - emote[0] < EMOTE_S;
     const recent = (m, s) => m.has(i) && stub.t - m.get(i)[0] < s;
@@ -112,6 +115,7 @@ export class Snapshot {
       hat: stub.hats[i], hat_style: Math.max(stub.hat_style[i], 0), head: stub.head[i],
       eating: recent(bites, EATING_S), kicking: recent(kicks, KICKING_S), drumming: recent(taps, 0.5),
       emote: showing ? emote[2] : "", emote_t: showing ? emote[0] : -1.0, crying: stub.crying_until[i] > stub.t,
+      hurt: hits.has(i) && stub.t - hits.get(i) < HURT_S,
       label: "", asleep: false, mood: "", strength: 0.0, hunger: 0, thirst: 0, sleepy: 0, knobs: {}, readout: [], among: {},
     };
     if (body === null) return duck;

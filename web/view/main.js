@@ -186,6 +186,7 @@ function run({ garden, brain, brains, eyes, welcome }) {
       await garden.step();
       snap = garden.snapshot();
       if (midday) { snap.light = 1; snap.day = 0.5; }  // ?record&midday: film in daylight whatever the garden's hour
+      if (params.has("hurt")) for (const d of snap.ducks) d.hurt = true;  // ?hurt: every duck bandaged, to check how it looks
       simSteps++;
       next += STEP_MS;
       const lag = next - performance.now();

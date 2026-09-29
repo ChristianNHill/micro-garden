@@ -38,6 +38,7 @@ MOOD_AT = 0.25  # under this a duck is content, and the viewer's mood shape is h
 SHAPE_KNOBS = ("appetite", "aggressiveness", "timidity", "vanity", "chattiness", "energy", "sleepiness")
 EMOTE_S = 3.0  # how long an emote stays in the snapshot
 EATING_S = 1.0
+HURT_S = 60.0  # how long a duck wears a bandage after it is shoved or thrown
 KICKING_S = 0.4  # how long a kick shows
 HEARD_S = 1.0  # quacks this recent are sent
 WHEEL_S = 0.5  # a wheel not sent for this long is let go
@@ -127,7 +128,11 @@ class Snapshot:
         n = len(stub.names)
         last = lambda events: {e[1]: e for e in events[-4 * n:]}  # each duck's latest
         recent = dict(emotes=last(stub.emotes), bites=last(stub.eaten), kicks=last(stub.kicks), taps=last(stub.drums),
-                      posture=stub.posture(), joints=stub.articulation(), down_left=stub.down_left(), swimming=stub._swimming())
+                      posture=stub.posture(), joints=stub.articulation(), down_left=stub.down_left(), swimming=stub._swimming(), hits={})
+        for t, _, j in stub.headbutts[-4 * n:]:  # shoved by another duck
+            recent["hits"][j] = t
+        for t, j in stub.throws[-4 * n:]:  # thrown by you
+            recent["hits"][j] = max(t, recent["hits"].get(j, float("-inf")))
         ducks = [self._duck(stub, body, i, **recent) for i in range(n)]
         w = stub.world
         return {"t": round(stub.t, 2), "size": w.size, "light": round(float(daylight(stub.t)), 3),
@@ -145,7 +150,7 @@ class Snapshot:
                 "hand": None if w.hand is None else [float(v) for v in w.hand], "toasts": self.toasts,
                 "sounds": [[round(t, 2), int(i), tag] for t, i, tag in stub.sounds[-2 * n:] if stub.t - t < HEARD_S]}
 
-    def _duck(self, stub, body, i, emotes, bites, kicks, taps, posture, joints, down_left, swimming) -> dict:
+    def _duck(self, stub, body, i, emotes, bites, kicks, taps, posture, joints, down_left, swimming, hits) -> dict:
         """One duck's part of the snapshot: the body's state, plus the brain's when there is one."""
         emote = emotes.get(i)
         showing = emote is not None and stub.t - emote[0] < EMOTE_S
@@ -159,6 +164,7 @@ class Snapshot:
             "eating": i in bites and stub.t - bites[i][0] < EATING_S,
             "kicking": i in kicks and stub.t - kicks[i][0] < KICKING_S,
             "drumming": i in taps and stub.t - taps[i][0] < 0.5,
+            "hurt": i in hits and stub.t - hits[i] < HURT_S,
             "emote": emote[2] if showing else "", "emote_t": round(emote[0], 2) if showing else -1.0,
             "crying": bool(stub.crying_until[i] > stub.t),
             "label": "", "asleep": False, "mood": "", "strength": 0.0, "hunger": 0.0, "thirst": 0.0, "sleepy": 0.0,

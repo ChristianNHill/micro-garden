@@ -22,6 +22,7 @@ const MARKS = {
   block: face("anger", "angry face"),
   drop: face("sorrow", "sad face"),
   zs: svg('<text x="2" y="18" font-family="sans-serif" font-weight="700" font-size="13" fill="#1c2a4d">Z</text><text x="12" y="11" font-family="sans-serif" font-weight="700" font-size="9" fill="#1c2a4d">z</text>', "Z z z"),
+  bandage: svg('<g transform="rotate(45 11 11)"><rect x="2" y="8" width="18" height="6" rx="2" fill="#f0c8a0" stroke="#1c2a4d" stroke-width="1.2"/></g><g transform="rotate(-45 11 11)"><rect x="2" y="8" width="18" height="6" rx="2" fill="#f0c8a0" stroke="#1c2a4d" stroke-width="1.2"/></g><rect x="8.5" y="8.5" width="5" height="5" transform="rotate(45 11 11)" fill="#dca27a"/>', "bandage"),
   ring: svg('<ellipse cx="11" cy="14" rx="9" ry="4" fill="none" stroke="#ee6f5c" stroke-width="2.5"/>', "red ring"),
 };
 
@@ -45,6 +46,7 @@ export const CONTROLS = [
     [MARKS.block, "the duck is angry. The face shakes until it calms down"],
     [MARKS.drop, "the duck is sad. Blue tears fall when it cries"],
     [MARKS.zs, "the duck is asleep"],
+    [MARKS.bandage, "another duck shoved it, or you threw it, in the last minute"],
     ["hungry, laughs, dances", "a word shows for a few seconds when the duck feels or does something"],
     [MARKS.ring, "this marks the duck you are following"],
   ]],
