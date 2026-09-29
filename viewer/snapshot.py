@@ -38,7 +38,7 @@ MOOD_AT = 0.25  # under this a duck is content, and the viewer's mood shape is h
 SHAPE_KNOBS = ("appetite", "aggressiveness", "timidity", "vanity", "chattiness", "energy", "sleepiness")
 EMOTE_S = 3.0  # how long an emote stays in the snapshot
 EATING_S = 1.0
-HURT_S = 20.0  # how long a duck wears a bandage after it is shoved or thrown
+HURT_S = 20.0  # how long a duck wears a bandage after it is knocked over
 KICKING_S = 0.4  # how long a kick shows
 HEARD_S = 1.0  # quacks this recent are sent
 WHEEL_S = 0.5  # a wheel not sent for this long is let go
@@ -129,10 +129,9 @@ class Snapshot:
         last = lambda events: {e[1]: e for e in events[-4 * n:]}  # each duck's latest
         recent = dict(emotes=last(stub.emotes), bites=last(stub.eaten), kicks=last(stub.kicks), taps=last(stub.drums),
                       posture=stub.posture(), joints=stub.articulation(), down_left=stub.down_left(), swimming=stub._swimming(), hits={})
-        for t, _, j in stub.headbutts[-4 * n:]:  # shoved by another duck
+        for t, j in stub.knocks[-4 * n:]:  # knocked over: shoved, thrown, tripped, went under
             recent["hits"][j] = t
-        for t, j in stub.throws[-4 * n:]:  # thrown by you
-            recent["hits"][j] = max(t, recent["hits"].get(j, float("-inf")))
+        del stub.knocks[:-200]  # the garden never needs more
         ducks = [self._duck(stub, body, i, **recent) for i in range(n)]
         w = stub.world
         return {"t": round(stub.t, 2), "size": w.size, "light": round(float(daylight(stub.t)), 3),

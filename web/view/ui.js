@@ -46,7 +46,7 @@ export const CONTROLS = [
     [MARKS.block, "the duck is angry. The face shakes until it calms down"],
     [MARKS.drop, "the duck is sad. Blue tears fall when it cries"],
     [MARKS.zs, "the duck is asleep"],
-    [MARKS.bandage, "another duck shoved it or you threw it, and it has not got over it yet"],
+    [MARKS.bandage, "the duck was knocked over, by a shove, a throw or a trip, and has not got over it yet"],
     ["hungry, laughs, dances", "a word shows for a few seconds when the duck feels or does something"],
     [MARKS.ring, "this marks the duck you are following"],
   ]],

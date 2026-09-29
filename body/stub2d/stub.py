@@ -172,6 +172,7 @@ class Stub:
         self.frame_port = frame_port
         self.eaten = []  # (t, duck)
         self.headbutts = []  # (t, attacker, victim)
+        self.knocks = []  # (t, duck) each time a duck is knocked over, for any reason
         self.emotes = []  # (t, duck, feeling)
         self.acting = [[] for _ in range(n)]  # head poses still to come in an emote, as (garden time, pose)
         self.bumped = np.zeros(n, bool)
@@ -414,6 +415,7 @@ class Stub:
         """A kick that lands, or a trip, puts a duck on the floor: here it cannot move for `seconds`, and it
         stops whatever it was acting out."""
         self.down_until[j] = max(self.down_until[j], self.t + seconds)
+        self.knocks.append((self.t, j))
         self.cmd[j] = 0
         self.acting[j] = []
 

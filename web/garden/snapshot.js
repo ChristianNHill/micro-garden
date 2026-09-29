@@ -12,7 +12,7 @@ export const MOOD_AT = 0.25;
 export const SHAPE_KNOBS = ["appetite", "aggressiveness", "timidity", "vanity", "chattiness", "energy", "sleepiness"];
 export const EMOTE_S = 3.0;
 export const EATING_S = 1.0;
-export const HURT_S = 20.0;  // how long a duck wears a bandage after it is shoved or thrown
+export const HURT_S = 20.0;  // how long a duck wears a bandage after it is knocked over
 export const KICKING_S = 0.4;
 export const HEARD_S = 1.0;
 export const TOASTS = 6;
@@ -89,8 +89,8 @@ export class Snapshot {
     const last = events => { const m = new Map(); for (const e of events.slice(-4 * n)) m.set(e[1], e); return m; };
     const recent = { emotes: last(stub.emotes), bites: last(stub.eaten), kicks: last(stub.kicks), taps: last(stub.drums),
                      posture: stub.posture(), down_left: stub.down_left(), swimming: stub._swimming(), hits: new Map() };
-    for (const [t, , j] of stub.headbutts.slice(-4 * n)) recent.hits.set(j, t);  // shoved by another duck
-    for (const [t, j] of stub.throws.slice(-4 * n)) recent.hits.set(j, Math.max(t, recent.hits.get(j) ?? -Infinity));  // thrown by you
+    for (const [t, j] of stub.knocks.slice(-4 * n)) recent.hits.set(j, t);  // knocked over: shoved, thrown, tripped, went under
+    if (stub.knocks.length > 400) stub.knocks.splice(0, stub.knocks.length - 200);  // the garden never needs more
     const w = stub.world, body = server ? server.body : null;
     const ducks = Array.from({ length: n }, (_, i) => this._duck(stub, body, i, watched, recent));
     return {

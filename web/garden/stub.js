@@ -116,6 +116,7 @@ export class Stub {
     if (!pose) this.pose.forEach(p => { p[2] = rng.uniform(-Math.PI, Math.PI); });
     this.eyes = eyes;  // whether to draw what each duck sees; only the eyes and the ride view need it
     this.eaten = []; this.headbutts = []; this.emotes = [];
+    this.knocks = [];  // [t, duck] each time a duck is knocked over, for any reason
     this.acting = Array.from({ length: n }, () => []);
     this.bumped = fill(n, false); this.petted = fill(n, false); this.scared = fill(n, false); this.hats = fill(n, false);
     this.still_for = fill(n, 0);
@@ -314,6 +315,7 @@ export class Stub {
 
   knock_down(j, seconds = DOWN_S) {
     this.down_until[j] = Math.max(this.down_until[j], this.t + seconds);
+    this.knocks.push([this.t, j]);
     this.cmd[j] = [0, 0, 0];
     this.acting[j] = [];
   }
