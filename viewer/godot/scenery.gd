@@ -148,16 +148,20 @@ static func build(root: Node3D, snap: Dictionary, falls: Array, viewer: Vector3,
 	return [summit, far_summit]
 
 
-# A hump of rock on the highest step, its back sunk in the cliff, with the water running out of the arch in its face.
+# The falls come out of the cliff: a wide mass of rock like the cliffs round it, standing on the highest step and
+# leaning back into the corner cliffs, with a dark arch in its face and the water running out over the lip.
 static func cave(root: Node3D, s: Array, toward: Vector2, rng: RandomNumberGenerator) -> void:
 	var r: float = s[2]
 	var h: float = s[3]
 	var turn := atan2(toward.y, toward.x)
 	var at := func(d: float, y: float) -> Vector3: return Vector3(s[0] + toward.x * d, y, -(s[1] + toward.y * d))
-	place_lump(root, at.call(0.1 * r, h - 0.05), 0.75 * r, 1.1, rng, PALE_ROCK, LAWN, 10, 0.9, 0.05)
-	var mouth := Ink.part(root, Ink.cone(0.32, 0.02, 0.32, 16), Ink.NAVY, at.call(-0.72 * r, h + 0.02), Vector3.ONE, 7.0, 0.05)
-	mouth.rotation = Vector3(0, turn, PI / 2)  # a dark disc half sunk in the step: an arch
-	var spill := Ink.part(root, BoxMesh.new(), WATER, at.call(-0.83 * r, h + 0.02), Vector3(0.22 * r, 0.03, 0.34), 8.0, 0.97)
+	var big := 0.95 * r
+	var back := 0.25 * r
+	place_lump(root, at.call(back, h - 0.1), big, 1.4, rng, ROCK, LAWN, 11, 0.75, 0.04)
+	var face := back - 1.07 * big  # just proud of the rock
+	var mouth := Ink.part(root, Ink.cone(0.36, 0.02, 0.36, 18), Ink.NAVY, at.call(face, h + 0.01), Vector3.ONE, 7.0, 0.05)
+	mouth.rotation = Vector3(0, turn, PI / 2)  # a dark disc, its lower half sunk in the step: an arch
+	var spill := Ink.part(root, BoxMesh.new(), WATER, at.call((face - 0.93 * r) / 2.0, h + 0.02), Vector3(maxf(face + 0.93 * r, 0.05), 0.03, 0.5), 8.0, 0.97)
 	spill.rotation.y = turn
 
 

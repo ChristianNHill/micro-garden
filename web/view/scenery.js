@@ -127,15 +127,18 @@ export function build(root, snap, viewer) {
   return { summits: [summit, far], falls, reeds };
 }
 
-// A hump of rock on top of the highest step, with the water running out of the arch in its face and over the edge.
+// The falls come out of the cliff: a wide mass of rock like the cliffs round it, standing on the highest step and
+// leaning back into the corner cliffs, with a dark arch in its face and the water running out over the lip.
 function cave(root, [x, y, r, h], toward, turn, rng) {
   const at = d => [x + toward[0] * d, -(y + toward[1] * d)];
-  const [hx, hz] = at(0.1 * r);  // its back sunk in the cliff behind
-  placeLump(root, [hx, h - 0.05, hz], 0.75 * r, 1.1, rng, PALE_ROCK, LAWN, 10, 0.9, 0.05);
-  const [mx, mz] = at(-0.72 * r);  // the arch is a dark disc half sunk in the step
-  Ink.part(root, Ink.cone(0.32, 0.02, 0.32, 16), Ink.NAVY, [mx, h + 0.02, mz], 1, { tone: 0.05 }).rotation.set(0, turn, Math.PI / 2);
-  const [wx, wz] = at(-0.83 * r);
-  Ink.part(root, Ink.box(), WATER, [wx, h + 0.02, wz], [0.22 * r, 0.03, 0.34], { cell: 8, tone: 0.97 }).rotation.y = turn;
+  const R = 0.95 * r, back = 0.25 * r;
+  const [cx, cz] = at(back);
+  placeLump(root, [cx, h - 0.1, cz], R, 1.4, rng, ROCK, LAWN, 11, 0.75, 0.04);
+  const face = back - 1.07 * R;  // just proud of the rock
+  const [mx, mz] = at(face);  // the arch: a dark disc, its lower half sunk in the step
+  Ink.part(root, Ink.cone(0.36, 0.02, 0.36, 18), Ink.NAVY, [mx, h + 0.01, mz], 1, { tone: 0.05 }).rotation.set(0, turn, Math.PI / 2);
+  const [wx, wz] = at((face - 0.93 * r) / 2);  // the water, from the arch over the lip of the step
+  Ink.part(root, Ink.box(), WATER, [wx, h + 0.02, wz], [Math.max(face + 0.93 * r, 0.05), 0.03, 0.5], { cell: 8, tone: 0.97 }).rotation.y = turn;
 }
 
 // Pale columns stepping down from the cliff into the pond, with water sheets on them.

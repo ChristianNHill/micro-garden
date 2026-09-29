@@ -12,6 +12,17 @@ const LIT = ["#bfe0ff", "#ffb3ec", "#c6ffd6", "#ffe08a", "#ffffff"];
 const FADE_S = 0.12;
 const RECENT_MS = 4000;  // how long a piece of news counts as new
 
+// The marks drawn over a duck's head (view/duck.js), drawn again small for the controls card.
+const svg = (inner, label) => ({ label, html: `<svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true">${inner}</svg>` });
+const MARKS = {
+  ball: svg('<circle cx="11" cy="11" r="7" fill="#e6b54a" stroke="#1c2a4d" stroke-width="1.5"/>', "yellow ball"),
+  spike: svg('<path d="M5 4 H17 L11 19 Z" fill="#2f9c8f" stroke="#1c2a4d" stroke-width="1.5" stroke-linejoin="round"/>', "teal spike"),
+  block: svg('<rect x="5" y="5" width="12" height="12" transform="rotate(20 11 11)" fill="#ee6f5c" stroke="#1c2a4d" stroke-width="1.5"/>', "red block"),
+  drop: svg('<path d="M11 3 C14 9 17 11 17 14 A6 6 0 0 1 5 14 C5 11 8 9 11 3 Z" fill="#1c2a4d"/>', "dark drop"),
+  zs: svg('<text x="2" y="18" font-family="sans-serif" font-weight="700" font-size="13" fill="#1c2a4d">Z</text><text x="12" y="11" font-family="sans-serif" font-weight="700" font-size="9" fill="#1c2a4d">z</text>', "Z z z"),
+  ring: svg('<ellipse cx="11" cy="14" rx="9" ry="4" fill="none" stroke="#ee6f5c" stroke-width="2.5"/>', "red ring"),
+};
+
 export const CONTROLS = [
   ["the ducks", [
     ["tap a duck", "watch this one: its needs, its moods, its brain and who its friends are"],
@@ -27,14 +38,13 @@ export const CONTROLS = [
     ["the garbage can", "carry a thing to it and the lid opens. Drop or throw it in and it is gone. Ducks cannot go in"],
   ]],
   ["over a duck's head", [
-    ["Z z z", "it is asleep"],
-    ["hungry, thirsty, sleepy", "a need is getting strong"],
-    ["happy, playful, proud, curious", "a good mood"],
-    ["bored, sad, lonely", "a low mood. A lonely duck wants company, a sad one does not"],
-    ["scared, angry", "something upset it: a clap, a shove, being thrown"],
-    ["laughs, sings, dances", "it is having fun, and others may join in"],
-    ["cries, cowers, stomps", "it is upset, and a friend may come to comfort it"],
-    ["yawns, splashes", "just being itself"],
+    [MARKS.ball, "joy. The bigger the ball, the happier it is"],
+    [MARKS.spike, "fear. It shakes while the duck is scared"],
+    [MARKS.block, "anger. It spins while the duck is cross"],
+    [MARKS.drop, "sorrow. Blue tears fall when it cries"],
+    [MARKS.zs, "it is asleep"],
+    ["hungry, thirsty", "a word for a moment: what it feels, or what it does, like laughs, sings or dances"],
+    [MARKS.ring, "the duck you are watching, under its feet"],
   ]],
   ["the garden", [
     ["F, or tap the tree", "shake fruit down"],
@@ -102,7 +112,11 @@ export class Panels {
       const holder = el("div", "menu-section", sides[s < CONTROLS.length / 2 ? 0 : 1]);
       el("div", "menu-head", holder, head);
       const grid = el("div", "menu-grid", holder);
-      for (const [key, what] of rows) { el("span", "key", grid, key); el("span", "what", grid, what); }
+      for (const [key, what] of rows) {
+        if (typeof key === "string") el("span", "key", grid, key);
+        else { const mark = el("span", "key mark", grid); mark.innerHTML = key.html; el("span", null, mark, key.label); }
+        el("span", "what", grid, what);
+      }
     });
     el("div", "menu-foot", card, "Tap anywhere to close.");
     menu.hidden = true;

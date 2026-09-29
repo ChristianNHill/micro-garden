@@ -64,9 +64,11 @@
   .label.sign { font: 600 15px var(--display); color: var(--navy); text-shadow: 0 0 3px var(--cream), 0 0 3px var(--cream), 0 0 6px var(--cream); }
   .label.z { font: 600 16px var(--display); color: #fff; text-shadow: 0 0 3px var(--navy), 0 0 2px var(--navy); }
 
-  .menu { position: absolute; inset: 0; background: rgba(28, 42, 77, 0.55); display: grid; place-items: center; pointer-events: auto; overflow: auto; }
+  .menu { position: absolute; inset: 0; background: rgba(28, 42, 77, 0.55); display: flex; pointer-events: auto; overflow: auto; }
   .menu-card { background: var(--cream); border-radius: 16px; border-bottom: 6px solid var(--navy); padding: 28px 34px;
-    max-width: min(900px, calc(100vw - 32px)); box-sizing: border-box; margin: 16px; }
+    max-width: min(900px, calc(100vw - 32px)); box-sizing: border-box; margin: auto; }  /* auto: centred, or scrolled from the top when too tall */
+  .key.mark { background: none; padding: 0; display: flex; align-items: center; gap: 6px; }
+  .key.mark svg { flex: none; }
   .menu-title { font: 600 32px var(--display); text-align: center; letter-spacing: 0.04em; }
   .menu-under, .menu-foot { text-align: center; color: var(--coral); margin-bottom: 14px; }
   .menu-foot { margin: 18px 0 0; font-size: 13px; }
