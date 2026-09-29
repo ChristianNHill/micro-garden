@@ -161,6 +161,7 @@ function run({ garden, brain, brains, eyes, welcome }) {
   const size = snap.size;
   const orbit = { yaw: 2.2, pitch: 0.5, dist: 1.7 * size };
   let soundMode = 0;  // an index into SOUND_MODES
+  const midday = params.has("midday");
   const crowd = params.has("crowd");  // with ?record: the camera keeps the flock in the middle of the picture
   const aim = params.has("aim") ? params.get("aim").split(",").map(Number) : null;  // with ?record: x,y,height to look at
   // a narrow screen stands further back, so the whole garden fits across it
@@ -184,6 +185,7 @@ function run({ garden, brain, brains, eyes, welcome }) {
     while (running) {
       await garden.step();
       snap = garden.snapshot();
+      if (midday) { snap.light = 1; snap.day = 0.5; }  // ?record&midday: film in daylight whatever the garden's hour
       simSteps++;
       next += STEP_MS;
       const lag = next - performance.now();
