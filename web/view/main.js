@@ -145,7 +145,7 @@ function run({ garden, brain, brains, eyes, welcome }) {
   panels.setBrainPoints(brain.arrays["view.xy"], brain.arrays["view.group"], brain.meta.view_groups, brain.meta.neurons);
   const sound = new Sound();
   sound.start();
-  const playlist = new SpotifyBox(document.body);
+  const playlist = new SpotifyBox(document.body, line => panels.say(line));
   if (welcome) panels.say(welcome);
   let pixelRatio = Math.min(devicePixelRatio || 1, 2);
   const resize = () => {
@@ -412,7 +412,7 @@ function run({ garden, brain, brains, eyes, welcome }) {
     const tapped = duckAt(x, y);
     if (tapped >= 0) { selected = tapped; return; }
     if (snap.music && Math.hypot(xy[0] - snap.music[0], xy[1] - snap.music[1]) < 0.4) {  // each tap steps the volume
-      if (!playlist.failed) {  // a page cannot set the Spotify player's volume, so a tap turns it off and on
+      if (!playlist.failed && !playlist.canSetVolume) {  // a page cannot set the embedded player's volume, so a tap turns it off and on
         const on = snap.music_volume === 0;
         act("garden.volume", { level: on ? 1 : 0 });
         panels.say(on ? "Music on. Use your device's volume to change how loud it is" : "Music off");
