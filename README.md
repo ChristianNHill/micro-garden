@@ -2,9 +2,9 @@
 
 ![Five microducks in the Godot garden eating, swimming, playing a bell and laughing at each other, with the news of what they do at the top](docs/garden.gif)
 
-Micro Garden is five small ducks in a garden, and each duck runs on its own live copy of a real fruit fly brain. I built it to ask whether a wiring diagram, a body with needs, and a place to live are enough to get behaviour nobody scripted. The brain is the FlyWire connectome, about 139,000 neurons and 2.7 million connections, simulated as spiking neurons. Each duck smells, sees and hears. It gets hungry, thirsty, hot and sleepy. It learns, makes friends and holds grudges, and each one has a personality.
+Micro Garden is a simulation of five small ducks, each running on its own copy of a whole fruit fly brain. I built it to ask whether a wiring diagram, a body with needs, a personality and a place to live are enough to get emergent behaviour. The brain is the FlyWire connectome, about 139,000 neurons and 2.7 million connections, simulated as spiking neurons. Each duck can smell, see and hear, and it gets hungry, thirsty, hot and sleepy. It learns, makes friends and holds grudges.
 
-The ducks are modelled on the [microduck](https://github.com/pollen-robotics/microduck), a real open-source robot, and the brain talks to the body through that robot's own command protocol. The body can be a simple 2D simulation in Python or the microduck's own MuJoCo simulation. Either way, a low-poly 3D garden in Godot shows what the ducks are doing. Everything runs in simulation, and I have no plans to build the physical robots.
+The ducks are modelled on the [microduck](https://github.com/pollen-robotics/microduck), an open-source robot, and the brain talks to the body through the robot's command protocol. The body can be a simple 2D simulation in Python or the microduck's MuJoCo simulation. Either way, a low-poly 3D garden in Godot shows what the ducks are doing. Everything runs in simulation, and I have no plans to build the physical robots.
 
 ## Run it
 
@@ -19,7 +19,7 @@ Then open the garden:
 uv run python -m garden
 ```
 
-Closing the window saves the garden, and the ducks are older by however long you were away when you come back. Each new duck gets a random name and personality. Add `--fresh` to start with new ducks, `--labels Bully,Napper,Carefree,Chatty,Scaredy` to choose the personalities, and `--blind` to hide which duck has which until you quit. Five ducks run at about 0.6 times real time on an M4 Pro, and anything else on the GPU slows them more.
+Closing the window saves the garden. When you come back, the ducks are older by however long you were away. Each new duck gets a random name and personality. Add `--fresh` to start with new ducks, `--labels Bully,Napper,Carefree,Chatty,Scaredy` to choose the personalities, and `--blind` to hide which duck has which until you quit. Five ducks run at about 0.6 times real time on an M4 Pro, and anything else on the GPU slows them more.
 
 ## The garden
 
@@ -34,7 +34,7 @@ Click a duck to follow it and see its needs, moods and 12,000 of its neurons fir
 - `F` shakes the tree, `G` gives the selected duck a fruit, `P` pets it, and `C` claps.
 - `T` drops a hat, `B` a ball, `D` a drum, `M` the music box, and `I` another instrument.
 
-The music box plays mp3s you put in `~/.cache/micro-garden/music/`. No music ships with the project.
+In the Godot garden, the music box plays mp3s you put in `~/.cache/micro-garden/music/`. No music ships with the project. The browser garden's music box plays a built-in tune instead.
 
 ## What the ducks do
 
@@ -42,11 +42,15 @@ A duck eats when it is hungry, drinks when it is thirsty, sleeps when it is tire
 
 Ducks get better at swimming, walking, eating, fighting, dancing, fashion and music by doing them, and a clumsy duck trips, misses or hits a sour note now and then. Other ducks may laugh, comfort, or pile on, and one reaction can set off another. Personality makes each of these likelier or rarer but never rules it out.
 
-## What the brain does and what is explicit
+## What the brain does and what is hand-written
 
-Senses enter the brain through the fly's real sensory neurons, with vision through a model of the optic lobe ([flyvis](https://github.com/TuragaLab/flyvis)). Movement comes out through real descending neurons, which I found by screening the whole brain. The clearest is DNge091, which fires on the side the wind comes from. A duck that smells food walks up the odour plume the way a real fly does. With the real wiring a duck finds a dish in 20 of 20 trials, and with the wiring shuffled it finds it in 1 of 20. Learning changes only the synapses between Kenyon cells and mushroom body output neurons, gated by reward and punishment dopamine neurons.
+Senses enter the brain through the fly's sensory neurons. Vision goes through a model of the optic lobe, the fly's visual system ([flyvis](https://github.com/TuragaLab/flyvis)). Movement comes out through descending neurons, which carry the brain's commands down to the body. I found the useful ones by screening the whole brain. The clearest is a neuron called DNge091, which fires on the side the wind comes from. A duck that smells food walks up the odour plume the way a real fly does. With the real wiring a duck finds a dish in 20 of 20 trials, and with the wiring shuffled it finds it in 1 of 20.
 
-Some behaviour is explicit code, and the code marks each place. The body code decides how much weight each sense gets. The brain's own left-right signal for most smells is weaker than its steering noise, so explicit code turns a duck toward music, balls, other ducks, you, and the pond or shade. All social behaviour, trust and skills are explicit too. Personalities are preset combinations of continuous traits, and a garden draws five of 19.
+All learning happens in the mushroom body, the fly's learning centre. It changes the connections from Kenyon cells to the mushroom body's output neurons, and dopamine neurons for reward and punishment decide when those connections change.
+
+Some behaviour is hand-written code rather than the brain's output, and the code marks each of these places "Explicit". The body code decides how much weight each sense gets. The garden has two smells, food and the stink of trash. The brain's left-right signal for food is weaker than its steering noise, which is why a duck finds food by walking upwind. A neuron called DNp32 does fire more on the stink's side, and hand-written code uses the duck's personality to decide whether it runs from the stink or lingers.
+
+Hand-written code also turns a duck toward music, balls, other ducks, you, and the pond or shade. Social behaviour, trust and skills are all hand-written too. Personalities are preset combinations of continuous traits, and each new garden picks five of the 19.
 
 ## Other ways to run it
 
@@ -62,20 +66,28 @@ To run the ducks as simulated robots, check out [microduck](https://github.com/p
 uv run python -m body.mujoco.adapter --ducks 5 --brain --godot
 ```
 
-The upstream walking policy does not yet track a commanded velocity ([microduck_rl issue 46](https://github.com/pollen-robotics/microduck_rl/issues/46)), so these ducks walk at one pace and turn on the spot.
+The microduck_rl walking policy does not yet track a commanded velocity ([microduck_rl issue 46](https://github.com/pollen-robotics/microduck_rl/issues/46)), so these ducks walk at one pace and turn on the spot.
 
-The whole garden also runs in a web browser, with nothing to install. Each duck's brain runs in its own background thread, and the garden is drawn with three.js in the same style as the Godot one. The browser version is a port of the Python code: the brain, the body, the world and the senses are rewritten in JavaScript, module for module. Pack the garden once, then serve the `web` folder:
+The whole garden also runs in a web browser, with nothing to install. Each duck's brain runs in a separate background thread, and three.js draws the garden in the same style as the Godot one. The browser version is a port of the Python code: the brain, the body, the world and the senses are rewritten in JavaScript, with one JavaScript module for each Python one. Pack the garden once, then serve the `web` folder:
 
 ```
 uv run python -m web.pack
 python3 -m http.server -d web 8000
 ```
 
-Open `http://127.0.0.1:8000` for the garden. The packed files come to about 9 MB, and `web/data` is everything a website needs besides the code. The browser saves the garden in its own storage. Every duck sees. A duck with eyes takes about 5 ms of each 20 ms step on an M4 Pro, and 1.3 ms without.
+Open `http://127.0.0.1:8000` for the garden. The packed files come to about 9 MB, and `web/data` is everything a website needs besides the code. The browser saves the garden in its local storage. Every duck in the browser can see. On an M4 Pro, one duck takes about 5 ms of each 20 ms step with its eyes, and 1.3 ms without them.
 
-`http://127.0.0.1:8000/check.html` holds the browser to the Python. It puts the same inputs through both and compares the results. The brain matches spike for spike, learning included. The eyes match to within two millionths, because they add their inputs up in another order. The body, the world, the senses, the decoder and the save match to rounding. The page then times five ducks at once.
+If you connect a Spotify Premium account, the music box plays my playlist through Spotify instead of its built-in tune. While the garden's Spotify app is in development mode, only accounts I have added to it can connect.
 
-The ports have to be kept in step by hand. After a change to the Python, run `web.pack` again and open the check page. A check fails if a port has fallen behind, but only for what the checks cover. Anything decided by dice can only be compared by how often it happens, not step by step.
+The check page at `http://127.0.0.1:8000/check.html` tests the browser version against the Python. It puts the same inputs through both and compares the results:
+
+- The brain matches spike for spike, learning included.
+- The eyes match to within two millionths, because they add their inputs up in another order.
+- The body, the world, the senses, the save file and the decoder, which turns spikes into movement, match to within rounding error.
+
+After the comparison, the page times five ducks running at once.
+
+I keep the JavaScript in step with the Python by hand. After a change to the Python, run `web.pack` again and open the check page. A check fails when the JavaScript has fallen behind, but only in the parts the checks cover. Anything left to chance can only be compared by how often it happens, not step by step.
 
 ## Where things are
 
@@ -105,4 +117,4 @@ This project also builds on:
 
 The model also draws on Gaudry et al. (2013), Schretter et al. (2020), Deutsch et al. (2020), and Bailey and Katchabaw's stimulus-and-response framework. Where the model departs from them, the code says so.
 
-The code is MIT licensed, and the FlyWire data has its own terms, listed above.
+The code is MIT licensed, and the FlyWire data keeps its own terms.
