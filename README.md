@@ -2,7 +2,7 @@
 
 ![Five microducks in the Godot garden eating, swimming, playing a bell and laughing at each other, with the news of what they do at the top](docs/garden.gif)
 
-Micro Garden is a simulation of five small ducks, each running on its own copy of a whole fruit fly brain. I built it to ask whether a wiring diagram, a body with needs, a personality and a place to live are enough to get emergent behaviour. The brain is the FlyWire connectome, about 139,000 neurons and 2.7 million connections, simulated as spiking neurons. Each duck can smell, see and hear, and it gets hungry, thirsty, hot and sleepy. It learns, makes friends and holds grudges.
+Micro Garden is a simulation of five microducks, each running on its own copy of a whole fruit fly brain. I built it to ask whether a wiring diagram, a body with needs, a personality and a place to live are enough to get emergent behaviour. The brain is the FlyWire connectome, about 139,000 neurons and 2.7 million connections, simulated as spiking neurons. Each duck can smell, see and hear, and it gets hungry, thirsty, hot and sleepy. It learns, makes friends and holds grudges.
 
 The ducks are modelled on the [microduck](https://github.com/pollen-robotics/microduck), an open-source robot, and the brain talks to the body through the robot's command protocol. The body can be a simple 2D simulation in Python or the microduck's MuJoCo simulation. Either way, a low-poly 3D garden in Godot shows what the ducks are doing. Everything runs in simulation, and I have no plans to build the physical robots.
 
