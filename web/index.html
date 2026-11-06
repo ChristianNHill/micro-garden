@@ -182,6 +182,12 @@
     .toasts { top: 10px; font-size: 12px; line-height: 1.4; padding: 8px 10px; }
     body.watching .toasts { display: none; }
   }
+  /* the HILL logo, top left; it steps aside for anything that opens over that corner */
+  .garden-logo { position: fixed; top: 10px; left: 16px; z-index: 4; display: block; line-height: 0; transition: opacity 0.25s; }
+  .garden-logo img { display: block; height: 34px; width: auto; filter: drop-shadow(0 1px 6px rgba(28, 42, 77, 0.35)); }
+  body.watching .garden-logo, body.menu-open .garden-logo, body.riding .garden-logo,
+  body:has(#regenerate:not([hidden])) .garden-logo { opacity: 0; pointer-events: none; }
+  @media (max-width: 760px) { .garden-logo img { height: 26px; } }
 </style>
 </head>
 <body>
@@ -235,6 +241,6 @@
 </div>
 
 <script type="module" src="view/main.js"></script>
-<a href="/" style="position:fixed;top:16px;right:16px;z-index:9999;font:500 13px/1 'IBM Plex Mono',monospace;color:#232323;background:#F8F8F8;border:1px solid #D4D4D4;padding:9px 12px;text-decoration:none">← Chris Hill</a>
+<a class="garden-logo" href="/"><img src="https://chrisnhill.com/wp-content/uploads/2022/11/logoCHName-1-768x389.png" alt="Chris Hill" width="768" height="389" decoding="async"></a>
 </body>
 </html>
